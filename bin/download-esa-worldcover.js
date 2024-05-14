@@ -56,7 +56,7 @@ const https = require("node:https");
 	};
 
 	// write tilejson
-	await fs.writeFile(path.resolve(__dirname,`../tiles/esa-worldcover/tile.json`), {
+	await fs.writeFile(path.resolve(__dirname,`../tiles/esa-worldcover/tile.json`), JSON.stringify({
 		"tilejson": "3.0.0",
 		"attribution": "<a href=\"http://creativecommons.org/licenses/by/4.0/\">CC BY 4.0</a> <a href=\"https://esa-worldcover.org/en/data-access\">ESA WorldCover 2021</a>",
 		"name": "ESA Worldcover",
@@ -69,7 +69,7 @@ const https = require("node:https");
 		"bounds": [ -180, -85.0511287798066, 180, 85.0511287798066 ],
 		"minzoom": 10,
 		"maxzoom": 10
-	});
+	},0,"\t"));
 
 	console.error(`Download 100% complete`);
 

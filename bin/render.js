@@ -145,7 +145,7 @@ if (require.main === module) (async ()=>{
 	};
 
 	// write tilejson
-	await fs.writeFile(path.resolve(__dirname,`../tiles/vectortiles-simplified/tile.json`), {
+	await fs.writeFile(path.resolve(__dirname,`../tiles/vectortiles-simplified/tile.json`), JSON.stringify({
 		"tilejson": "3.0.0",
 		"attribution": "<a href=\"http://creativecommons.org/licenses/by/4.0/\">CC BY 4.0</a> <a href=\"https://esa-worldcover.org/en/data-access\">ESA WorldCover 2021</a>",
 		"name": "Versatiles Landcover",
@@ -164,6 +164,6 @@ if (require.main === module) (async ()=>{
 			"minzoom": 0,
 			"maxzoom": 10,
 		}]
-	});
+	},null,"\t"));
 })();
 
