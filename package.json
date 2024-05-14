@@ -1,0 +1,15 @@
+{
+  "private": true,
+  "name": "versatiles-landcover",
+  "version": "1.0.0",
+  "description": "Generate landcover vector tiles from ESA Worldcover",
+  "author": "yetzt <node@yetzt.me>",
+  "license": "Unlicense",
+  "dependencies": {
+    "potrace-wasm": "github:IguteChung/potrace-wasm",
+    "sharp": "^0.33.3",
+    "svg-path-to-polygons": "^0.1.0",
+    "phn": "^0.0.3",
+    "vtt": "^0.0.3"
+  }
+}
