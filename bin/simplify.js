@@ -1,12 +1,15 @@
 
-const fs = require("node:fs/promises");
-const path = require("node:path");
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const vtt = require("vtt");
+import vtt from "vtt";
 
-const visvalingam = require("../lib/visvalingam");
-const exists = require("../lib/exists");
-const config = require("../config");
+import visvalingam from "../lib/visvalingam.js";
+import exists from "../lib/exists.js";
+import * as config from "../config.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const targetSize = 1e5; // 100kb
 
@@ -56,7 +59,7 @@ const simplify = async function simplify(src) {
 
 };
 
-if (require.main === module) (async () => {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) (async () => {
 
 	let z1 = parseInt((process.argv[2] || "8"), 10);
 	for (let z = 0; z <= z1; z++) {

@@ -1,12 +1,15 @@
 // shared configuration for the landcover-vectors pipeline
 
-const path = require("node:path");
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // base directory holding all tile sets
-const tiledir = path.resolve(__dirname, "tiles");
+export const tiledir = path.resolve(__dirname, "tiles");
 
 // landcover classes, in a single canonical order used by every step
-const layers = [
+export const layers = [
 	"bare",
 	"builtup",
 	"cropland",
@@ -24,7 +27,7 @@ const layers = [
 // Pixels are classified by their blue byte; the two ambiguous blue values
 // (0 and 160) are disambiguated by their green byte. A string maps a blue
 // value directly; an object maps green bytes within that blue value.
-const colormap = {
+export const colormap = {
 	34: "shrubland",
 	76: "grassland",
 	117: "mangroves",
@@ -37,13 +40,13 @@ const colormap = {
 };
 
 // classify a single RGB pixel, returns the landcover class or undefined
-const classify = function (r, g, b) {
+export const classify = function (r, g, b) {
 	const entry = colormap[b];
 	return (typeof entry === "string") ? entry : (entry && entry[g]);
 };
 
 // shared tilejson for the vector tile sets
-const vectorTileJSON = function () {
+export const vectorTileJSON = function () {
 	return {
 		"tilejson": "3.0.0",
 		"attribution": "<a href=\"http://creativecommons.org/licenses/by/4.0/\">CC BY 4.0</a> <a href=\"https://esa-worldcover.org/en/data-access\">ESA WorldCover 2021</a>",
@@ -65,5 +68,3 @@ const vectorTileJSON = function () {
 		}],
 	};
 };
-
-module.exports = { tiledir, layers, colormap, classify, vectorTileJSON };

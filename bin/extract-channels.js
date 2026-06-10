@@ -1,11 +1,13 @@
 // Split ESA Worldcover files into distinct channels
 
-const fs = require("node:fs/promises");
-const path = require("node:path");
-const sharp = require("sharp");
-const exists = require("../lib/exists");
-const config = require("../config");
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import sharp from "sharp";
+import exists from "../lib/exists.js";
+import * as config from "../config.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const channels = config.layers;
 
 (async () => {

@@ -2,11 +2,14 @@
 // Data is licensed http://creativecommons.org/licenses/by/4.0/
 // See https://esa-worldcover.org/en/data-access
 
-const phn = require("phn");
-const fs = require("node:fs/promises");
-const path = require("node:path");
-const exists = require("../lib/exists");
-const https = require("node:https");
+import phn from "phn";
+import fs from "node:fs/promises";
+import path from "node:path";
+import https from "node:https";
+import { fileURLToPath } from "node:url";
+import exists from "../lib/exists.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 (async () => {
 

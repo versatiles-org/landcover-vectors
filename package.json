@@ -5,6 +5,10 @@
   "description": "Generate landcover vector tiles from ESA Worldcover",
   "author": "yetzt <node@yetzt.me>",
   "license": "Unlicense",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "download": "node bin/download-esa-worldcover.js",
     "extract": "node bin/extract-channels.js",

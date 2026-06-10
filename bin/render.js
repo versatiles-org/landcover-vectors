@@ -2,17 +2,21 @@
 // warning: potrace-wasm appears to leak memory
 // FIXME: put into worker, hope it fixes the memory leak
 
-const fs = require("node:fs/promises");
-const path = require("node:path");
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const pathDataToPolys = require("svg-path-to-polygons").pathDataToPolys;
-const potrace = require("potrace-wasm");
-const sharp = require("sharp");
-const vtt = require("vtt");
+import svgPathToPolygons from "svg-path-to-polygons";
+import potrace from "potrace-wasm";
+import sharp from "sharp";
+import vtt from "vtt";
 
-const exists = require("../lib/exists");
-const rewind = require("../lib/rewind");
-const config = require("../config");
+import exists from "../lib/exists.js";
+import rewind from "../lib/rewind.js";
+import * as config from "../config.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const { pathDataToPolys } = svgPathToPolygons;
 
 const render = async function render(z, x, y) {
 
@@ -123,7 +127,7 @@ const render = async function render(z, x, y) {
 
 };
 
-if (require.main === module) (async () => {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) (async () => {
 	let z1 = parseInt((process.argv[2] || "8"), 10);
 	for (let z = 0; z <= z1; z++) {
 		for (let x = 0; x < Math.pow(2, z); x++) {
