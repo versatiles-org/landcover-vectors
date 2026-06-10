@@ -34,6 +34,17 @@ const render = async function render(z, x, y) {
 		return;
 	}
 
+	// load the imported class-code tile (class code = first channel, alpha = last)
+	const { data, info } = await sharp(path.join(srcdir, `${z}/${x}/${y}.png`))
+		.raw()
+		.toBuffer({ resolveWithObject: true });
+	const stride = info.channels;
+	const pixels = info.width * info.height;
+
+	// scale factors from the source resolution to the 4096 MVT extent
+	const sx = 4096 / info.width;
+	const sy = 4096 / info.height;
+
 	// prepare vectortile
 	const vectortile = {
 		version: 2,
@@ -46,29 +57,29 @@ const render = async function render(z, x, y) {
 
 	// iterate layers
 	for (let layer of config.layers) {
-		// skip layers with no mask for this tile (the tile set is sparse)
-		const masktile = path.resolve(config.tiledir, `${layer}/${z}/${x}/${y}.png`);
-		if (!(await exists(masktile))) continue;
-
-		// load raster image
-		const img = sharp(masktile);
-
-		// get original metadata
-		const meta = await img.metadata();
-
-		// calculate scale factors
-		const sx = 4096 / meta.width;
-		const sy = 4096 / meta.height;
+		// build a monochrome mask for this kind from the class codes
+		// (0 = present, 0xff = absent); skip layers absent from this (sparse) tile
+		let mask = null;
+		for (let p = 0; p < pixels; p++) {
+			const i = p * stride;
+			if (data[i + stride - 1] === 0) continue; // nodata
+			if (config.classifyCode(data[i]) !== layer) continue;
+			if (!mask) mask = Buffer.alloc(pixels, 0xff);
+			mask[p] = 0; // present
+		}
+		if (!mask) continue;
 
 		// extend 10 pixels, get buffer and metadata
-		const { data, info } = await img
+		const { data: edata, info: einfo } = await sharp(mask, {
+			raw: { width: info.width, height: info.height, channels: 1 },
+		})
 			.extend({ top: 10, left: 10, right: 10, bottom: 10, extendWith: 'copy' })
 			.ensureAlpha()
 			.raw()
 			.toBuffer({ resolveWithObject: true });
 
 		// vectorize with potrace-wasm
-		const vectors = await potrace.loadFromImageData(data, info.width, info.height, {
+		const vectors = await potrace.loadFromImageData(edata, einfo.width, einfo.height, {
 			pathonly: true,
 			turdsize: 2,
 			transform: false,
@@ -88,8 +99,8 @@ const render = async function render(z, x, y) {
 					.map((r) => {
 						// clip vector by extend
 						return r.map((c) => {
-							c[0] = Math.min(info.width, Math.max(0, c[0] - 10));
-							c[1] = Math.min(info.height, Math.max(0, c[1] - 10));
+							c[0] = Math.min(einfo.width, Math.max(0, c[0] - 10));
+							c[1] = Math.min(einfo.height, Math.max(0, c[1] - 10));
 							return c;
 						});
 					})

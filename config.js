@@ -1,13 +1,5 @@
 // shared configuration for the landcover-vectors pipeline
 
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// base directory holding all tile sets
-export const tiledir = path.resolve(__dirname, 'tiles');
-
 // landcover classes (the `kind` values), in a single canonical order used by
 // every step. These reuse the proposed Shortbread `landcover` layer vocabulary
 // so styling transitions seamlessly at the z6→z7 seam (see issue #4).

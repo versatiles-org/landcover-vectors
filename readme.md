@@ -17,7 +17,7 @@ There are to complement OSM tiles on lower zoom levels.
 ## How it's made
 
 Each step below can be run directly with `node`, or via its npm script (shown after the `# or` line).
-To run the whole pipeline (import → extract → render → simplify → pack) in order:
+To run the whole pipeline (import → render → simplify → pack) in order:
 
 ```sh
 npm run build
@@ -58,19 +58,7 @@ npm run import -- 0-4
 > The old `download` step used the Terrascope WMTS service, which is no longer available — hence the move to the
 > AWS Open Data mirror.
 
-### Extract channels
-
-```sh
-node bin/extract-channels.js
-# or
-npm run extract
-```
-
-This splits each imported tile into monochrome masks per land-cover class (one mask per `kind`), for every zoom
-level. Pixels are classified directly by their ESA WorldCover class code. By default zoom levels 0–6 are processed;
-pass a maximum zoom as parameter (e.g. `npm run extract -- 4`).
-
-### Create vector tiles from the channel masks
+### Render vector tiles
 
 ```sh
 node bin/render.js
@@ -78,7 +66,8 @@ node bin/render.js
 npm run render
 ```
 
-This vectorizes channel raster tiles and combines them into vectortiles.
+For each imported tile this derives a monochrome mask per land-cover class (pixels are classified directly by their
+ESA WorldCover class code), vectorizes each mask with `potrace`, and combines the results into one vector tile.
 By default zoom levels 0-6 are created, you can pass the desired target zoom level as parameter:
 
 ```sh
