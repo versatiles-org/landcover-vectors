@@ -40,11 +40,10 @@ ground resolution as a 256 px tile four zoom levels deeper, so the zoom-6 tiles 
 seam-free tile that the renderer vectorizes at native resolution (no upscaling). This produces far fewer, larger
 tiles than a deep 256 px pyramid would.
 
-The 2651 source GeoTIFFs are first downloaded in parallel to a local mirror in `tiles/esa-worldcover-src`
-(~**124 GB**, so make sure you have the disk space), then tiled from local disk — much faster than streaming each
-block over the network during tiling. The download is resumable: already-downloaded tiles are verified by size and
-skipped. `gdal2tiles` uses `mode` resampling, which keeps land-cover classes pure when downsampling — so the lower
-zoom levels are categorically correct and no separate compositing step is needed.
+The 2651 source GeoTIFFs are read directly from S3 over `/vsicurl` (no local mirror). They carry internal overviews,
+so cutting a zoom 0–6 pyramid only streams the resolution it needs — roughly the ~160 m/px overview, a small
+fraction of the full 10 m data. `gdal2tiles` uses `mode` resampling, which keeps land-cover classes pure when
+downsampling — so the lower zoom levels are categorically correct and no separate compositing step is needed.
 
 You can pass a zoom range as parameter (default `0-6`):
 
