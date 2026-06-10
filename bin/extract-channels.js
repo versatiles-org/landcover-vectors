@@ -1,7 +1,7 @@
 // Split the imported ESA WorldCover XYZ tiles into per-class monochrome masks.
-// Reads the colored tiles produced by import-worldcover.js and writes, for each
-// land-cover class present in a tile, a 2-color mask (0 = present, 0xff = absent)
-// that the render step vectorizes.
+// The imported tiles carry the ESA WorldCover class code as their pixel value
+// plus an alpha channel for nodata. For each class present in a tile this writes
+// a 2-color mask (0 = present, 0xff = absent) that the render step vectorizes.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -19,20 +19,22 @@ const srcdir = path.resolve(__dirname, '../tiles/esa-worldcover');
 const extract = async (z, x, y) => {
 	const src = path.join(srcdir, `${z}/${x}/${y}.png`);
 
-	// get raw RGBA buffer
-	const { data, info } = await sharp(src).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+	// get raw buffer; the class code is the first channel, alpha is the last
+	const { data, info } = await sharp(src).raw().toBuffer({ resolveWithObject: true });
+	const stride = info.channels;
 	const pixels = info.width * info.height;
 
 	// one mask buffer per channel, allocated lazily so empty channels are skipped
 	const bitmaps = {};
 
-	// classify each pixel by color, mark it present in the matching channel mask
-	for (let i = 0; i < info.size; i += 4) {
-		if (data[i + 3] === 0) continue; // transparent = nodata
-		const kind = config.classify(data[i], data[i + 1], data[i + 2]);
+	// classify each pixel by its class code, mark it present in the matching channel mask
+	for (let p = 0; p < pixels; p++) {
+		const i = p * stride;
+		if (data[i + stride - 1] === 0) continue; // transparent = nodata
+		const kind = config.classifyCode(data[i]);
 		if (!kind) continue;
 		if (!bitmaps[kind]) bitmaps[kind] = Buffer.alloc(pixels, 0xff);
-		bitmaps[kind][i / 4] = 0; // present
+		bitmaps[kind][p] = 0; // present
 	}
 
 	// write a mask file per non-empty channel

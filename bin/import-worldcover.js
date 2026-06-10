@@ -11,11 +11,10 @@
 // needs (for the default zoom 0-6 that is roughly the ~160 m/px overview, a tiny
 // fraction of the full 10 m data).
 //
-// Requires GDAL (gdalbuildvrt + gdal2tiles.py) on PATH.
+// Requires GDAL ≥ 3.11 (gdalbuildvrt + the `gdal raster tile` program) on PATH.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -25,7 +24,7 @@ const BUCKET = 'https://esa-worldcover.s3.eu-central-1.amazonaws.com';
 const PREFIX = 'v200/2021/map/';
 
 const tiledir = path.resolve(__dirname, '../tiles');
-const workdir = path.join(tiledir, 'esa-worldcover'); // gdal2tiles XYZ output
+const workdir = path.join(tiledir, 'esa-worldcover'); // gdal raster tile XYZ output
 
 // let GDAL read the public bucket anonymously over /vsicurl
 const gdalEnv = {
@@ -85,27 +84,46 @@ const listSourceKeys = async () => {
 	const vrtPath = path.join(workdir, 'worldcover.vrt');
 	await run('gdalbuildvrt', ['-overwrite', '-input_file_list', listPath, vrtPath]);
 
-	// 3. cut a web-mercator XYZ pyramid. "mode" resampling keeps land-cover
-	//    classes pure when downsampling (no blended colors between classes), so
-	//    lower zoom levels are categorically correct without a separate compositing step.
+	// 3. cut a web-mercator XYZ pyramid (the GDAL "gdal raster tile" program).
+	//    "mode" resampling — for both the base zoom and the overviews — keeps the
+	//    land-cover class codes pure when downsampling (no blended values between
+	//    classes), so lower zoom levels are categorically correct without a
+	//    separate compositing step.
+	//
+	//    --add-alpha de-palettes the source: each tile carries the raw class code
+	//    as its (grayscale) pixel value plus an alpha channel for nodata, which the
+	//    extract step classifies directly. --skip-blank omits all-nodata (ocean) tiles.
 	//
 	//    Tiles are 4096×4096 px to match the MVT extent (see render.js). A 4096 px
 	//    tile at zoom Z has the same ground resolution as a 256 px tile at zoom Z+4,
 	//    so e.g. zoom 6 tiles carry zoom-10 detail in a single, seam-free tile that
 	//    the renderer vectorizes at native resolution (no upscaling).
-	await run('gdal2tiles.py', [
-		'--xyz',
-		'--tilesize',
+	const [minZoom, maxZoom] = zoom.includes('-') ? zoom.split('-') : [zoom, zoom];
+	await run('gdal', [
+		'raster',
+		'tile',
+		'--convention',
+		'xyz',
+		'--tile-size',
 		'4096',
-		'-z',
-		zoom,
+		'--min-zoom',
+		minZoom,
+		'--max-zoom',
+		maxZoom,
 		'-r',
 		'mode',
-		'-w',
-		'none',
-		'--processes=' + Math.max(1, os.cpus().length - 1),
+		'--overview-resampling',
+		'mode',
+		'--add-alpha',
+		'--skip-blank',
 		'--resume',
+		'--webviewer',
+		'none',
+		'--num-threads',
+		'ALL_CPUS',
+		'-i',
 		vrtPath,
+		'-o',
 		workdir,
 	]);
 

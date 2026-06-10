@@ -23,26 +23,26 @@ export const layers = [
 	'wetland',
 ];
 
-// ESA Worldcover palette → landcover class.
-// Pixels are classified by their blue byte; the two ambiguous blue values
-// (0 and 160) are disambiguated by their green byte. A string maps a blue
-// value directly; an object maps green bytes within that blue value.
-export const colormap = {
-	34: 'shrubland',
-	76: 'grassland',
-	117: 'mangroves',
-	180: 'bare',
-	200: 'water',
-	240: 'snow',
-	255: 'cropland',
-	0: { 100: 'treecover', 0: 'builtup' },
-	160: { 150: 'wetland', 230: 'moss' },
+// ESA WorldCover class code → landcover class.
+// The imported tiles carry the original class codes as pixel values (10, 20, …
+// 100); 0 is nodata. See https://esa-worldcover.org/en/data-access for the legend.
+export const codemap = {
+	10: 'treecover',
+	20: 'shrubland',
+	30: 'grassland',
+	40: 'cropland',
+	50: 'builtup',
+	60: 'bare',
+	70: 'snow',
+	80: 'water',
+	90: 'wetland',
+	95: 'mangroves',
+	100: 'moss',
 };
 
-// classify a single RGB pixel, returns the landcover class or undefined
-export const classify = function (r, g, b) {
-	const entry = colormap[b];
-	return typeof entry === 'string' ? entry : entry && entry[g];
+// classify a single pixel by its class code, returns the landcover class or undefined
+export const classifyCode = function (code) {
+	return codemap[code];
 };
 
 // shared tilejson for the vector tile sets

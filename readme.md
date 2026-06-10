@@ -11,7 +11,7 @@ There are to complement OSM tiles on lower zoom levels.
 ## Requirements
 
 - `node` (or `bun`)
-- [`GDAL`](https://gdal.org/) ≥ 3.2 (`gdalbuildvrt` and `gdal2tiles.py` on `PATH`)
+- [`GDAL`](https://gdal.org/) ≥ 3.11 (`gdalbuildvrt` and the `gdal raster tile` program on `PATH`)
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
 
 ## How it's made
@@ -42,8 +42,10 @@ tiles than a deep 256 px pyramid would.
 
 The 2651 source GeoTIFFs are read directly from S3 over `/vsicurl` (no local mirror). They carry internal overviews,
 so cutting a zoom 0–6 pyramid only streams the resolution it needs — roughly the ~160 m/px overview, a small
-fraction of the full 10 m data. `gdal2tiles` uses `mode` resampling, which keeps land-cover classes pure when
-downsampling — so the lower zoom levels are categorically correct and no separate compositing step is needed.
+fraction of the full 10 m data. The `gdal raster tile` program uses `mode` resampling, which keeps the land-cover
+class codes pure when downsampling — so the lower zoom levels are categorically correct and no separate compositing
+step is needed. Each tile carries the raw ESA WorldCover class code as its pixel value (plus an alpha channel for
+nodata), which the extract step classifies directly — no fragile color matching.
 
 You can pass a zoom range as parameter (default `0-6`):
 
@@ -65,7 +67,7 @@ npm run extract
 ```
 
 This splits each imported tile into monochrome masks per land-cover class (one mask per `kind`), for every zoom
-level. Tiles are classified directly from the ESA WorldCover palette. By default zoom levels 0–6 are processed;
+level. Pixels are classified directly by their ESA WorldCover class code. By default zoom levels 0–6 are processed;
 pass a maximum zoom as parameter (e.g. `npm run extract -- 4`).
 
 ### Create vector tiles from the channel masks
