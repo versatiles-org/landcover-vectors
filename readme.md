@@ -11,27 +11,45 @@ There are to complement OSM tiles on lower zoom levels.
 ## Requirements
 
 - `node` (or `bun`)
+- [`GDAL`](https://gdal.org/) ≥ 3.2 (`gdalbuildvrt` and `gdal2tiles.py` on `PATH`)
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
--
 
 ## How it's made
 
 Each step below can be run directly with `node`, or via its npm script (shown after the `# or` line).
-To run the whole pipeline (download → extract → composite → render → simplify → pack) in order:
+To run the whole pipeline (import → extract → render → simplify → pack) in order:
 
 ```sh
 npm run build
 ```
 
-### Download raster tiles
+### Import raster tiles
 
 ```sh
-node bin/download-esa-worldcover.js
+node bin/import-worldcover.js
 # or
-npm run download
+npm run import
 ```
 
-This downloads the [ESA Worldcover](https://esa-worldcover.org/en/data-access) tiles at zoom level 10 (~5.2GB) from the Terrascope WMTS service.
+This imports [ESA WorldCover 2021 (v200)](https://registry.opendata.aws/esa-worldcover-vito/) from AWS Open Data
+(`s3://esa-worldcover`) and cuts a web-mercator XYZ raster pyramid (zoom levels 0–10 by default) into
+`tiles/esa-worldcover` using GDAL.
+
+The source GeoTIFFs are read anonymously over `/vsicurl` (no download/mirror required) and carry internal
+overviews, so only the data needed for the target zoom is streamed. `gdal2tiles` uses `mode` resampling, which
+keeps land-cover classes pure when downsampling — so the lower zoom levels are categorically correct and no
+separate compositing step is needed.
+
+You can pass a zoom range as parameter (default `0-10`):
+
+```sh
+node bin/import-worldcover.js 0-8
+# or
+npm run import -- 0-8
+```
+
+> The old `download` step used the Terrascope WMTS service, which is no longer available — hence the move to the
+> AWS Open Data mirror.
 
 ### Extract channels
 
@@ -41,19 +59,11 @@ node bin/extract-channels.js
 npm run extract
 ```
 
-This extracts the distinctly colored channels from the tiles into monochrome tiles per channel.
+This splits each imported tile into monochrome masks per land-cover class (one mask per `kind`), for every zoom
+level. Tiles are classified directly from the ESA WorldCover palette. By default zoom levels 0–10 are processed;
+pass a maximum zoom as parameter (e.g. `npm run extract -- 8`).
 
-### Composite lower zoom raster tiles
-
-```sh
-node bin/composite-tiles.js
-# or
-npm run composite
-```
-
-This creates tiles for zoom levels below 10 by compositing the tiles of higher zoom levels.
-
-### Create vector tiles from composited rasters
+### Create vector tiles from the channel masks
 
 ```sh
 node bin/render.js

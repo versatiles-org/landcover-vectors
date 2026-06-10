@@ -13,10 +13,13 @@ import vtt from 'vtt';
 
 import exists from '../lib/exists.js';
 import rewind from '../lib/rewind.js';
+import { listZoomTiles } from '../lib/tiles.js';
 import * as config from '../config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { pathDataToPolys } = svgPathToPolygons;
+
+const srcdir = path.resolve(__dirname, '../tiles/esa-worldcover');
 
 const render = async function render(z, x, y) {
 	// destination
@@ -43,8 +46,12 @@ const render = async function render(z, x, y) {
 
 	// iterate layers
 	for (let layer of config.layers) {
+		// skip layers with no mask for this tile (the tile set is sparse)
+		const masktile = path.resolve(config.tiledir, `${layer}/${z}/${x}/${y}.png`);
+		if (!(await exists(masktile))) continue;
+
 		// load raster image
-		const img = sharp(path.resolve(config.tiledir, `${layer}/${z}/${x}/${y}.png`));
+		const img = sharp(masktile);
 
 		// get original metadata
 		const meta = await img.metadata();
@@ -126,10 +133,12 @@ const render = async function render(z, x, y) {
 		}
 	}
 
-	// pack tile, empty layer if no features
-	const pbf = vtt.pack(vectortile.features.length > 0 ? [vectortile] : []);
+	// nothing to write for tiles without any features (sparse coverage)
+	if (vectortile.features.length === 0) return;
 
-	// write tile
+	// pack and write tile
+	const pbf = vtt.pack([vectortile]);
+	await fs.mkdir(path.dirname(dest), { recursive: true });
 	await fs.writeFile(dest, pbf);
 
 	// status
@@ -149,11 +158,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
 	(async () => {
 		let z1 = parseInt(process.argv[2] || '8', 10);
 		for (let z = 0; z <= z1; z++) {
-			for (let x = 0; x < Math.pow(2, z); x++) {
-				await fs.mkdir(path.resolve(__dirname, `../tiles/vectortiles/${z}/${x}`), { recursive: true });
-				for (let y = 0; y < Math.pow(2, z); y++) {
-					await render(z, x, y);
-				}
+			const tiles = await listZoomTiles(srcdir, z);
+			console.error('Rendering z%d (%d tiles)', z, tiles.length);
+			for (const { x, y } of tiles) {
+				await render(z, x, y);
 			}
 		}
 

@@ -1,0 +1,103 @@
+// Import ESA WorldCover 2021 (v200) from AWS Open Data and cut a web-mercator
+// XYZ raster pyramid. Replaces the old Terrascope WMTS download (now offline).
+//
+// Source: https://registry.opendata.aws/esa-worldcover-vito/ (s3://esa-worldcover)
+// The source tiles are 3°×3° single-band GeoTIFFs in EPSG:4326 with the standard
+// ESA WorldCover palette — the same colors the old PNG tiles used — so the
+// downstream extract step works unchanged.
+//
+// Requires GDAL (gdalbuildvrt + gdal2tiles.py) on PATH. Reads the public bucket
+// anonymously over /vsicurl, streaming only the data needed (the GeoTIFFs carry
+// internal overviews, so downsampling to the target zoom is cheap).
+
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const BUCKET = 'https://esa-worldcover.s3.eu-central-1.amazonaws.com';
+const PREFIX = 'v200/2021/map/';
+
+const tiledir = path.resolve(__dirname, '../tiles');
+const workdir = path.join(tiledir, 'esa-worldcover');
+
+// let GDAL read the public bucket anonymously over /vsicurl
+const gdalEnv = {
+	...process.env,
+	AWS_NO_SIGN_REQUEST: 'YES',
+	GDAL_DISABLE_READDIR_ON_OPEN: 'EMPTY_DIR',
+	CPL_VSIL_CURL_ALLOWED_EXTENSIONS: '.tif',
+	GDAL_HTTP_MAX_RETRY: '5',
+	GDAL_HTTP_RETRY_DELAY: '2',
+};
+
+// run a child process, inheriting stdio, rejecting on non-zero exit
+const run = (cmd, args) =>
+	new Promise((resolve, reject) => {
+		console.error('$ %s %s', cmd, args.join(' '));
+		const child = spawn(cmd, args, { stdio: 'inherit', env: gdalEnv });
+		child.on('error', reject);
+		child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exited with code ${code}`))));
+	});
+
+// list every map GeoTIFF key in the bucket (paginated ListObjectsV2)
+const listSourceKeys = async () => {
+	const keys = [];
+	let token;
+	do {
+		const url = new URL(BUCKET + '/');
+		url.searchParams.set('list-type', '2');
+		url.searchParams.set('prefix', PREFIX);
+		if (token) url.searchParams.set('continuation-token', token);
+
+		const res = await fetch(url);
+		if (!res.ok) throw new Error(`S3 list failed: HTTP ${res.status}`);
+		const xml = await res.text();
+
+		for (const m of xml.matchAll(/<Key>([^<]+\.tif)<\/Key>/g)) keys.push(m[1]);
+
+		const next = xml.match(/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/);
+		token = /<IsTruncated>true<\/IsTruncated>/.test(xml) && next ? next[1] : null;
+	} while (token);
+	return keys;
+};
+
+(async () => {
+	const zoom = process.argv[2] || '0-10';
+
+	await fs.mkdir(workdir, { recursive: true });
+
+	// 1. enumerate source tiles → /vsicurl file list for gdalbuildvrt
+	console.error('Listing source tiles from s3://esa-worldcover/%s …', PREFIX);
+	const keys = await listSourceKeys();
+	console.error('Found %d source tiles', keys.length);
+
+	const listPath = path.join(workdir, 'sources.txt');
+	await fs.writeFile(listPath, keys.map((k) => `/vsicurl/${BUCKET}/${k}`).join('\n') + '\n');
+
+	// 2. virtual mosaic over all source tiles (EPSG:4326)
+	const vrtPath = path.join(workdir, 'worldcover.vrt');
+	await run('gdalbuildvrt', ['-overwrite', '-input_file_list', listPath, vrtPath]);
+
+	// 3. cut a web-mercator XYZ pyramid. "mode" resampling keeps land-cover
+	//    classes pure when downsampling (no blended colors between classes), so
+	//    lower zoom levels are categorically correct without a separate compositing step.
+	await run('gdal2tiles.py', [
+		'--xyz',
+		'-z',
+		zoom,
+		'-r',
+		'mode',
+		'-w',
+		'none',
+		'--processes=' + Math.max(1, os.cpus().length - 1),
+		'--resume',
+		vrtPath,
+		workdir,
+	]);
+
+	console.error('Done. XYZ tiles written to %s', workdir);
+})();
