@@ -99,22 +99,25 @@ const listSourceKeys = async () => {
 	//    so e.g. zoom 6 tiles carry zoom-10 detail in a single, seam-free tile that
 	//    the renderer vectorizes at native resolution (no upscaling).
 	const [minZoom, maxZoom] = zoom.includes('-') ? zoom.split('-') : [zoom, zoom];
-	await run('gdal', [
-		['raster', 'tile'],
-		['--convention', 'xyz'],
-		['--tile-size', '4096'],
-		['--min-zoom', minZoom],
-		['--max-zoom', maxZoom],
-		['-r', 'mode'],
-		['--overview-resampling', 'mode'],
-		'--add-alpha',
-		'--skip-blank',
-		'--resume',
-		['--webviewer', 'none'],
-		['--num-threads', 'ALL_CPUS'],
-		['-i', vrtPath],
-		['-o', workdir],
-	].flat());
+	await run(
+		'gdal',
+		[
+			['raster', 'tile'],
+			['--convention', 'xyz'],
+			['--tile-size', '4096'],
+			['--min-zoom', minZoom],
+			['--max-zoom', maxZoom],
+			['-r', 'mode'],
+			['--overview-resampling', 'mode'],
+			'--add-alpha',
+			'--skip-blank',
+			'--resume',
+			['--webviewer', 'none'],
+			['--num-threads', 'ALL_CPUS'],
+			['-i', vrtPath],
+			['-o', workdir],
+		].flat(),
+	);
 
 	console.error('Done. XYZ tiles written to %s', workdir);
 })();
