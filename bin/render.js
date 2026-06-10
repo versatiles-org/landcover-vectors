@@ -12,7 +12,7 @@ const vtt = require("vtt");
 
 const exists = require("../lib/exists");
 
-const render = async function render(z,x,y){
+const render = async function render(z, x, y) {
 
 	// destination
 	const dest = path.resolve(__dirname, `../tiles/vectortiles/${z}/${x}/${y}.pbf`);
@@ -74,21 +74,21 @@ const render = async function render(z,x,y){
 				const polygon = pathDataToPolys(vector);
 
 				// turn polygons into geometry
-				const geometry = polygon.map(r=>{ // clip vector by extend
-					return r.map(c=>{
-						c[0] = Math.min(info.width, Math.max(0,c[0]-10));
-						c[1] = Math.min(info.height, Math.max(0,c[1]-10));
+				const geometry = polygon.map(r => { // clip vector by extend
+					return r.map(c => {
+						c[0] = Math.min(info.width, Math.max(0, c[0] - 10));
+						c[1] = Math.min(info.height, Math.max(0, c[1] - 10));
 						return c;
 					});
-				}).map(r=>{ // scale and round
-					return r.map(c=>{ // scale to 4096×4096 and round to integers
-						c[0] = Math.round(c[0]*sx);
-						c[1] = Math.round(c[1]*sy);
+				}).map(r => { // scale and round
+					return r.map(c => { // scale to 4096×4096 and round to integers
+						c[0] = Math.round(c[0] * sx);
+						c[1] = Math.round(c[1] * sy);
 						return c;
-					}).filter((c,i,a)=>{ // filter double coordinates
-						return (i === 0 || c[0] !== a[i-1][0] || c[1] !== a[i-1][1]);
-					}).filter((c,i,a)=>{ // filter "180° corners" aka pointless nodes on a straight line
-						return i===0 || i===a.length-1 || Math.atan2(c[1] - a[i-1][1], c[0] - a[i-1][1]) !== Math.atan2(a[i+1][1] - c[1], a[i+1][0] - c[0]);
+					}).filter((c, i, a) => { // filter double coordinates
+						return (i === 0 || c[0] !== a[i - 1][0] || c[1] !== a[i - 1][1]);
+					}).filter((c, i, a) => { // filter "180° corners" aka pointless nodes on a straight line
+						return i === 0 || i === a.length - 1 || Math.atan2(c[1] - a[i - 1][1], c[0] - a[i - 1][1]) !== Math.atan2(a[i + 1][1] - c[1], a[i + 1][0] - c[0]);
 					}); // FIXME apply simplification directly?
 				});
 
@@ -97,7 +97,7 @@ const render = async function render(z,x,y){
 
 				// add feature to vectortile
 				vectortile.features.push({
-					id: (vectortile.features.length+1),
+					id: (vectortile.features.length + 1),
 					type: 3,
 					geometry: geometry,
 					properties: {
@@ -127,25 +127,25 @@ const render = async function render(z,x,y){
 	delete pbf;
 
 	// status
-	console.log("Rendered %s/%s/%s.pbf in %ss (%skb)", z, x, y, ((Date.now()-t)/1000).toFixed(2), (pbf.length/1024).toFixed(2));
+	console.log("Rendered %s/%s/%s.pbf in %ss (%skb)", z, x, y, ((Date.now() - t) / 1000).toFixed(2), (pbf.length / 1024).toFixed(2));
 
 	return;
 
 };
 
-if (require.main === module) (async ()=>{
-	let z1 = parseInt((process.argv[2]||"8"),10);
+if (require.main === module) (async () => {
+	let z1 = parseInt((process.argv[2] || "8"), 10);
 	for (let z = 0; z <= z1; z++) {
-		for (let x = 0; x < Math.pow(2,z); x++) {
-			await fs.mkdir(path.resolve(__dirname,`../tiles/vectortiles/${z}/${x}`), { recursive: true });
-			for (let y = 0; y < Math.pow(2,z); y++) {
-				await render(z,x,y);
+		for (let x = 0; x < Math.pow(2, z); x++) {
+			await fs.mkdir(path.resolve(__dirname, `../tiles/vectortiles/${z}/${x}`), { recursive: true });
+			for (let y = 0; y < Math.pow(2, z); y++) {
+				await render(z, x, y);
 			};
 		};
 	};
 
 	// write tilejson
-	await fs.writeFile(path.resolve(__dirname,`../tiles/vectortiles-simplified/tile.json`), JSON.stringify({
+	await fs.writeFile(path.resolve(__dirname, `../tiles/vectortiles-simplified/tile.json`), JSON.stringify({
 		"tilejson": "3.0.0",
 		"attribution": "<a href=\"http://creativecommons.org/licenses/by/4.0/\">CC BY 4.0</a> <a href=\"https://esa-worldcover.org/en/data-access\">ESA WorldCover 2021</a>",
 		"name": "Versatiles Landcover",
@@ -155,15 +155,15 @@ if (require.main === module) (async ()=>{
 		"type": "vector",
 		"scheme": "xyz",
 		"format": "pbf",
-		"bounds": [ -180, -85.0511287798066, 180, 85.0511287798066 ],
+		"bounds": [-180, -85.0511287798066, 180, 85.0511287798066],
 		"minzoom": 0,
 		"maxzoom": 10,
-		"vector_layers":[{
+		"vector_layers": [{
 			"id": "landcover-vectors",
 			"fields": { "kind": "String" },
 			"minzoom": 0,
 			"maxzoom": 10,
 		}]
-	},null,"\t"));
+	}, null, "\t"));
 })();
 

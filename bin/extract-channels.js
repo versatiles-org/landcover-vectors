@@ -6,9 +6,9 @@ const sharp = require("sharp");
 const exists = require("../lib/exists");
 const config = require("../config");
 
-const channels = [ "treecover", "shrubland", "grassland", "cropland", "builtup", "bare", "snow", "water", "wetland", "mangroves", "moss" ];
+const channels = ["treecover", "shrubland", "grassland", "cropland", "builtup", "bare", "snow", "water", "wetland", "mangroves", "moss"];
 
-(async ()=>{
+(async () => {
 
 	// prepare bitmap buffers
 	const bitmaps = {
@@ -42,71 +42,71 @@ const channels = [ "treecover", "shrubland", "grassland", "cropland", "builtup",
 			const { data, info } = await sharp(src).raw().toBuffer({ resolveWithObject: true });
 
 			// iterate over pixels, classify by color channels, write to bitmap
-			for (let i = 0; i < info.size; i+= 4) {
+			for (let i = 0; i < info.size; i += 4) {
 
 				// check if transparent
-				if (data[i+3] === 0) continue;
+				if (data[i + 3] === 0) continue;
 
 				// detect channel by blue byte
-				switch (data[i+2]) {
+				switch (data[i + 2]) {
 					case 180:
-						bitmaps.bare[i/4] = 0;
+						bitmaps.bare[i / 4] = 0;
 						continue;
-					break;
+						break;
 					case 76:
-						bitmaps.grassland[i/4] = 0;
+						bitmaps.grassland[i / 4] = 0;
 						continue;
-					break;
+						break;
 					case 34:
-						bitmaps.shrubland[i/4] = 0;
+						bitmaps.shrubland[i / 4] = 0;
 						continue;
-					break;
+						break;
 					case 255:
-						bitmaps.cropland[i/4] = 0;
+						bitmaps.cropland[i / 4] = 0;
 						continue;
-					break;
+						break;
 					case 0:
-						switch (data[i+1]) { // distinguish by green byte
+						switch (data[i + 1]) { // distinguish by green byte
 							case 100:
-								bitmaps.treecover[i/4] = 0;
+								bitmaps.treecover[i / 4] = 0;
 								continue;
-							break;
+								break;
 							case 0:
-								bitmaps.builtup[i/4] = 0;
+								bitmaps.builtup[i / 4] = 0;
 								continue;
-							break;
+								break;
 						};
-					break;
+						break;
 					case 200:
-						bitmaps.water[i/4] = 0;
+						bitmaps.water[i / 4] = 0;
 						continue;
-					break;
+						break;
 					case 240:
-						bitmaps.snow[i/4] = 0;
+						bitmaps.snow[i / 4] = 0;
 						continue;
-					break;
+						break;
 					case 117:
-						bitmaps.mangroves[i/4] = 0;
+						bitmaps.mangroves[i / 4] = 0;
 						continue;
-					break;
+						break;
 					case 160:
-						switch (data[i+1]) { // distinguish by green byte
+						switch (data[i + 1]) { // distinguish by green byte
 							case 150:
-								bitmaps.wetland[i/4] = 0;
+								bitmaps.wetland[i / 4] = 0;
 								continue;
-							break;
+								break;
 							case 230:
-								bitmaps.moss[i/4] = 0;
+								bitmaps.moss[i / 4] = 0;
 								continue;
-							break;
+								break;
 						};
-					break;
+						break;
 				};
 			};
 
 			// save to individual files
 			for (let channel in bitmaps) {
-				const dest =  path.resolve(__dirname, `../tiles/${channel}/10/${x}/${y}.png`);
+				const dest = path.resolve(__dirname, `../tiles/${channel}/10/${x}/${y}.png`);
 				if (await exists(dest)) continue;
 				await sharp(bitmaps[channel], { raw: { width: info.width, height: info.height, channels: 1 } }).png({
 					palette: true,

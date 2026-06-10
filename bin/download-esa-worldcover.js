@@ -8,24 +8,24 @@ const path = require("node:path");
 const exists = require("../lib/exists");
 const https = require("node:https");
 
-(async()=>{
+(async () => {
 
 	const total = 1048576;
 	let n = 0; // number downloaded
 	let p = ""; // percentage string
 
-	const date = new Date().toISOString().slice(0,10);
+	const date = new Date().toISOString().slice(0, 10);
 	const agent = new https.Agent({ keepAlive: true });
 
 	for (let x = 0; x < 1024; x++) {
-		await fs.mkdir(path.resolve(__dirname,`../tiles/esa-worldcover/10/${x}`), {recursive: true});
+		await fs.mkdir(path.resolve(__dirname, `../tiles/esa-worldcover/10/${x}`), { recursive: true });
 
 		for (let y = 0; y < 1024; y++) {
 
-			const dest = path.resolve(__dirname,`../tiles/esa-worldcover/10/${x}/${y}.png`);
+			const dest = path.resolve(__dirname, `../tiles/esa-worldcover/10/${x}/${y}.png`);
 
-			let pn = ((++n/total)*100).toFixed(2);
-			if (pn !== p) process.stderr.write(`  ${p=pn}% complete\r`);
+			let pn = ((++n / total) * 100).toFixed(2);
+			if (pn !== p) process.stderr.write(`  ${p = pn}% complete\r`);
 
 			if (await exists(dest)) continue;
 
@@ -56,7 +56,7 @@ const https = require("node:https");
 	};
 
 	// write tilejson
-	await fs.writeFile(path.resolve(__dirname,`../tiles/esa-worldcover/tile.json`), JSON.stringify({
+	await fs.writeFile(path.resolve(__dirname, `../tiles/esa-worldcover/tile.json`), JSON.stringify({
 		"tilejson": "3.0.0",
 		"attribution": "<a href=\"http://creativecommons.org/licenses/by/4.0/\">CC BY 4.0</a> <a href=\"https://esa-worldcover.org/en/data-access\">ESA WorldCover 2021</a>",
 		"name": "ESA Worldcover",
@@ -66,10 +66,10 @@ const https = require("node:https");
 		"type": "raster",
 		"scheme": "xyz",
 		"format": "png",
-		"bounds": [ -180, -85.0511287798066, 180, 85.0511287798066 ],
+		"bounds": [-180, -85.0511287798066, 180, 85.0511287798066],
 		"minzoom": 10,
 		"maxzoom": 10
-	},0,"\t"));
+	}, 0, "\t"));
 
 	console.error(`Download 100% complete`);
 
