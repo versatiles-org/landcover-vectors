@@ -17,6 +17,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -82,7 +83,9 @@ const listSourceKeys = async () => {
 
 	// 2. virtual mosaic over the source tiles, read directly from S3 (EPSG:4326)
 	const vrtPath = path.join(workdir, 'worldcover.vrt');
-	await run('gdalbuildvrt', ['-overwrite', '-input_file_list', listPath, vrtPath]);
+	if (!existsSync(vrtPath)) {
+		await run('gdalbuildvrt', ['-overwrite', '-input_file_list', listPath, vrtPath]);
+	}
 
 	// 3. cut a web-mercator XYZ pyramid (the GDAL "gdal raster tile" program).
 	//    "mode" resampling — for both the base zoom and the overviews — keeps the
