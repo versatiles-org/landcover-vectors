@@ -16,10 +16,19 @@ There are to complement OSM tiles on lower zoom levels.
 
 ## How it's made
 
+Each step below can be run directly with `node`, or via its npm script (shown after the `# or` line).
+To run the whole pipeline (download → extract → composite → render → simplify → pack) in order:
+
+``` sh
+npm run build
+```
+
 ### Download raster tiles
 
 ``` sh
 node bin/download-esa-worldcover.js
+# or
+npm run download
 ```
 
 This downloads the [ESA Worldcover](https://esa-worldcover.org/en/data-access) tiles at zoom level 10 (~5.2GB) from the Terrascope WMTS service.
@@ -28,6 +37,8 @@ This downloads the [ESA Worldcover](https://esa-worldcover.org/en/data-access) t
 
 ``` sh
 node bin/extract-channels.js
+# or
+npm run extract
 ```
 
 This extracts the distinctly colored channels from the tiles into monochrome tiles per channel.
@@ -36,6 +47,8 @@ This extracts the distinctly colored channels from the tiles into monochrome til
 
 ``` sh
 node bin/composite-tiles.js
+# or
+npm run composite
 ```
 
 This creates tiles for zoom levels below 10 by compositing the tiles of higher zoom levels.
@@ -44,6 +57,8 @@ This creates tiles for zoom levels below 10 by compositing the tiles of higher z
 
 ```sh
 node bin/render.js
+# or
+npm run render
 ```
 
 This vectorizes channel raster tiles and combines them into vectortiles.
@@ -51,6 +66,8 @@ By default zoom levels 0-8 are created, you can pass the desired target zoom lev
 
 ```sh
 node bin/render.js 6
+# or
+npm run render -- 6
 ```
 
 ⚠️ Note that `potrace-wasm` appears to leak memory and the script will run out of memory eventually.
@@ -60,6 +77,8 @@ You can run the script again, already created tiles will be skipped.
 
 ``` sh
 node bin/simplify.js
+# or
+npm run simplify
 ```
 
 This simplifies the polygons in each tile larger than 100kb using the Visvalingam–Whyatt algorithm.
@@ -69,6 +88,8 @@ The algorithm has been slightly modified to keep tile edges intact.
 
 ``` sh
 versatiles convert -c brotli tiles/vectortiles-simplified landcover-vectors.versatiles
+# or
+npm run pack
 ```
 This compresses and packs all vectortiles into a versatiles container.
 
