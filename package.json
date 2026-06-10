@@ -5,6 +5,15 @@
   "description": "Generate landcover vector tiles from ESA Worldcover",
   "author": "yetzt <node@yetzt.me>",
   "license": "Unlicense",
+  "scripts": {
+    "download": "node bin/download-esa-worldcover.js",
+    "extract": "node bin/extract-channels.js",
+    "composite": "node bin/composite-tiles.js",
+    "render": "node bin/render.js",
+    "simplify": "node bin/simplify.js",
+    "pack": "versatiles convert -c brotli tiles/vectortiles-simplified landcover-vectors.versatiles",
+    "build": "npm run download && npm run extract && npm run composite && npm run render && npm run simplify && npm run pack"
+  },
   "dependencies": {
     "potrace-wasm": "github:IguteChung/potrace-wasm",
     "sharp": "^0.33.3",
