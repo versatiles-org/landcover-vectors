@@ -4,10 +4,11 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const sharp = require("sharp");
 const exists = require("../lib/exists");
+const config = require("../config");
 
 (async () => {
 
-	const channels = ["bare", "builtup", "cropland", "grassland", "mangroves", "moss", "shrubland", "snow", "treecover", "water", "wetland"];
+	const channels = config.layers;
 
 	for (let z = 9; z >= 0; z--) {
 		for (let x = 0; x < Math.pow(2, z); x++) {
@@ -48,7 +49,7 @@ const exists = require("../lib/exists");
 					]).raw().toBuffer({ resolveWithObject: true });
 
 					// resize operation (this has to be seperated via a buffer, otherwise sharp resizes before compositing)
-					sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } }).resize(512, 512).png().toFile(dest);
+					await sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } }).resize(512, 512).png().toFile(dest);
 
 				};
 				console.error(`Composited ${z}/${x}/${y}`);

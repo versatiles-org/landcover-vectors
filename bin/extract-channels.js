@@ -6,24 +6,12 @@ const sharp = require("sharp");
 const exists = require("../lib/exists");
 const config = require("../config");
 
-const channels = ["treecover", "shrubland", "grassland", "cropland", "builtup", "bare", "snow", "water", "wetland", "mangroves", "moss"];
+const channels = config.layers;
 
 (async () => {
 
 	// prepare bitmap buffers
-	const bitmaps = {
-		treecover: Buffer.alloc(65536, 0xff),
-		shrubland: Buffer.alloc(65536, 0xff),
-		grassland: Buffer.alloc(65536, 0xff),
-		cropland: Buffer.alloc(65536, 0xff),
-		builtup: Buffer.alloc(65536, 0xff),
-		bare: Buffer.alloc(65536, 0xff),
-		snow: Buffer.alloc(65536, 0xff),
-		water: Buffer.alloc(65536, 0xff),
-		wetland: Buffer.alloc(65536, 0xff),
-		mangroves: Buffer.alloc(65536, 0xff),
-		moss: Buffer.alloc(65536, 0xff),
-	};
+	const bitmaps = Object.fromEntries(channels.map(channel => [channel, Buffer.alloc(65536, 0xff)]));
 
 	for (let x = 0; x < 1024; x++) {
 
@@ -47,61 +35,9 @@ const channels = ["treecover", "shrubland", "grassland", "cropland", "builtup", 
 				// check if transparent
 				if (data[i + 3] === 0) continue;
 
-				// detect channel by blue byte
-				switch (data[i + 2]) {
-					case 180:
-						bitmaps.bare[i / 4] = 0;
-						continue;
-						break;
-					case 76:
-						bitmaps.grassland[i / 4] = 0;
-						continue;
-						break;
-					case 34:
-						bitmaps.shrubland[i / 4] = 0;
-						continue;
-						break;
-					case 255:
-						bitmaps.cropland[i / 4] = 0;
-						continue;
-						break;
-					case 0:
-						switch (data[i + 1]) { // distinguish by green byte
-							case 100:
-								bitmaps.treecover[i / 4] = 0;
-								continue;
-								break;
-							case 0:
-								bitmaps.builtup[i / 4] = 0;
-								continue;
-								break;
-						};
-						break;
-					case 200:
-						bitmaps.water[i / 4] = 0;
-						continue;
-						break;
-					case 240:
-						bitmaps.snow[i / 4] = 0;
-						continue;
-						break;
-					case 117:
-						bitmaps.mangroves[i / 4] = 0;
-						continue;
-						break;
-					case 160:
-						switch (data[i + 1]) { // distinguish by green byte
-							case 150:
-								bitmaps.wetland[i / 4] = 0;
-								continue;
-								break;
-							case 230:
-								bitmaps.moss[i / 4] = 0;
-								continue;
-								break;
-						};
-						break;
-				};
+				// classify pixel by color and mark it in the matching channel
+				const kind = config.classify(data[i], data[i + 1], data[i + 2]);
+				if (kind) bitmaps[kind][i / 4] = 0;
 			};
 
 			// save to individual files

@@ -12,6 +12,7 @@ const vtt = require("vtt");
 
 const exists = require("../lib/exists");
 const rewind = require("../lib/rewind");
+const config = require("../config");
 
 const render = async function render(z, x, y) {
 
@@ -53,9 +54,6 @@ const render = async function render(z, x, y) {
 		// extend 10 pixels, get buffer and metadata
 		const { data, info } = await img.extend({ top: 10, left: 10, right: 10, bottom: 10, extendWith: 'copy' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 
-		// hint garbage collection
-		delete img;
-
 		// vectorize with potrace-wasm
 		const vectors = await potrace.loadFromImageData(data, info.width, info.height, {
 			pathonly: true,
@@ -69,7 +67,7 @@ const render = async function render(z, x, y) {
 			// add layer to values
 			vectortile.values.push(layer);
 
-			for (vector of vectors) {
+			for (const vector of vectors) {
 
 				// turn vector paths into polygons
 				const polygon = pathDataToPolys(vector);
@@ -93,9 +91,6 @@ const render = async function render(z, x, y) {
 					}); // FIXME apply simplification directly?
 				});
 
-				// hint garbage collection
-				delete polygon;
-
 				// enforce MVT 2.1 ring winding (exterior positive, holes negative)
 				const rewound = rewind(geometry);
 
@@ -111,9 +106,6 @@ const render = async function render(z, x, y) {
 
 			};
 
-			// hint garbage collection
-			delete vectors;
-
 		};
 
 	};
@@ -121,14 +113,8 @@ const render = async function render(z, x, y) {
 	// pack tile, empty layer if no features
 	const pbf = vtt.pack((vectortile.features.length > 0) ? [vectortile] : []);
 
-	// hint garbage collection
-	delete vectortile;
-
 	// write tile
 	await fs.writeFile(dest, pbf);
-
-	// hint garbage collection
-	delete pbf;
 
 	// status
 	console.log("Rendered %s/%s/%s.pbf in %ss (%skb)", z, x, y, ((Date.now() - t) / 1000).toFixed(2), (pbf.length / 1024).toFixed(2));
@@ -149,25 +135,6 @@ if (require.main === module) (async () => {
 	};
 
 	// write tilejson
-	await fs.writeFile(path.resolve(__dirname, `../tiles/vectortiles-simplified/tile.json`), JSON.stringify({
-		"tilejson": "3.0.0",
-		"attribution": "<a href=\"http://creativecommons.org/licenses/by/4.0/\">CC BY 4.0</a> <a href=\"https://esa-worldcover.org/en/data-access\">ESA WorldCover 2021</a>",
-		"name": "Versatiles Landcover",
-		"description": "Landcover vector tiles based on ESA Worldcover 2021, © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium",
-		"version": "1.0.0",
-		"tiles": ["{z}/{x}/{y}.pbf"],
-		"type": "vector",
-		"scheme": "xyz",
-		"format": "pbf",
-		"bounds": [-180, -85.0511287798066, 180, 85.0511287798066],
-		"minzoom": 0,
-		"maxzoom": 10,
-		"vector_layers": [{
-			"id": "landcover-vectors",
-			"fields": { "kind": "String" },
-			"minzoom": 0,
-			"maxzoom": 10,
-		}]
-	}, null, "\t"));
+	await fs.writeFile(path.resolve(__dirname, `../tiles/vectortiles-simplified/tile.json`), JSON.stringify(config.vectorTileJSON(), null, "\t"));
 })();
 

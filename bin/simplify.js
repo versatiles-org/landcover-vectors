@@ -6,6 +6,7 @@ const vtt = require("vtt");
 
 const visvalingam = require("../lib/visvalingam");
 const exists = require("../lib/exists");
+const config = require("../config");
 
 const targetSize = 1e5; // 100kb
 
@@ -78,25 +79,6 @@ if (require.main === module) (async () => {
 	};
 
 	// write tilejson
-	await fs.writeFile(path.resolve(__dirname, `../tiles/vectortiles-simplified/tile.json`), JSON.stringify({
-		"tilejson": "3.0.0",
-		"attribution": "<a href=\"http://creativecommons.org/licenses/by/4.0/\">CC BY 4.0</a> <a href=\"https://esa-worldcover.org/en/data-access\">ESA WorldCover 2021</a>",
-		"name": "Versatiles Landcover",
-		"description": "Landcover vector tiles based on ESA Worldcover 2021, © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium",
-		"version": "1.0.0",
-		"tiles": ["{z}/{x}/{y}.pbf"],
-		"type": "vector",
-		"scheme": "xyz",
-		"format": "pbf",
-		"bounds": [-180, -85.0511287798066, 180, 85.0511287798066],
-		"minzoom": 0,
-		"maxzoom": 10,
-		"vector_layers": [{
-			"id": "landcover-vectors",
-			"fields": { "kind": "String" },
-			"minzoom": 0,
-			"maxzoom": 10,
-		}]
-	}, null, "\t"));
+	await fs.writeFile(path.resolve(__dirname, `../tiles/vectortiles-simplified/tile.json`), JSON.stringify(config.vectorTileJSON(), null, "\t"));
 
 })();
