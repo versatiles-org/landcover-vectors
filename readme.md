@@ -35,10 +35,11 @@ This imports [ESA WorldCover 2021 (v200)](https://registry.opendata.aws/esa-worl
 (`s3://esa-worldcover`) and cuts a web-mercator XYZ raster pyramid (zoom levels 0–10 by default) into
 `tiles/esa-worldcover` using GDAL.
 
-The source GeoTIFFs are read anonymously over `/vsicurl` (no download/mirror required) and carry internal
-overviews, so only the data needed for the target zoom is streamed. `gdal2tiles` uses `mode` resampling, which
-keeps land-cover classes pure when downsampling — so the lower zoom levels are categorically correct and no
-separate compositing step is needed.
+The 2651 source GeoTIFFs are first downloaded in parallel to a local mirror in `tiles/esa-worldcover-src`
+(~**124 GB**, so make sure you have the disk space), then tiled from local disk — much faster than streaming each
+block over the network during tiling. The download is resumable: already-downloaded tiles are verified by size and
+skipped. `gdal2tiles` uses `mode` resampling, which keeps land-cover classes pure when downsampling — so the lower
+zoom levels are categorically correct and no separate compositing step is needed.
 
 You can pass a zoom range as parameter (default `0-10`):
 
