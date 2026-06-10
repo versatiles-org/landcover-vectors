@@ -8,36 +8,28 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // base directory holding all tile sets
 export const tiledir = path.resolve(__dirname, 'tiles');
 
-// landcover classes, in a single canonical order used by every step
-export const layers = [
-	'bare',
-	'builtup',
-	'cropland',
-	'grassland',
-	'mangroves',
-	'moss',
-	'shrubland',
-	'snow',
-	'treecover',
-	'water',
-	'wetland',
-];
+// landcover classes (the `kind` values), in a single canonical order used by
+// every step. These reuse the proposed Shortbread `landcover` layer vocabulary
+// so styling transitions seamlessly at the z6→z7 seam (see issue #4).
+export const layers = ['bare', 'farmland', 'forest', 'glacier', 'grass', 'scrub', 'urban', 'water', 'wetland'];
 
-// ESA WorldCover class code → landcover class.
+// ESA WorldCover class code → Shortbread `landcover.kind`.
 // The imported tiles carry the original class codes as pixel values (10, 20, …
-// 100); 0 is nodata. See https://esa-worldcover.org/en/data-access for the legend.
+// 100); 0 is nodata. See https://esa-worldcover.org/en/data-access for the legend
+// and https://github.com/shortbread-tiles/shortbread-docs/issues/144 for the
+// target vocabulary. Note ESA's moss → bare and mangroves → wetland are merged.
 export const codemap = {
-	10: 'treecover',
-	20: 'shrubland',
-	30: 'grassland',
-	40: 'cropland',
-	50: 'builtup',
-	60: 'bare',
-	70: 'snow',
-	80: 'water',
-	90: 'wetland',
-	95: 'mangroves',
-	100: 'moss',
+	10: 'forest', // tree cover
+	20: 'scrub', // shrubland
+	30: 'grass', // grassland
+	40: 'farmland', // cropland
+	50: 'urban', // built-up
+	60: 'bare', // bare / sparse vegetation
+	70: 'glacier', // snow and ice
+	80: 'water', // permanent water bodies
+	90: 'wetland', // herbaceous wetland
+	95: 'wetland', // mangroves
+	100: 'bare', // moss and lichen
 };
 
 // classify a single pixel by its class code, returns the landcover class or undefined

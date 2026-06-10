@@ -113,31 +113,45 @@ This compresses and packs all vectortiles into a versatiles container.
 
 ## Style
 
-There is one layer called `landcover-vectors` with a property `kind`:
+There is one layer called `landcover-vectors` with a property `kind`. The `kind` values reuse the proposed
+Shortbread [`landcover` layer](https://github.com/shortbread-tiles/shortbread-docs/issues/144) vocabulary, so a
+style transitions seamlessly from these low-zoom tiles (z0–6) to OSM-based Shortbread tiles (z7+):
 
-- `bare` Bare / sparse vegetation
-- `builtup` Built-up
-- `cropland` Cropland
-- `grassland` Grassland
-- `mangroves` Mangroves
-- `moss` Moss and lichen
-- `shrubland` Shrubland
-- `snow` Snow and ice
-- `treecover` Tree cover
+- `bare` Bare / sparse vegetation, moss and lichen
+- `farmland` Cropland
+- `forest` Tree cover
+- `glacier` Snow and ice
+- `grass` Grassland
+- `scrub` Shrubland
+- `urban` Built-up
 - `water` Permanent water bodies
-- `wetland` Herbaeceous wetland
+- `wetland` Herbaceous wetland, mangroves
+
+These are derived from the ESA WorldCover classes as follows (several ESA classes are merged):
+
+| ESA WorldCover class                      | `kind`     |
+| ----------------------------------------- | ---------- |
+| Tree cover                                | `forest`   |
+| Shrubland                                 | `scrub`    |
+| Grassland                                 | `grass`    |
+| Cropland                                  | `farmland` |
+| Built-up                                  | `urban`    |
+| Bare / sparse vegetation, Moss and lichen | `bare`     |
+| Snow and ice                              | `glacier`  |
+| Permanent water bodies                    | `water`    |
+| Herbaceous wetland, Mangroves             | `wetland`  |
 
 ### Example
 
 ```js
 {
-	"id": "landcover-bare",
+	"id": "landcover-forest",
 	"type": "fill",
 	"source-layer": "landcover-vectors",
 	"source": "versatiles-landcover",
-	"filter": [ "all", ["==", "kind", "bare"] ],
+	"filter": [ "all", ["==", "kind", "forest"] ],
 	"paint": {
-		"fill-color": "#FAFAED",
+		"fill-color": "#d6e6c3",
 		"fill-opacity": { "stops": [[0, 0.2], [10, 0.2], [11, 0]] },
 		"fill-antialias": true,
 		"fill-outline-color": "#ffffff00"
