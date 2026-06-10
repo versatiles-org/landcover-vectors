@@ -156,7 +156,7 @@ const render = async function render(z, x, y) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
 	(async () => {
-		let z1 = parseInt(process.argv[2] || '8', 10);
+		let z1 = parseInt(process.argv[2] || '6', 10);
 		for (let z = 0; z <= z1; z++) {
 			const tiles = await listZoomTiles(srcdir, z);
 			console.error('Rendering z%d (%d tiles)', z, tiles.length);

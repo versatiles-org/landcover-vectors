@@ -48,7 +48,7 @@ const extract = async (z, x, y) => {
 };
 
 (async () => {
-	const z1 = parseInt(process.argv[2] || '10', 10);
+	const z1 = parseInt(process.argv[2] || '6', 10);
 	for (let z = 0; z <= z1; z++) {
 		const tiles = await listZoomTiles(srcdir, z);
 		console.error('Extracting z%d (%d tiles)', z, tiles.length);

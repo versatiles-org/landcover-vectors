@@ -32,8 +32,13 @@ npm run import
 ```
 
 This imports [ESA WorldCover 2021 (v200)](https://registry.opendata.aws/esa-worldcover-vito/) from AWS Open Data
-(`s3://esa-worldcover`) and cuts a web-mercator XYZ raster pyramid (zoom levels 0–10 by default) into
+(`s3://esa-worldcover`) and cuts a web-mercator XYZ raster pyramid (zoom levels 0–6 by default) into
 `tiles/esa-worldcover` using GDAL.
+
+Tiles are **4096×4096 px** — matching the MVT extent the renderer uses. A 4096 px tile at a given zoom has the same
+ground resolution as a 256 px tile four zoom levels deeper, so the zoom-6 tiles carry zoom-10 detail in a single,
+seam-free tile that the renderer vectorizes at native resolution (no upscaling). This produces far fewer, larger
+tiles than a deep 256 px pyramid would.
 
 The 2651 source GeoTIFFs are first downloaded in parallel to a local mirror in `tiles/esa-worldcover-src`
 (~**124 GB**, so make sure you have the disk space), then tiled from local disk — much faster than streaming each
@@ -41,12 +46,12 @@ block over the network during tiling. The download is resumable: already-downloa
 skipped. `gdal2tiles` uses `mode` resampling, which keeps land-cover classes pure when downsampling — so the lower
 zoom levels are categorically correct and no separate compositing step is needed.
 
-You can pass a zoom range as parameter (default `0-10`):
+You can pass a zoom range as parameter (default `0-6`):
 
 ```sh
-node bin/import-worldcover.js 0-8
+node bin/import-worldcover.js 0-4
 # or
-npm run import -- 0-8
+npm run import -- 0-4
 ```
 
 > The old `download` step used the Terrascope WMTS service, which is no longer available — hence the move to the
@@ -61,8 +66,8 @@ npm run extract
 ```
 
 This splits each imported tile into monochrome masks per land-cover class (one mask per `kind`), for every zoom
-level. Tiles are classified directly from the ESA WorldCover palette. By default zoom levels 0–10 are processed;
-pass a maximum zoom as parameter (e.g. `npm run extract -- 8`).
+level. Tiles are classified directly from the ESA WorldCover palette. By default zoom levels 0–6 are processed;
+pass a maximum zoom as parameter (e.g. `npm run extract -- 4`).
 
 ### Create vector tiles from the channel masks
 
@@ -73,12 +78,12 @@ npm run render
 ```
 
 This vectorizes channel raster tiles and combines them into vectortiles.
-By default zoom levels 0-8 are created, you can pass the desired target zoom level as parameter:
+By default zoom levels 0-6 are created, you can pass the desired target zoom level as parameter:
 
 ```sh
-node bin/render.js 6
+node bin/render.js 4
 # or
-npm run render -- 6
+npm run render -- 4
 ```
 
 ⚠️ Note that `potrace-wasm` appears to leak memory and the script will run out of memory eventually.

@@ -114,7 +114,7 @@ const download = async ({ key, size }) => {
 };
 
 (async () => {
-	const zoom = process.argv[2] || '0-10';
+	const zoom = process.argv[2] || '0-6';
 
 	await fs.mkdir(srcdir, { recursive: true });
 	await fs.mkdir(workdir, { recursive: true });
@@ -146,8 +146,15 @@ const download = async ({ key, size }) => {
 	// 4. cut a web-mercator XYZ pyramid. "mode" resampling keeps land-cover
 	//    classes pure when downsampling (no blended colors between classes), so
 	//    lower zoom levels are categorically correct without a separate compositing step.
+	//
+	//    Tiles are 4096×4096 px to match the MVT extent (see render.js). A 4096 px
+	//    tile at zoom Z has the same ground resolution as a 256 px tile at zoom Z+4,
+	//    so e.g. zoom 6 tiles carry zoom-10 detail in a single, seam-free tile that
+	//    the renderer vectorizes at native resolution (no upscaling).
 	await run('gdal2tiles.py', [
 		'--xyz',
+		'--tilesize',
+		'4096',
 		'-z',
 		zoom,
 		'-r',

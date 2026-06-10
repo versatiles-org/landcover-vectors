@@ -61,13 +61,13 @@ export const vectorTileJSON = function () {
 		format: 'pbf',
 		bounds: [-180, -85.0511287798066, 180, 85.0511287798066],
 		minzoom: 0,
-		maxzoom: 10,
+		maxzoom: 6,
 		vector_layers: [
 			{
 				id: 'landcover-vectors',
 				fields: { kind: 'String' },
 				minzoom: 0,
-				maxzoom: 10,
+				maxzoom: 6,
 			},
 		],
 	};

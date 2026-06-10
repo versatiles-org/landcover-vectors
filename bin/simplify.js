@@ -6,9 +6,12 @@ import vtt from 'vtt';
 
 import visvalingam from '../lib/visvalingam.js';
 import exists from '../lib/exists.js';
+import { listZoomTiles } from '../lib/tiles.js';
 import * as config from '../config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const vectordir = path.resolve(__dirname, '../tiles/vectortiles');
 
 const targetSize = 1e5; // 100kb
 
@@ -66,21 +69,20 @@ const simplify = async function simplify(src) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
 	(async () => {
-		let z1 = parseInt(process.argv[2] || '8', 10);
+		let z1 = parseInt(process.argv[2] || '6', 10);
 		for (let z = 0; z <= z1; z++) {
-			for (let x = 0; x < Math.pow(2, z); x++) {
-				// prepare dir
-				await fs.mkdir(path.resolve(__dirname, `../tiles/vectortiles-simplified/${z}/${x}`), { recursive: true });
-				for (let y = 0; y < Math.pow(2, z); y++) {
-					const src = path.resolve(__dirname, `../tiles/vectortiles/${z}/${x}/${y}.pbf`);
-					const dest = path.resolve(__dirname, `../tiles/vectortiles-simplified/${z}/${x}/${y}.pbf`);
+			const tiles = await listZoomTiles(vectordir, z, 'pbf');
+			console.error('Simplifying z%d (%d tiles)', z, tiles.length);
+			for (const { x, y } of tiles) {
+				const src = path.join(vectordir, `${z}/${x}/${y}.pbf`);
+				const dest = path.resolve(__dirname, `../tiles/vectortiles-simplified/${z}/${x}/${y}.pbf`);
 
-					// skip if exists
-					if (await exists(dest)) continue;
+				// skip if exists
+				if (await exists(dest)) continue;
 
-					// simplify tile
-					await fs.writeFile(dest, await simplify(src));
-				}
+				// simplify tile
+				await fs.mkdir(path.dirname(dest), { recursive: true });
+				await fs.writeFile(dest, await simplify(src));
 			}
 		}
 
