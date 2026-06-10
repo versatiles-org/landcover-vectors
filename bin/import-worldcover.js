@@ -97,10 +97,16 @@ const download = async ({ key, size }) => {
 		try {
 			const res = await fetch(`${BUCKET}/${key}`);
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			await pipeline(Readable.fromWeb(res.body), createWriteStream(tmp));
-			await fs.rename(tmp, dest); // atomic: only a fully written file appears
+			await pipeline(Readable.fromWeb(res.body), createWriteStream(tmp)); // 'w' truncates any stale .part
+
+			// guard against a silently truncated stream before promoting the file
+			const written = (await fs.stat(tmp)).size;
+			if (written !== size) throw new Error(`size mismatch: got ${written}, expected ${size}`);
+
+			await fs.rename(tmp, dest); // atomic: only a complete, size-verified file appears as dest
 			return true;
 		} catch (err) {
+			await fs.rm(tmp, { force: true }); // never leave a partial file behind
 			if (attempt >= DOWNLOAD_RETRIES) throw new Error(`download ${key} failed: ${err.message}`);
 			await sleep(attempt * 1000);
 		}
