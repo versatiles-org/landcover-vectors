@@ -11,6 +11,7 @@ const sharp = require("sharp");
 const vtt = require("vtt");
 
 const exists = require("../lib/exists");
+const rewind = require("../lib/rewind");
 
 const render = async function render(z, x, y) {
 
@@ -95,11 +96,14 @@ const render = async function render(z, x, y) {
 				// hint garbage collection
 				delete polygon;
 
+				// enforce MVT 2.1 ring winding (exterior positive, holes negative)
+				const rewound = rewind(geometry);
+
 				// add feature to vectortile
 				vectortile.features.push({
 					id: (vectortile.features.length + 1),
 					type: 3,
-					geometry: geometry,
+					geometry: rewound,
 					properties: {
 						kind: layer, // layer type
 					},
