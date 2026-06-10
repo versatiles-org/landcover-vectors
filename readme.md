@@ -10,22 +10,22 @@ There are to complement OSM tiles on lower zoom levels.
 
 ## Requirements
 
-* `node` (or `bun`)
-* [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
-*
+- `node` (or `bun`)
+- [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
+-
 
 ## How it's made
 
 Each step below can be run directly with `node`, or via its npm script (shown after the `# or` line).
 To run the whole pipeline (download → extract → composite → render → simplify → pack) in order:
 
-``` sh
+```sh
 npm run build
 ```
 
 ### Download raster tiles
 
-``` sh
+```sh
 node bin/download-esa-worldcover.js
 # or
 npm run download
@@ -35,7 +35,7 @@ This downloads the [ESA Worldcover](https://esa-worldcover.org/en/data-access) t
 
 ### Extract channels
 
-``` sh
+```sh
 node bin/extract-channels.js
 # or
 npm run extract
@@ -45,7 +45,7 @@ This extracts the distinctly colored channels from the tiles into monochrome til
 
 ### Composite lower zoom raster tiles
 
-``` sh
+```sh
 node bin/composite-tiles.js
 # or
 npm run composite
@@ -75,7 +75,7 @@ You can run the script again, already created tiles will be skipped.
 
 ### Simplify vector tile polygons
 
-``` sh
+```sh
 node bin/simplify.js
 # or
 npm run simplify
@@ -86,32 +86,33 @@ The algorithm has been slightly modified to keep tile edges intact.
 
 ### Convert to Versatiles container
 
-``` sh
+```sh
 versatiles convert -c brotli tiles/vectortiles-simplified landcover-vectors.versatiles
 # or
 npm run pack
 ```
+
 This compresses and packs all vectortiles into a versatiles container.
 
 ## Style
 
 There is one layer called `landcover-vectors` with a property `kind`:
 
-* `bare` Bare / sparse vegetation
-* `builtup` Built-up
-* `cropland` Cropland
-* `grassland` Grassland
-* `mangroves` Mangroves
-* `moss` Moss and lichen
-* `shrubland` Shrubland
-* `snow` Snow and ice
-* `treecover` Tree cover
-* `water` Permanent water bodies
-* `wetland` Herbaeceous wetland
+- `bare` Bare / sparse vegetation
+- `builtup` Built-up
+- `cropland` Cropland
+- `grassland` Grassland
+- `mangroves` Mangroves
+- `moss` Moss and lichen
+- `shrubland` Shrubland
+- `snow` Snow and ice
+- `treecover` Tree cover
+- `water` Permanent water bodies
+- `wetland` Herbaeceous wetland
 
 ### Example
 
-``` js
+```js
 {
 	"id": "landcover-bare",
 	"type": "fill",
@@ -129,6 +130,6 @@ There is one layer called `landcover-vectors` with a property `kind`:
 
 ## License
 
-* [ESA Worldcover](https://esa-worldcover.org/en/data-access) is licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/)
-* The Versatiles Landcover Vectors tileset is derived from ESA Worldcover and therefore also licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/)
-* The code in this repository is in the [Public Domain](http://unlicense.org/UNLICENSE)
+- [ESA Worldcover](https://esa-worldcover.org/en/data-access) is licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/)
+- The Versatiles Landcover Vectors tileset is derived from ESA Worldcover and therefore also licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/)
+- The code in this repository is in the [Public Domain](http://unlicense.org/UNLICENSE)

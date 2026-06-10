@@ -1,29 +1,27 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import vtt from 'vtt';
 
-import vtt from "vtt";
-
-import visvalingam from "../lib/visvalingam.js";
-import exists from "../lib/exists.js";
-import * as config from "../config.js";
+import visvalingam from '../lib/visvalingam.js';
+import exists from '../lib/exists.js';
+import * as config from '../config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const targetSize = 1e5; // 100kb
 
 const simplify = async function simplify(src) {
-
 	const t = Date.now();
 
 	const buf = await fs.readFile(src);
 
 	// no need to simplify small tiles
-	if (buf.length < (targetSize / 2)) {
-		console.log("%s — Ignored %skb", path.relative(process.cwd(), src), (buf.length / 1024).toFixed(1));
+	if (buf.length < targetSize / 2) {
+		console.log('%s — Ignored %skb', path.relative(process.cwd(), src), (buf.length / 1024).toFixed(1));
 		return buf;
-	};
+	}
 
 	const factor = Math.min(0.75, targetSize / buf.length);
 
@@ -32,56 +30,63 @@ const simplify = async function simplify(src) {
 
 	// iterate layers
 	for (let layer of vectortile) {
-
 		// iterate features
 		for (let feature of layer.features) {
-
 			// FIXME check if polygon
 
 			// iterate polylines
-			feature.geometry = feature.geometry.filter(polygon => {
-				return polygon.length > 16;
-			}).map(polygon => { // simplify with edge-safe visvalingam
-				return visvalingam(polygon, Math.max(16, Math.round(polygon.length * factor)));
-			}).filter(polygon => { // remove empty polygons
-				return (polygon.length);
-			});
-
-		};
-
-	};
+			feature.geometry = feature.geometry
+				.filter((polygon) => {
+					return polygon.length > 16;
+				})
+				.map((polygon) => {
+					// simplify with edge-safe visvalingam
+					return visvalingam(polygon, Math.max(16, Math.round(polygon.length * factor)));
+				})
+				.filter((polygon) => {
+					// remove empty polygons
+					return polygon.length;
+				});
+		}
+	}
 
 	const pbf = vtt.pack(vectortile);
 
-	console.log("%s — Reduced %skb → %skb (%s%%) in %ss", path.relative(process.cwd(), src), (buf.length / 1024).toFixed(1), (pbf.length / 1024).toFixed(1), (100 - (pbf.length / buf.length) * 100).toFixed(1), ((Date.now() - t) / 1000).toFixed(2));
+	console.log(
+		'%s — Reduced %skb → %skb (%s%%) in %ss',
+		path.relative(process.cwd(), src),
+		(buf.length / 1024).toFixed(1),
+		(pbf.length / 1024).toFixed(1),
+		(100 - (pbf.length / buf.length) * 100).toFixed(1),
+		((Date.now() - t) / 1000).toFixed(2),
+	);
 
 	return pbf;
-
 };
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) (async () => {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+	(async () => {
+		let z1 = parseInt(process.argv[2] || '8', 10);
+		for (let z = 0; z <= z1; z++) {
+			for (let x = 0; x < Math.pow(2, z); x++) {
+				// prepare dir
+				await fs.mkdir(path.resolve(__dirname, `../tiles/vectortiles-simplified/${z}/${x}`), { recursive: true });
+				for (let y = 0; y < Math.pow(2, z); y++) {
+					const src = path.resolve(__dirname, `../tiles/vectortiles/${z}/${x}/${y}.pbf`);
+					const dest = path.resolve(__dirname, `../tiles/vectortiles-simplified/${z}/${x}/${y}.pbf`);
 
-	let z1 = parseInt((process.argv[2] || "8"), 10);
-	for (let z = 0; z <= z1; z++) {
-		for (let x = 0; x < Math.pow(2, z); x++) {
-			// prepare dir
-			await fs.mkdir(path.resolve(__dirname, `../tiles/vectortiles-simplified/${z}/${x}`), { recursive: true });
-			for (let y = 0; y < Math.pow(2, z); y++) {
+					// skip if exists
+					if (await exists(dest)) continue;
 
-				const src = path.resolve(__dirname, `../tiles/vectortiles/${z}/${x}/${y}.pbf`);
-				const dest = path.resolve(__dirname, `../tiles/vectortiles-simplified/${z}/${x}/${y}.pbf`);
+					// simplify tile
+					await fs.writeFile(dest, await simplify(src));
+				}
+			}
+		}
 
-				// skip if exists
-				if (await exists(dest)) continue;
-
-				// simplify tile
-				await fs.writeFile(dest, await simplify(src));
-
-			};
-		};
-	};
-
-	// write tilejson
-	await fs.writeFile(path.resolve(__dirname, `../tiles/vectortiles-simplified/tile.json`), JSON.stringify(config.vectorTileJSON(), null, "\t"));
-
-})();
+		// write tilejson
+		await fs.writeFile(
+			path.resolve(__dirname, `../tiles/vectortiles-simplified/tile.json`),
+			JSON.stringify(config.vectorTileJSON(), null, '\t'),
+		);
+	})();

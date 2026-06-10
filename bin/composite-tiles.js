@@ -1,28 +1,26 @@
 // create lower zoom tiles by compositing higher zoom tiles
 
-import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import sharp from "sharp";
-import exists from "../lib/exists.js";
-import * as config from "../config.js";
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import sharp from 'sharp';
+import exists from '../lib/exists.js';
+import * as config from '../config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 (async () => {
-
 	const channels = config.layers;
 
 	for (let z = 9; z >= 0; z--) {
 		for (let x = 0; x < Math.pow(2, z); x++) {
-
 			// create dest dir
-			for (let channel of channels) await fs.mkdir(path.resolve(__dirname, `../tiles/${channel}/${z}/${x}`), { recursive: true });
+			for (let channel of channels)
+				await fs.mkdir(path.resolve(__dirname, `../tiles/${channel}/${z}/${x}`), { recursive: true });
 
 			for (let y = 0; y < Math.pow(2, z); y++) {
-
 				// origin tiles are 256×256, all composites will be 512×512
-				const size = (z === 9) ? 256 : 512;
+				const size = z === 9 ? 256 : 512;
 
 				// prepare components of tiles to composite
 				const z1 = z + 1;
@@ -32,7 +30,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 				const y1 = y0 + 1;
 
 				for (let channel of channels) {
-
 					const dest = path.resolve(__dirname, `../tiles/${channel}/${z}/${x}/${y}.png`);
 					if (await exists(dest)) continue; // skip if exists
 
@@ -42,22 +39,50 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 							width: size * 2,
 							height: size * 2,
 							channels: 4,
-							background: { r: 255, g: 255, b: 255, alpha: 255 }
-						}
-					}).composite([
-						{ input: await sharp(path.resolve(__dirname, `../tiles/${channel}/${z1}/${x0}/${y0}.png`)).toBuffer(), top: 0, left: 0 },
-						{ input: await sharp(path.resolve(__dirname, `../tiles/${channel}/${z1}/${x1}/${y0}.png`)).toBuffer(), top: 0, left: size },
-						{ input: await sharp(path.resolve(__dirname, `../tiles/${channel}/${z1}/${x0}/${y1}.png`)).toBuffer(), top: size, left: 0 },
-						{ input: await sharp(path.resolve(__dirname, `../tiles/${channel}/${z1}/${x1}/${y1}.png`)).toBuffer(), top: size, left: size },
-					]).raw().toBuffer({ resolveWithObject: true });
+							background: { r: 255, g: 255, b: 255, alpha: 255 },
+						},
+					})
+						.composite([
+							{
+								input: await sharp(
+									path.resolve(__dirname, `../tiles/${channel}/${z1}/${x0}/${y0}.png`),
+								).toBuffer(),
+								top: 0,
+								left: 0,
+							},
+							{
+								input: await sharp(
+									path.resolve(__dirname, `../tiles/${channel}/${z1}/${x1}/${y0}.png`),
+								).toBuffer(),
+								top: 0,
+								left: size,
+							},
+							{
+								input: await sharp(
+									path.resolve(__dirname, `../tiles/${channel}/${z1}/${x0}/${y1}.png`),
+								).toBuffer(),
+								top: size,
+								left: 0,
+							},
+							{
+								input: await sharp(
+									path.resolve(__dirname, `../tiles/${channel}/${z1}/${x1}/${y1}.png`),
+								).toBuffer(),
+								top: size,
+								left: size,
+							},
+						])
+						.raw()
+						.toBuffer({ resolveWithObject: true });
 
 					// resize operation (this has to be seperated via a buffer, otherwise sharp resizes before compositing)
-					await sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } }).resize(512, 512).png().toFile(dest);
-
-				};
+					await sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } })
+						.resize(512, 512)
+						.png()
+						.toFile(dest);
+				}
 				console.error(`Composited ${z}/${x}/${y}`);
-			};
-		};
-	};
-
+			}
+		}
+	}
 })();
