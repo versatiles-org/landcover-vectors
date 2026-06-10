@@ -1,0 +1,6 @@
+node_modules
+tiles
+attic
+package.json
+package-lock.json
+*.versatiles
