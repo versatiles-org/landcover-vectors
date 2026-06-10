@@ -16,9 +16,9 @@
     "upgrade": "npx npm-check-updates -u && npm install"
   },
   "dependencies": {
-    "phn": "^0.0.3",
+    "phn": "^0.2.8",
     "potrace-wasm": "github:IguteChung/potrace-wasm",
-    "sharp": "^0.33.3",
+    "sharp": "^0.34.5",
     "svg-path-to-polygons": "^0.1.0",
     "vtt": "^0.0.3"
   },
