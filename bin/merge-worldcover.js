@@ -42,6 +42,8 @@ await fs.writeFile(vrtPath, vrtXml);
 
 const merged = path.join(dir.work, '_merged.fgb');
 console.error('Merging %d tiles → %s', fgbs.length, merged);
+// ogr2ogr can't overwrite a FlatGeobuf in place, so remove any stale target first
+await fs.rm(merged, { force: true });
 await run('ogr2ogr', ['-progress', '-f', 'FlatGeobuf', '-nln', 'landcover', merged, vrtPath]);
 
 // 2. combine same-kind polygons into one multipart feature per kind

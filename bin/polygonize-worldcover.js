@@ -78,6 +78,9 @@ async function polygonizeTile(srcTif, outFgb) {
 			'tile',
 			'--overwrite',
 		]);
+		// ogr2ogr can't overwrite a FlatGeobuf in place (-overwrite needs DeleteLayer,
+		// unsupported here), so remove any stale target first
+		await fs.rm(outFgb, { force: true });
 		await runQuiet('ogr2ogr', [
 			'-f',
 			'FlatGeobuf',
