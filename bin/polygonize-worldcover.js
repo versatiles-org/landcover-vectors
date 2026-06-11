@@ -25,7 +25,7 @@ import { dir, file, codemap } from '../config.js';
 // smaller geometry with no z6 quality loss. Use mode (dominant class) for categorical
 // downsampling. Set to '100%' to keep full mirror resolution (e.g. for zoom 7).
 const SCALE = process.env.POLYGONIZE_SCALE || '50%';
-const SIEVE = process.env.POLYGONIZE_SIEVE !== undefined ? parseInt(process.env.POLYGONIZE_SIEVE, 10) : 8; // px; 0 = off
+const SIEVE = process.env.POLYGONIZE_SIEVE !== undefined ? parseInt(process.env.POLYGONIZE_SIEVE, 10) : 100; // px; 0 = off
 const CONCURRENCY = Math.max(1, os.availableParallelism() - 1);
 
 // SQL (SQLite dialect) mapping the class code to a kind and dropping unmapped/nodata
