@@ -57,19 +57,26 @@ npm run polygonize
 
 This vectorizes the raster mirror into **per-tile** polygon geometry. Each source tile is processed **in parallel**
 behind a single progress bar: downsampled to the target zoom resolution, sieved (small specks merged into their
-neighbour), polygonized with `gdal raster polygonize` (one polygon per connected class region), and tagged with its
-Shortbread `kind`. The result is one FlatGeobuf per source tile in `data/polygons`.
+neighbour), polygonized with `gdal raster polygonize` (one polygon per connected class region), tagged with its
+Shortbread `kind`, and coverage-simplified to replace the pixel staircase with straight lines. The result is one
+FlatGeobuf per source tile in `data/polygons`.
 
 This is the geospatially-correct vectorization: polygons follow class boundaries exactly, with **no per-tile seams**
-(unlike tracing each tile separately). The step is resumable — already-polygonized tiles are skipped.
+(unlike tracing each tile separately). The simplification is **topology-preserving** (so shared boundaries between
+classes stay aligned — no slivers/gaps), roughly halves the geometry, and runs **per tile** — keeping it parallel
+and low-memory, whereas a global coverage simplify needs the whole dataset in RAM and OOMs on large extents.
+`--preserve-boundary` keeps each tile's edge exact so the merge stays seamless. The step is resumable —
+already-polygonized tiles are skipped.
 
 Tuning via environment variables:
 
 - `POLYGONIZE_SCALE` — downsample each source tile to this fraction first (default `50%`, i.e. ~74 m → ~152 m,
   native to zoom 6, using dominant-class resampling). Use `100%` to keep full mirror resolution for zoom 7.
 - `POLYGONIZE_SIEVE` — drop connected regions smaller than this many pixels (default `100`; `0` disables).
+- `POLYGONIZE_SIMPLIFY` — coverage-simplification tolerance in degrees (default `0.0014` ≈ one ~152 m pixel; larger
+  removes more detail and shrinks further; `0` disables).
 
-### Merge & simplify
+### Merge
 
 ```sh
 node bin/merge-worldcover.js
@@ -77,15 +84,8 @@ node bin/merge-worldcover.js
 npm run merge
 ```
 
-This combines the per-tile geometry into the final `data/landcover.fgb`:
-
-1. **merge** all per-tile FlatGeobuf into one (via an OGR VRT union),
-2. **`gdal vector simplify-coverage`** — replace the pixel staircase with straight lines. This is **topology-preserving**, so shared boundaries between classes stay aligned (no slivers/gaps), and it roughly halves the geometry — which also lightens the tile step's memory use.
-
-Unlike polygonize, this runs single-threaded on the whole dataset, so it's the most memory-intensive step.
-
-- `POLYGONIZE_SIMPLIFY` — coverage-simplification tolerance in degrees (default `0.0014` ≈ one ~152 m pixel; larger
-  removes more detail and shrinks further; `0` disables).
+The per-tile geometry is already simplified, so this just concatenates all the per-tile FlatGeobuf into the final
+`data/landcover.fgb` (via an OGR VRT union).
 
 > The per-tile files in `data/polygons` are kept so polygonize stays resumable; once the merge succeeds you can
 > delete `data/polygons`.
