@@ -4,7 +4,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 
 import svgPathToPolygons from 'svg-path-to-polygons';
 import potrace from 'potrace-wasm';
@@ -17,14 +17,13 @@ import { listZoomTiles } from '../lib/tiles.js';
 import { progress } from '../lib/progress.js';
 import * as config from '../config.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { pathDataToPolys } = svgPathToPolygons;
 
-const srcdir = path.resolve(__dirname, '../tiles/esa-worldcover');
+const srcdir = config.dir.raster;
 
 async function render(z, x, y) {
 	// destination
-	const dest = path.resolve(__dirname, `../tiles/vectortiles/${z}/${x}/${y}.pbf`);
+	const dest = path.join(config.dir.vector, `${z}/${x}/${y}.pbf`);
 
 	// abort if tile exists
 	if (await exists(dest)) return;
@@ -163,7 +162,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
 	// write tilejson
 	await fs.writeFile(
-		path.resolve(__dirname, `../tiles/vectortiles-simplified/tile.json`),
+		path.join(config.dir.simplified, 'tile.json'),
 		JSON.stringify(config.vectorTileJSON(), null, '\t'),
 	);
 }

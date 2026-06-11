@@ -14,7 +14,7 @@
     "tile": "node bin/tile-worldcover.js",
     "render": "node bin/render.js",
     "simplify": "node bin/simplify.js",
-    "pack": "versatiles convert -c brotli tiles/vectortiles-simplified landcover-vectors.versatiles",
+    "pack": "versatiles convert -c brotli data/vectortiles-simplified landcover-vectors.versatiles",
     "build": "npm run download && npm run tile && npm run render && npm run simplify && npm run pack",
     "upgrade": "npx npm-check-updates -u && npm install",
     "format": "prettier --write .",

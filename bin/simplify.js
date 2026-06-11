@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 
 import vtt from 'vtt';
 
@@ -10,9 +10,7 @@ import { listZoomTiles } from '../lib/tiles.js';
 import { progress } from '../lib/progress.js';
 import * as config from '../config.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-const vectordir = path.resolve(__dirname, '../tiles/vectortiles');
+const vectordir = config.dir.vector;
 
 const targetSize = 1e5; // 100kb
 
@@ -54,7 +52,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 		const bar = progress(tiles.length, `Simplifying z${z}`);
 		for (const { x, y } of tiles) {
 			const src = path.join(vectordir, `${z}/${x}/${y}.pbf`);
-			const dest = path.resolve(__dirname, `../tiles/vectortiles-simplified/${z}/${x}/${y}.pbf`);
+			const dest = path.join(config.dir.simplified, `${z}/${x}/${y}.pbf`);
 
 			// skip if already simplified
 			if (!(await exists(dest))) {
@@ -68,7 +66,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
 	// write tilejson
 	await fs.writeFile(
-		path.resolve(__dirname, `../tiles/vectortiles-simplified/tile.json`),
+		path.join(config.dir.simplified, 'tile.json'),
 		JSON.stringify(config.vectorTileJSON(), null, '\t'),
 	);
 }

@@ -34,7 +34,7 @@ npm run download
 This downloads a reduced-resolution local mirror of [ESA WorldCover 2021 (v200)](https://registry.opendata.aws/esa-worldcover-vito/)
 from AWS Open Data (`s3://esa-worldcover`). Each of the 2651 source GeoTIFFs is downsampled by a factor of 8 on the
 way in (reading its matching internal overview, so only a small fraction of the full 10 m data is transferred) and
-written to `tiles/esa-worldcover-src` in its native EPSG:4326. 1/8 (~74 m/px) keeps full detail for zoom 0–6, with
+written to `data/esa-worldcover-src` in its native EPSG:4326. 1/8 (~74 m/px) keeps full detail for zoom 0–6, with
 headroom for zoom 7 — so the whole mirror is only a few hundred MB instead of the full ~124 GB.
 
 Downloads run in parallel, are retried, written atomically, and skipped if already present — so the step is robust
@@ -52,7 +52,7 @@ npm run tile
 ```
 
 This cuts the local mirror into a web-mercator XYZ raster pyramid (zoom levels 0–6 by default) in
-`tiles/esa-worldcover`, entirely from local disk — no network, so no flaky `/vsicurl` request storms.
+`data/esa-worldcover`, entirely from local disk — no network, so no flaky `/vsicurl` request storms.
 
 Tiles are **4096×4096 px** — matching the MVT extent the renderer uses. A 4096 px tile at a given zoom has the same
 ground resolution as a 256 px tile four zoom levels deeper, so the zoom-6 tiles carry zoom-10 detail in a single,
@@ -107,7 +107,7 @@ The algorithm has been slightly modified to keep tile edges intact.
 ### Convert to Versatiles container
 
 ```sh
-versatiles convert -c brotli tiles/vectortiles-simplified landcover-vectors.versatiles
+versatiles convert -c brotli data/vectortiles-simplified landcover-vectors.versatiles
 # or
 npm run pack
 ```

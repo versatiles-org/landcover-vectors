@@ -20,7 +20,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { srcdir, workdir, run } from '../lib/worldcover.js';
+import { run } from '../lib/worldcover.js';
+import { dir } from '../config.js';
+
+const srcdir = dir.source;
+const workdir = dir.raster;
 
 const zoom = process.argv[2] || '0-6';
 

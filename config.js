@@ -1,5 +1,21 @@
 // shared configuration for the landcover-vectors pipeline
 
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// base directory for everything the pipeline downloads and generates
+export const datadir = path.resolve(__dirname, 'data');
+
+// well-known subdirectories within the data folder, used across every step
+export const dir = {
+	source: path.join(datadir, 'esa-worldcover-src'), // reduced-resolution source mirror (download)
+	raster: path.join(datadir, 'esa-worldcover'), // web-mercator raster XYZ pyramid (tile)
+	vector: path.join(datadir, 'vectortiles'), // rendered vector tiles (render)
+	simplified: path.join(datadir, 'vectortiles-simplified'), // simplified vector tiles (simplify, pack)
+};
+
 // landcover classes (the `kind` values), in a single canonical order used by
 // every step. These reuse the proposed Shortbread `landcover` layer vocabulary
 // so styling transitions seamlessly at the z6→z7 seam (see issue #4).

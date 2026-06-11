@@ -2,7 +2,7 @@
 //
 // Each of the 2651 source GeoTIFFs is downsampled by FACTOR on the way in (reading
 // its matching internal overview, so only a small fraction of the full 10 m data is
-// transferred) and written to tiles/esa-worldcover-src in its native EPSG:4326.
+// transferred) and written to data/esa-worldcover-src in its native EPSG:4326.
 // FACTOR=8 (~74 m/px) keeps full detail for zoom 0-6, with headroom for zoom 7; the
 // whole mirror is a few hundred MB instead of the full ~124 GB.
 //
@@ -16,8 +16,11 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { BUCKET, PREFIX, srcdir, runQuiet, pMap, listSourceKeys } from '../lib/worldcover.js';
+import { BUCKET, PREFIX, runQuiet, pMap, listSourceKeys } from '../lib/worldcover.js';
 import { progress } from '../lib/progress.js';
+import { dir } from '../config.js';
+
+const srcdir = dir.source;
 
 const FACTOR = 8; // downsample each source tile by this factor on download
 const PERCENT = `${100 / FACTOR}%`; // gdal_translate -outsize argument
