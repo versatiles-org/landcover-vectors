@@ -11,7 +11,7 @@ There are to complement OSM tiles on lower zoom levels.
 ## Requirements
 
 - `node` (or `bun`)
-- [`GDAL`](https://gdal.org/) ≥ 3.11 (`gdal_translate`, `ogr2ogr` and the `gdal raster sieve` / `gdal raster polygonize` programs on `PATH`)
+- [`GDAL`](https://gdal.org/) ≥ 3.11 with the `gdal_translate`, `ogr2ogr`, `gdal raster sieve`, `gdal raster polygonize`, `gdal vector combine`, `gdal vector dissolve` and `gdal vector simplify-coverage` programs on `PATH`
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`)
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
 
@@ -56,25 +56,28 @@ npm run polygonize
 ```
 
 This vectorizes the raster mirror into one polygon geometry file. Each source tile is processed **in parallel**
-behind a single progress bar: small specks are sieved out, `gdal raster polygonize` turns it into polygons (one per
-connected class region), and each polygon is tagged with its Shortbread `kind`. The per-tile results are merged into
-a single FlatGeobuf at `data/landcover.fgb`. The step is resumable — already-polygonized tiles are skipped.
+behind a single progress bar: downsampled to the target zoom resolution, sieved (small specks merged into their
+neighbour), polygonized with `gdal raster polygonize` (one polygon per connected class region), and tagged with its
+Shortbread `kind`. The per-tile results are merged, then post-processed into the final `data/landcover.fgb`:
+
+1. **`gdal vector combine --group-by kind`** — collapse the millions of polygons into one multipart feature per kind.
+2. **`gdal vector dissolve`** — union the touching same-kind parts (e.g. fragments split at source-tile boundaries).
+3. **`gdal vector simplify-coverage`** — replace the pixel staircase with straight lines. This is **topology-preserving**, so shared boundaries between classes stay aligned (no slivers/gaps), and it roughly halves the geometry — which also lightens the tile step's memory use.
 
 This is the geospatially-correct vectorization: polygons follow class boundaries exactly, with **no per-tile seams**
-(unlike tracing each tile separately). Polygons split at source-tile boundaries are healed when tiling.
-
-Each tile is downsampled to the target zoom resolution before polygonizing, so the geometry isn't far finer than the
-tiles can show — this keeps the intermediate geometry small (polygonizing the full ~74 m mirror produces several
-times more vertices and tiny polygons than zoom 6 needs).
+(unlike tracing each tile separately). The per-tile polygonize is resumable — already-polygonized tiles are skipped.
 
 Tuning via environment variables:
 
 - `POLYGONIZE_SCALE` — downsample each source tile to this fraction first (default `50%`, i.e. ~74 m → ~152 m,
   native to zoom 6, using dominant-class resampling). Use `100%` to keep full mirror resolution for zoom 7.
-- `POLYGONIZE_SIEVE` — drop connected regions smaller than this many pixels (default `8`; `0` disables).
+- `POLYGONIZE_SIEVE` — drop connected regions smaller than this many pixels (default `100`; `0` disables).
+- `POLYGONIZE_SIMPLIFY` — coverage-simplification tolerance in degrees (default `0.0014` ≈ one ~152 m pixel; larger
+  removes more detail and shrinks further; `0` disables).
 
-> The per-tile files in `data/polygons` plus the merged `data/landcover.fgb` together use about twice the geometry
-> size; once tiling succeeds you can delete `data/polygons` (it only exists to make the step resumable).
+> The per-tile files in `data/polygons` are kept so the polygonize step is resumable; once tiling succeeds you can
+> delete `data/polygons`. The post-processing (combine → dissolve → simplify) runs on the merged geometry and is
+> single-threaded — on a memory-constrained machine it's the heaviest step.
 
 ### Tile
 

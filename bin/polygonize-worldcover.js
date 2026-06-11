@@ -26,6 +26,11 @@ import { dir, file, codemap } from '../config.js';
 // downsampling. Set to '100%' to keep full mirror resolution (e.g. for zoom 7).
 const SCALE = process.env.POLYGONIZE_SCALE || '50%';
 const SIEVE = process.env.POLYGONIZE_SIEVE !== undefined ? parseInt(process.env.POLYGONIZE_SIEVE, 10) : 100; // px; 0 = off
+
+// coverage-simplification tolerance in degrees (EPSG:4326). ~0.0014° ≈ one ~152 m
+// pixel; collapses the pixel staircase to straight lines (~2× smaller), topology-
+// preserving. '0' skips simplification.
+const SIMPLIFY = process.env.POLYGONIZE_SIMPLIFY || '0.0014';
 const CONCURRENCY = Math.max(1, os.availableParallelism() - 1);
 
 // SQL (SQLite dialect) mapping the class code to a kind and dropping unmapped/nodata
@@ -127,7 +132,39 @@ const vrtXml =
 	`\n\t</OGRVRTUnionLayer>\n</OGRVRTDataSource>\n`;
 await fs.writeFile(vrtPath, vrtXml);
 
-console.error('Merging %d tiles → %s', fgbs.length, file.geometry);
-await run('ogr2ogr', ['-progress', '-f', 'FlatGeobuf', '-nln', 'landcover', file.geometry, vrtPath]);
+const merged = path.join(dir.work, '_merged.fgb');
+console.error('Merging %d tiles → %s', fgbs.length, merged);
+await run('ogr2ogr', ['-progress', '-f', 'FlatGeobuf', '-nln', 'landcover', merged, vrtPath]);
+
+// Post-process the merged geometry into the final file:
+//   1. combine same-kind polygons into one multipart feature per kind
+//   2. dissolve those multiparts (union touching same-kind parts, e.g. tile splits)
+//   3. coverage-simplify: replace the pixel staircase with straight lines, preserving
+//      topology between classes (no slivers/gaps)
+// Each step reads the previous file and the intermediate is removed afterwards.
+const combined = path.join(dir.work, '_combined.fgb');
+console.error('1/3 combine by kind …');
+await run('gdal', ['vector', 'combine', '--overwrite', '--group-by', 'kind', '-i', merged, '-o', combined]);
+await fs.rm(merged, { force: true });
+
+const dissolved = path.join(dir.work, '_dissolved.fgb');
+console.error('2/3 dissolve …');
+await run('gdal', ['vector', 'dissolve', '--overwrite', '-i', combined, '-o', dissolved]);
+await fs.rm(combined, { force: true });
+
+console.error('3/3 simplify-coverage (tolerance %s°) …', SIMPLIFY);
+await run('gdal', [
+	'vector',
+	'simplify-coverage',
+	'--overwrite',
+	'--output-layer',
+	'landcover',
+	'-i',
+	dissolved,
+	'-o',
+	file.geometry,
+	SIMPLIFY,
+]);
+await fs.rm(dissolved, { force: true });
 
 console.error('Done. Geometry written to %s', file.geometry);
