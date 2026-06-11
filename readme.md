@@ -11,7 +11,7 @@ There are to complement OSM tiles on lower zoom levels.
 ## Requirements
 
 - `node` (or `bun`)
-- [`GDAL`](https://gdal.org/) ≥ 3.11 with the `gdal_translate`, `ogr2ogr`, `gdal raster sieve`, `gdal raster polygonize`, `gdal vector combine`, `gdal vector dissolve` and `gdal vector simplify-coverage` programs on `PATH`
+- [`GDAL`](https://gdal.org/) ≥ 3.11 with the `gdal_translate`, `ogr2ogr`, `gdal raster sieve`, `gdal raster polygonize` and `gdal vector simplify-coverage` programs on `PATH`
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`)
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
 
@@ -80,9 +80,7 @@ npm run merge
 This combines the per-tile geometry into the final `data/landcover.fgb`:
 
 1. **merge** all per-tile FlatGeobuf into one (via an OGR VRT union),
-2. **`gdal vector combine --group-by kind`** — collapse the millions of polygons into one multipart feature per kind,
-3. **`gdal vector dissolve`** — union the touching same-kind parts (e.g. fragments split at source-tile boundaries),
-4. **`gdal vector simplify-coverage`** — replace the pixel staircase with straight lines. This is **topology-preserving**, so shared boundaries between classes stay aligned (no slivers/gaps), and it roughly halves the geometry — which also lightens the tile step's memory use.
+2. **`gdal vector simplify-coverage`** — replace the pixel staircase with straight lines. This is **topology-preserving**, so shared boundaries between classes stay aligned (no slivers/gaps), and it roughly halves the geometry — which also lightens the tile step's memory use.
 
 Unlike polygonize, this runs single-threaded on the whole dataset, so it's the most memory-intensive step.
 
