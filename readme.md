@@ -18,7 +18,7 @@ There are to complement OSM tiles on lower zoom levels.
 ## How it's made
 
 Each step below can be run directly with `node`, or via its npm script (shown after the `# or` line).
-To run the whole pipeline (download → polygonize → tile → pack) in order:
+To run the whole pipeline (download → polygonize → merge → tile → pack) in order:
 
 ```sh
 npm run build
@@ -55,29 +55,42 @@ node bin/polygonize-worldcover.js
 npm run polygonize
 ```
 
-This vectorizes the raster mirror into one polygon geometry file. Each source tile is processed **in parallel**
+This vectorizes the raster mirror into **per-tile** polygon geometry. Each source tile is processed **in parallel**
 behind a single progress bar: downsampled to the target zoom resolution, sieved (small specks merged into their
 neighbour), polygonized with `gdal raster polygonize` (one polygon per connected class region), and tagged with its
-Shortbread `kind`. The per-tile results are merged, then post-processed into the final `data/landcover.fgb`:
-
-1. **`gdal vector combine --group-by kind`** — collapse the millions of polygons into one multipart feature per kind.
-2. **`gdal vector dissolve`** — union the touching same-kind parts (e.g. fragments split at source-tile boundaries).
-3. **`gdal vector simplify-coverage`** — replace the pixel staircase with straight lines. This is **topology-preserving**, so shared boundaries between classes stay aligned (no slivers/gaps), and it roughly halves the geometry — which also lightens the tile step's memory use.
+Shortbread `kind`. The result is one FlatGeobuf per source tile in `data/polygons`.
 
 This is the geospatially-correct vectorization: polygons follow class boundaries exactly, with **no per-tile seams**
-(unlike tracing each tile separately). The per-tile polygonize is resumable — already-polygonized tiles are skipped.
+(unlike tracing each tile separately). The step is resumable — already-polygonized tiles are skipped.
 
 Tuning via environment variables:
 
 - `POLYGONIZE_SCALE` — downsample each source tile to this fraction first (default `50%`, i.e. ~74 m → ~152 m,
   native to zoom 6, using dominant-class resampling). Use `100%` to keep full mirror resolution for zoom 7.
 - `POLYGONIZE_SIEVE` — drop connected regions smaller than this many pixels (default `100`; `0` disables).
+
+### Merge & simplify
+
+```sh
+node bin/merge-worldcover.js
+# or
+npm run merge
+```
+
+This combines the per-tile geometry into the final `data/landcover.fgb`:
+
+1. **merge** all per-tile FlatGeobuf into one (via an OGR VRT union),
+2. **`gdal vector combine --group-by kind`** — collapse the millions of polygons into one multipart feature per kind,
+3. **`gdal vector dissolve`** — union the touching same-kind parts (e.g. fragments split at source-tile boundaries),
+4. **`gdal vector simplify-coverage`** — replace the pixel staircase with straight lines. This is **topology-preserving**, so shared boundaries between classes stay aligned (no slivers/gaps), and it roughly halves the geometry — which also lightens the tile step's memory use.
+
+Unlike polygonize, this runs single-threaded on the whole dataset, so it's the most memory-intensive step.
+
 - `POLYGONIZE_SIMPLIFY` — coverage-simplification tolerance in degrees (default `0.0014` ≈ one ~152 m pixel; larger
   removes more detail and shrinks further; `0` disables).
 
-> The per-tile files in `data/polygons` are kept so the polygonize step is resumable; once tiling succeeds you can
-> delete `data/polygons`. The post-processing (combine → dissolve → simplify) runs on the merged geometry and is
-> single-threaded — on a memory-constrained machine it's the heaviest step.
+> The per-tile files in `data/polygons` are kept so polygonize stays resumable; once the merge succeeds you can
+> delete `data/polygons`.
 
 ### Tile
 
