@@ -11,7 +11,7 @@ There are to complement OSM tiles on lower zoom levels.
 ## Requirements
 
 - `node` (or `bun`)
-- [`GDAL`](https://gdal.org/) ≥ 3.11 (`gdal_translate`, `gdal_sieve.py`, `ogr2ogr` and the `gdal raster polygonize` program on `PATH`)
+- [`GDAL`](https://gdal.org/) ≥ 3.11 (`gdal_translate`, `ogr2ogr` and the `gdal raster sieve` / `gdal raster polygonize` programs on `PATH`)
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`)
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
 

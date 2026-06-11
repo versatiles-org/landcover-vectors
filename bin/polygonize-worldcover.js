@@ -48,7 +48,18 @@ async function polygonizeTile(srcTif, outFgb) {
 			raster = scaled;
 		}
 		if (SIEVE > 0) {
-			await runQuiet('gdal_sieve.py', ['-q', '-st', String(SIEVE), raster, sieved]);
+			await runQuiet('gdal', [
+				'raster',
+				'sieve',
+				'-q',
+				'--overwrite',
+				'--size-threshold',
+				String(SIEVE),
+				'-i',
+				raster,
+				'-o',
+				sieved,
+			]);
 			raster = sieved;
 		}
 		await runQuiet('gdal', [
