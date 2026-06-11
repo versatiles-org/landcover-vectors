@@ -100,9 +100,9 @@ npm run tile
 
 This builds the vector tile pyramid from the merged geometry with [tippecanoe](https://github.com/felt/tippecanoe),
 writing `data/landcover.mbtiles`. tippecanoe simplifies the geometry per zoom level and tiles it seamlessly in one
-pass: `--detect-shared-borders` keeps boundaries between adjacent classes coincident while simplifying (no
-slivers/gaps), and `--coalesce-smallest-as-needed` merges the tile-boundary fragments left by polygonization rather
-than dropping them, so coverage stays complete at every zoom.
+pass: `--coalesce-smallest-as-needed` merges the tile-boundary fragments left by polygonization rather than dropping
+them, and `--drop-densest-as-needed` sheds features so that dense low-zoom tiles (z0 is the whole world in one tile)
+fit the MVT size limit instead of running out of memory.
 
 By default zoom levels 0–6 are created; pass a range as parameter:
 
@@ -111,6 +111,10 @@ node bin/tile-worldcover.js 0-4
 # or
 npm run tile -- 0-4
 ```
+
+> tippecanoe's `--detect-shared-borders` would keep class boundaries even cleaner, but it's very memory-heavy at low
+> zoom and can blow up tile 0/0/0. The geometry is already coverage-simplified in the polygonize step, so it's left
+> off by default; enable it with `TIPPECANOE_SHARED_BORDERS=1` if the machine has plenty of RAM.
 
 ### Convert to Versatiles container
 

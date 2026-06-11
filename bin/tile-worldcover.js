@@ -1,10 +1,10 @@
 // Build the vector tile pyramid from the merged polygon geometry, using tippecanoe.
 //
 // tippecanoe simplifies the geometry per zoom level and tiles it seamlessly in one
-// pass: --detect-shared-borders keeps boundaries between adjacent classes coincident
-// while simplifying (no slivers/gaps), and --coalesce-smallest-as-needed merges the
-// tile-boundary fragments left by per-tile polygonization rather than dropping them,
-// so coverage stays complete.
+// pass. --coalesce-smallest-as-needed merges the tile-boundary fragments left by
+// polygonization (keeping coverage), and --drop-densest-as-needed sheds features so
+// that dense low-zoom tiles — z0 is the whole world in a single tile — fit the MVT
+// size limit instead of blowing up.
 //
 // Requires tippecanoe on PATH (e.g. `brew install tippecanoe`).
 
@@ -28,7 +28,7 @@ if (!existsSync(file.geometry)) {
 const tmpdir = path.join(datadir, 'tippecanoe-tmp');
 await fs.mkdir(tmpdir, { recursive: true });
 
-await run('tippecanoe', [
+const args = [
 	'-o',
 	file.tiles,
 	'--force', // overwrite existing output
@@ -44,15 +44,24 @@ await run('tippecanoe', [
 	'kind:string',
 	'--include',
 	'kind', // keep only the kind attribute
-	'--detect-shared-borders', // coverage-aware simplification (no slivers between classes)
 	'--coalesce-smallest-as-needed', // merge tile-boundary fragments instead of dropping
+	'--drop-densest-as-needed', // shed features so dense low-zoom tiles fit (bounds size + memory)
 	'--name',
 	meta.name,
 	'--attribution',
 	meta.attribution,
 	'--description',
 	meta.description,
-	file.geometry,
-]);
+];
+
+// --detect-shared-borders gives cleaner class boundaries but is very memory-heavy at
+// low zoom (z0 is the whole world in one tile) and can blow up tile 0/0/0. The
+// geometry is already coverage-simplified upstream, so it's redundant; enable it only
+// with plenty of RAM via TIPPECANOE_SHARED_BORDERS=1.
+if (process.env.TIPPECANOE_SHARED_BORDERS === '1') args.push('--detect-shared-borders');
+
+args.push(file.geometry);
+
+await run('tippecanoe', args);
 
 console.error('Done. Tiles written to %s', file.tiles);
