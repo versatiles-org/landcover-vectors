@@ -2,29 +2,38 @@
 // XYZ raster pyramid. Replaces the old Terrascope WMTS download (now offline).
 //
 // Source: https://registry.opendata.aws/esa-worldcover-vito/ (s3://esa-worldcover)
-// The source tiles are 3°×3° single-band GeoTIFFs in EPSG:4326 with the standard
-// ESA WorldCover palette — the same colors the old PNG tiles used — so the
-// downstream extract step works unchanged.
+// The source tiles are 3°×3° single-band class-code GeoTIFFs in EPSG:4326.
 //
-// The source GeoTIFFs are read anonymously over /vsicurl — no local mirror. They
-// carry internal overviews, so cutting the pyramid only streams the resolution it
-// needs (for the default zoom 0-6 that is roughly the ~160 m/px overview, a tiny
-// fraction of the full 10 m data).
+// Each source tile is downloaded once to a local mirror at 1/FACTOR resolution by
+// reading its matching internal overview, so only a tiny fraction of the 10 m data
+// is transferred (~tens of MB total instead of 124 GB). The reduced tiles stay in
+// native EPSG:4326; the single reproject + resample to web-mercator happens locally
+// in the tiling step. Processing from local disk avoids the flaky, many-request
+// /vsicurl tiling. FACTOR=8 keeps full detail for the default zoom 0-6 (with
+// headroom for z7). Each download is retried, written atomically, and skipped if
+// already present, so the import is robust and resumable.
 //
-// Requires GDAL ≥ 3.11 (gdalbuildvrt + the `gdal raster tile` program) on PATH.
+// Requires GDAL ≥ 3.11 (gdal_translate, gdalbuildvrt, `gdal raster tile`) on PATH.
 
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
-import { existsSync } from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const BUCKET = 'https://esa-worldcover.s3.eu-central-1.amazonaws.com';
 const PREFIX = 'v200/2021/map/';
 
+const FACTOR = 8; // downsample each source tile by this factor on download
+const PERCENT = `${100 / FACTOR}%`; // gdal_translate -outsize argument
+const DOWNLOAD_CONCURRENCY = 8;
+const DOWNLOAD_RETRIES = 3;
+
 const tiledir = path.resolve(__dirname, '../tiles');
+const srcdir = path.join(tiledir, 'esa-worldcover-src'); // local reduced-resolution mirror (EPSG:4326)
 const workdir = path.join(tiledir, 'esa-worldcover'); // gdal raster tile XYZ output
 
 // let GDAL read the public bucket anonymously over /vsicurl
@@ -45,6 +54,25 @@ const run = (cmd, args) =>
 		child.on('error', reject);
 		child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exited with code ${code}`))));
 	});
+
+// run a child process quietly, capturing stderr for the error message
+const runQuiet = (cmd, args) =>
+	new Promise((resolve, reject) => {
+		const child = spawn(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'], env: gdalEnv });
+		let stderr = '';
+		child.stderr.on('data', (d) => (stderr += d));
+		child.on('error', reject);
+		child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(stderr.trim() || `exit code ${code}`))));
+	});
+
+// run worker over items with bounded concurrency
+const pMap = async (items, concurrency, worker) => {
+	let i = 0;
+	const next = async () => {
+		while (i < items.length) await worker(items[i++]);
+	};
+	await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, next));
+};
 
 // list every map GeoTIFF key in the bucket (paginated ListObjectsV2)
 const listSourceKeys = async () => {
@@ -68,26 +96,74 @@ const listSourceKeys = async () => {
 	return keys;
 };
 
+// download one source tile to the local mirror at reduced resolution, skipping if
+// already present. Reads only the matching overview (small transfer), keeps the
+// native projection and class codes (-r nearest), and writes atomically.
+const reduce = async (key) => {
+	const dest = path.join(srcdir, path.basename(key));
+	if (existsSync(dest)) return false; // an existing file is complete (atomic rename below)
+
+	const tmp = dest + '.part';
+	const src = `/vsicurl/${BUCKET}/${key}`;
+	for (let attempt = 1; ; attempt++) {
+		try {
+			await runQuiet('gdal_translate', [
+				'-q',
+				'-r',
+				'nearest',
+				'-outsize',
+				PERCENT,
+				PERCENT,
+				'-of',
+				'GTiff',
+				'-co',
+				'COMPRESS=DEFLATE',
+				'-co',
+				'TILED=YES',
+				src,
+				tmp,
+			]);
+			await fs.rename(tmp, dest); // atomic: only a complete file appears as dest
+			return true;
+		} catch (err) {
+			await fs.rm(tmp, { force: true }); // never leave a partial file behind
+			if (attempt >= DOWNLOAD_RETRIES) throw new Error(`reduce ${key} failed: ${err.message}`);
+			await sleep(attempt * 1000);
+		}
+	}
+};
+
 (async () => {
 	const zoom = process.argv[2] || '0-6';
 
+	await fs.mkdir(srcdir, { recursive: true });
 	await fs.mkdir(workdir, { recursive: true });
 
-	// 1. enumerate source tiles → /vsicurl file list for gdalbuildvrt
+	// 1. enumerate source tiles
 	console.error('Listing source tiles from s3://esa-worldcover/%s …', PREFIX);
 	const keys = await listSourceKeys();
 	console.error('Found %d source tiles', keys.length);
 
-	const listPath = path.join(workdir, 'sources.txt');
-	await fs.writeFile(listPath, keys.map((k) => `/vsicurl/${BUCKET}/${k}`).join('\n') + '\n');
+	// 2. download reduced-resolution local copies (parallel, resumable)
+	let done = 0;
+	let fetched = 0;
+	await pMap(keys, DOWNLOAD_CONCURRENCY, async (key) => {
+		if (await reduce(key)) fetched++;
+		done++;
+		if (done % 25 === 0 || done === keys.length) {
+			process.stderr.write(`  ${done}/${keys.length} tiles (${fetched} downloaded, ${done - fetched} cached)\r`);
+		}
+	});
+	process.stderr.write('\n');
 
-	// 2. virtual mosaic over the source tiles, read directly from S3 (EPSG:4326)
-	const vrtPath = path.join(workdir, 'worldcover.vrt');
-	if (!existsSync(vrtPath)) {
-		await run('gdalbuildvrt', ['-overwrite', '-input_file_list', listPath, vrtPath]);
-	}
+	// 3. virtual mosaic over the local reduced tiles (EPSG:4326). Rebuilt every run
+	//    so a resumed/expanded download is always fully included (cheap on local disk).
+	const listPath = path.join(srcdir, 'sources.txt');
+	await fs.writeFile(listPath, keys.map((k) => path.join(srcdir, path.basename(k))).join('\n') + '\n');
+	const vrtPath = path.join(srcdir, 'worldcover.vrt');
+	await run('gdalbuildvrt', ['-overwrite', '-input_file_list', listPath, vrtPath]);
 
-	// 3. cut a web-mercator XYZ pyramid (the GDAL "gdal raster tile" program).
+	// 4. cut a web-mercator XYZ pyramid locally (the GDAL "gdal raster tile" program).
 	//    "mode" resampling — for both the base zoom and the overviews — keeps the
 	//    land-cover class codes pure when downsampling (no blended values between
 	//    classes), so lower zoom levels are categorically correct without a
@@ -95,7 +171,7 @@ const listSourceKeys = async () => {
 	//
 	//    --add-alpha de-palettes the source: each tile carries the raw class code
 	//    as its (grayscale) pixel value plus an alpha channel for nodata, which the
-	//    extract step classifies directly. --skip-blank omits all-nodata (ocean) tiles.
+	//    render step classifies directly. --skip-blank omits all-nodata (ocean) tiles.
 	//
 	//    Tiles are 4096×4096 px to match the MVT extent (see render.js). A 4096 px
 	//    tile at zoom Z has the same ground resolution as a 256 px tile at zoom Z+4,
