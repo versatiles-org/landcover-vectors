@@ -10,11 +10,12 @@
     "node": ">=20"
   },
   "scripts": {
-    "import": "node bin/import-worldcover.js",
+    "download": "node bin/download-worldcover.js",
+    "tile": "node bin/tile-worldcover.js",
     "render": "node bin/render.js",
     "simplify": "node bin/simplify.js",
     "pack": "versatiles convert -c brotli tiles/vectortiles-simplified landcover-vectors.versatiles",
-    "build": "npm run import && npm run render && npm run simplify && npm run pack",
+    "build": "npm run download && npm run tile && npm run render && npm run simplify && npm run pack",
     "upgrade": "npx npm-check-updates -u && npm install",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

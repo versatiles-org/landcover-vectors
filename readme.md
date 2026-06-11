@@ -17,54 +17,60 @@ There are to complement OSM tiles on lower zoom levels.
 ## How it's made
 
 Each step below can be run directly with `node`, or via its npm script (shown after the `# or` line).
-To run the whole pipeline (import → render → simplify → pack) in order:
+To run the whole pipeline (download → tile → render → simplify → pack) in order:
 
 ```sh
 npm run build
 ```
 
-### Import raster tiles
+### Download source data
 
 ```sh
-node bin/import-worldcover.js
+node bin/download-worldcover.js
 # or
-npm run import
+npm run download
 ```
 
-This imports [ESA WorldCover 2021 (v200)](https://registry.opendata.aws/esa-worldcover-vito/) from AWS Open Data
-(`s3://esa-worldcover`) and cuts a web-mercator XYZ raster pyramid (zoom levels 0–6 by default) into
-`tiles/esa-worldcover` using GDAL.
+This downloads a reduced-resolution local mirror of [ESA WorldCover 2021 (v200)](https://registry.opendata.aws/esa-worldcover-vito/)
+from AWS Open Data (`s3://esa-worldcover`). Each of the 2651 source GeoTIFFs is downsampled by a factor of 8 on the
+way in (reading its matching internal overview, so only a small fraction of the full 10 m data is transferred) and
+written to `tiles/esa-worldcover-src` in its native EPSG:4326. 1/8 (~74 m/px) keeps full detail for zoom 0–6, with
+headroom for zoom 7 — so the whole mirror is only a few hundred MB instead of the full ~124 GB.
+
+Downloads run in parallel, are retried, written atomically, and skipped if already present — so the step is robust
+against network errors and resumable (re-running continues where it left off).
+
+> The old download step used the Terrascope WMTS service, which is no longer available — hence the move to the AWS
+> Open Data mirror.
+
+### Cut the tile pyramid
+
+```sh
+node bin/tile-worldcover.js
+# or
+npm run tile
+```
+
+This cuts the local mirror into a web-mercator XYZ raster pyramid (zoom levels 0–6 by default) in
+`tiles/esa-worldcover`, entirely from local disk — no network, so no flaky `/vsicurl` request storms.
 
 Tiles are **4096×4096 px** — matching the MVT extent the renderer uses. A 4096 px tile at a given zoom has the same
 ground resolution as a 256 px tile four zoom levels deeper, so the zoom-6 tiles carry zoom-10 detail in a single,
 seam-free tile that the renderer vectorizes at native resolution (no upscaling). This produces far fewer, larger
 tiles than a deep 256 px pyramid would.
 
-The import runs in two stages:
-
-1. **Download a reduced-resolution local mirror.** Each of the 2651 source GeoTIFFs is downsampled by a factor of 8
-   on the way in (reading its matching internal overview, so only a small fraction of the full 10 m data is
-   transferred) and written to `tiles/esa-worldcover-src` in its native EPSG:4326. 1/8 (~74 m/px) keeps full detail
-   for zoom 0–6, with headroom for zoom 7. The whole mirror is only a few hundred MB instead of the full ~124 GB.
-   Downloads run in parallel, are retried, written atomically, and skipped if already present — so the step is
-   robust against network errors and resumable (re-running continues where it left off).
-
-2. **Cut the pyramid locally.** `gdal raster tile` then builds the XYZ pyramid entirely from local disk (no network,
-   so no flaky `/vsicurl` request storms). It uses `mode` resampling, which keeps the land-cover class codes pure
-   when downsampling, so the lower zoom levels are categorically correct and no separate compositing step is needed.
-   Each output tile carries the raw ESA WorldCover class code as its pixel value (plus an alpha channel for nodata),
-   which the render step classifies directly — no fragile color matching.
+`gdal raster tile` uses `mode` resampling, which keeps the land-cover class codes pure when downsampling, so the
+lower zoom levels are categorically correct and no separate compositing step is needed. Each output tile carries the
+raw ESA WorldCover class code as its pixel value (plus an alpha channel for nodata), which the render step
+classifies directly — no fragile color matching.
 
 You can pass a zoom range as parameter (default `0-6`):
 
 ```sh
-node bin/import-worldcover.js 0-4
+node bin/tile-worldcover.js 0-4
 # or
-npm run import -- 0-4
+npm run tile -- 0-4
 ```
-
-> The old `download` step used the Terrascope WMTS service, which is no longer available — hence the move to the
-> AWS Open Data mirror.
 
 ### Render vector tiles
 
