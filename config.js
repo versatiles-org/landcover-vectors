@@ -9,24 +9,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // (override with the DATA_DIR env var, e.g. to process into a scratch location)
 export const datadir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.resolve(__dirname, 'data');
 
-// well-known subdirectories within the data folder, used across every step
+// directories within the data folder, used across the pipeline
 export const dir = {
-	source: path.join(datadir, 'esa-worldcover-src'), // reduced-resolution source mirror (download)
-	raster: path.join(datadir, 'esa-worldcover'), // web-mercator raster XYZ pyramid (tile)
-	vector: path.join(datadir, 'vectortiles'), // rendered vector tiles (render)
-	simplified: path.join(datadir, 'vectortiles-simplified'), // simplified vector tiles (simplify, pack)
+	source: path.join(datadir, 'esa-worldcover-src'), // reduced-resolution raster mirror (download)
+	work: path.join(datadir, 'polygons'), // per-tile polygon geometry (polygonize)
 };
 
-// landcover classes (the `kind` values), in a single canonical order used by
-// every step. These reuse the proposed Shortbread `landcover` layer vocabulary
-// so styling transitions seamlessly at the z6→z7 seam (see issue #4).
-export const layers = ['bare', 'farmland', 'forest', 'glacier', 'grass', 'scrub', 'urban', 'water', 'wetland'];
+// files within the data folder
+export const file = {
+	geometry: path.join(datadir, 'landcover.fgb'), // merged polygon geometry (polygonize → tile)
+	tiles: path.join(datadir, 'landcover.mbtiles'), // vector tile pyramid (tile → pack)
+};
 
-// ESA WorldCover class code → Shortbread `landcover.kind`.
-// The imported tiles carry the original class codes as pixel values (10, 20, …
-// 100); 0 is nodata. See https://esa-worldcover.org/en/data-access for the legend
-// and https://github.com/shortbread-tiles/shortbread-docs/issues/144 for the
-// target vocabulary. Note ESA's moss → bare and mangroves → wetland are merged.
+// ESA WorldCover class code → Shortbread `landcover.kind` (see issue #4).
+// The polygonize step tags each polygon with its code; the tile step maps it to a
+// kind. Several ESA classes merge (moss → bare, mangroves → wetland); 0 is nodata.
+// Legend: https://esa-worldcover.org/en/data-access
 export const codemap = {
 	10: 'forest', // tree cover
 	20: 'scrub', // shrubland
@@ -41,35 +39,12 @@ export const codemap = {
 	100: 'bare', // moss and lichen
 };
 
-// classify a single pixel by its class code, returns the landcover class or undefined
-export function classifyCode(code) {
-	return codemap[code];
-}
-
-// shared tilejson for the vector tile sets
-export function vectorTileJSON() {
-	return {
-		tilejson: '3.0.0',
-		attribution:
-			'<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> <a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a>',
-		name: 'Versatiles Landcover',
-		description:
-			'Landcover vector tiles based on ESA Worldcover 2021, © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium',
-		version: '1.0.0',
-		tiles: ['{z}/{x}/{y}.pbf'],
-		type: 'vector',
-		scheme: 'xyz',
-		format: 'pbf',
-		bounds: [-180, -85.0511287798066, 180, 85.0511287798066],
-		minzoom: 0,
-		maxzoom: 6,
-		vector_layers: [
-			{
-				id: 'landcover-vectors',
-				fields: { kind: 'String' },
-				minzoom: 0,
-				maxzoom: 6,
-			},
-		],
-	};
-}
+// metadata embedded in the generated tileset
+export const meta = {
+	layer: 'landcover-vectors',
+	name: 'Versatiles Landcover',
+	attribution:
+		'<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> <a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a>',
+	description:
+		'Landcover vector tiles based on ESA Worldcover 2021, © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium',
+};

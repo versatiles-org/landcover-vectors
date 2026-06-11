@@ -11,11 +11,10 @@
   },
   "scripts": {
     "download": "node bin/download-worldcover.js",
+    "polygonize": "node bin/polygonize-worldcover.js",
     "tile": "node bin/tile-worldcover.js",
-    "render": "node bin/render.js",
-    "simplify": "node bin/simplify.js",
-    "pack": "versatiles convert -c brotli data/vectortiles-simplified landcover-vectors.versatiles",
-    "build": "npm run download && npm run tile && npm run render && npm run simplify && npm run pack",
+    "pack": "versatiles convert -c brotli data/landcover.mbtiles landcover-vectors.versatiles",
+    "build": "npm run download && npm run polygonize && npm run tile && npm run pack",
     "upgrade": "npx npm-check-updates -u && npm install",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

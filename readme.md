@@ -11,13 +11,14 @@ There are to complement OSM tiles on lower zoom levels.
 ## Requirements
 
 - `node` (or `bun`)
-- [`GDAL`](https://gdal.org/) ≥ 3.11 (`gdal_translate`, `gdalbuildvrt` and the `gdal raster tile` program on `PATH`)
+- [`GDAL`](https://gdal.org/) ≥ 3.11 (`gdal_translate`, `gdal_sieve.py`, `ogr2ogr` and the `gdal raster polygonize` program on `PATH`)
+- [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`)
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
 
 ## How it's made
 
 Each step below can be run directly with `node`, or via its npm script (shown after the `# or` line).
-To run the whole pipeline (download → tile → render → simplify → pack) in order:
+To run the whole pipeline (download → polygonize → tile → pack) in order:
 
 ```sh
 npm run build
@@ -46,7 +47,25 @@ against network errors and resumable (re-running continues where it left off).
 > The old download step used the Terrascope WMTS service, which is no longer available — hence the move to the AWS
 > Open Data mirror.
 
-### Cut the tile pyramid
+### Vectorize (polygonize)
+
+```sh
+node bin/polygonize-worldcover.js
+# or
+npm run polygonize
+```
+
+This vectorizes the raster mirror into one polygon geometry file. Each source tile is processed **in parallel**
+behind a single progress bar: small specks are sieved out, `gdal raster polygonize` turns it into polygons (one per
+connected class region), and each polygon is tagged with its Shortbread `kind`. The per-tile results are merged into
+a single FlatGeobuf at `data/landcover.fgb`. The step is resumable — already-polygonized tiles are skipped.
+
+This is the geospatially-correct vectorization: polygons follow class boundaries exactly, with **no per-tile seams**
+(unlike tracing each tile separately). Polygons split at source-tile boundaries are healed when tiling.
+
+Tuning: `POLYGONIZE_SIEVE` drops connected regions smaller than this many pixels (default `8`; `0` disables).
+
+### Tile
 
 ```sh
 node bin/tile-worldcover.js
@@ -54,20 +73,13 @@ node bin/tile-worldcover.js
 npm run tile
 ```
 
-This cuts the local mirror into a web-mercator XYZ raster pyramid (zoom levels 0–6 by default) in
-`data/esa-worldcover`, entirely from local disk — no network, so no flaky `/vsicurl` request storms.
+This builds the vector tile pyramid from the merged geometry with [tippecanoe](https://github.com/felt/tippecanoe),
+writing `data/landcover.mbtiles`. tippecanoe simplifies the geometry per zoom level and tiles it seamlessly in one
+pass: `--detect-shared-borders` keeps boundaries between adjacent classes coincident while simplifying (no
+slivers/gaps), and `--coalesce-smallest-as-needed` merges the tile-boundary fragments left by polygonization rather
+than dropping them, so coverage stays complete at every zoom.
 
-Tiles are **4096×4096 px** — matching the MVT extent the renderer uses. A 4096 px tile at a given zoom has the same
-ground resolution as a 256 px tile four zoom levels deeper, so the zoom-6 tiles carry zoom-10 detail in a single,
-seam-free tile that the renderer vectorizes at native resolution (no upscaling). This produces far fewer, larger
-tiles than a deep 256 px pyramid would.
-
-`gdal raster tile` uses `mode` resampling, which keeps the land-cover class codes pure when downsampling, so the
-lower zoom levels are categorically correct and no separate compositing step is needed. Each output tile carries the
-raw ESA WorldCover class code as its pixel value (plus an alpha channel for nodata), which the render step
-classifies directly — no fragile color matching.
-
-You can pass a zoom range as parameter (default `0-6`):
+By default zoom levels 0–6 are created; pass a range as parameter:
 
 ```sh
 node bin/tile-worldcover.js 0-4
@@ -75,55 +87,15 @@ node bin/tile-worldcover.js 0-4
 npm run tile -- 0-4
 ```
 
-### Render vector tiles
-
-```sh
-node bin/render.js
-# or
-npm run render
-```
-
-For each imported tile this derives a monochrome mask per land-cover class (pixels are classified directly by their
-ESA WorldCover class code), vectorizes each mask with `potrace`, and combines the results into one vector tile.
-By default zoom levels 0-6 are created, you can pass the desired target zoom level as parameter:
-
-```sh
-node bin/render.js 4
-# or
-npm run render -- 4
-```
-
-Rendering runs **in parallel**: it scans all zoom levels first, skips tiles whose output already exists, and feeds
-the rest to a pool of worker threads (one per core) behind a single progress bar. `potrace-wasm` leaks memory, so
-each worker reports its memory after every tile and the pool recycles it once it grows too large — this keeps the
-run bounded. The step is also resumable: if it's interrupted, just run it again and already-rendered tiles are
-skipped.
-
-Tuning via environment variables:
-
-- `RENDER_WORKERS` — number of worker threads (default: CPU cores − 1)
-- `RENDER_MAX_RSS_MB` — recycle a worker once its memory exceeds this (default: 1024)
-
-### Simplify vector tile polygons
-
-```sh
-node bin/simplify.js
-# or
-npm run simplify
-```
-
-This simplifies the polygons in each tile larger than 100kb using the Visvalingam–Whyatt algorithm.
-The algorithm has been slightly modified to keep tile edges intact.
-
 ### Convert to Versatiles container
 
 ```sh
-versatiles convert -c brotli data/vectortiles-simplified landcover-vectors.versatiles
+versatiles convert -c brotli data/landcover.mbtiles landcover-vectors.versatiles
 # or
 npm run pack
 ```
 
-This compresses and packs all vectortiles into a versatiles container.
+This compresses and packs the tiles into a versatiles container.
 
 ## Style
 
