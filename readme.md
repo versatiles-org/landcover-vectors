@@ -11,7 +11,7 @@ There are to complement OSM tiles on lower zoom levels.
 ## Requirements
 
 - `node` (or `bun`)
-- [`GDAL`](https://gdal.org/) ≥ 3.11 (`gdalbuildvrt` and the `gdal raster tile` program on `PATH`)
+- [`GDAL`](https://gdal.org/) ≥ 3.11 (`gdal_translate`, `gdalbuildvrt` and the `gdal raster tile` program on `PATH`)
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
 
 ## How it's made
@@ -40,12 +40,20 @@ ground resolution as a 256 px tile four zoom levels deeper, so the zoom-6 tiles 
 seam-free tile that the renderer vectorizes at native resolution (no upscaling). This produces far fewer, larger
 tiles than a deep 256 px pyramid would.
 
-The 2651 source GeoTIFFs are read directly from S3 over `/vsicurl` (no local mirror). They carry internal overviews,
-so cutting a zoom 0–6 pyramid only streams the resolution it needs — roughly the ~160 m/px overview, a small
-fraction of the full 10 m data. The `gdal raster tile` program uses `mode` resampling, which keeps the land-cover
-class codes pure when downsampling — so the lower zoom levels are categorically correct and no separate compositing
-step is needed. Each tile carries the raw ESA WorldCover class code as its pixel value (plus an alpha channel for
-nodata), which the extract step classifies directly — no fragile color matching.
+The import runs in two stages:
+
+1. **Download a reduced-resolution local mirror.** Each of the 2651 source GeoTIFFs is downsampled by a factor of 8
+   on the way in (reading its matching internal overview, so only a small fraction of the full 10 m data is
+   transferred) and written to `tiles/esa-worldcover-src` in its native EPSG:4326. 1/8 (~74 m/px) keeps full detail
+   for zoom 0–6, with headroom for zoom 7. The whole mirror is only a few hundred MB instead of the full ~124 GB.
+   Downloads run in parallel, are retried, written atomically, and skipped if already present — so the step is
+   robust against network errors and resumable (re-running continues where it left off).
+
+2. **Cut the pyramid locally.** `gdal raster tile` then builds the XYZ pyramid entirely from local disk (no network,
+   so no flaky `/vsicurl` request storms). It uses `mode` resampling, which keeps the land-cover class codes pure
+   when downsampling, so the lower zoom levels are categorically correct and no separate compositing step is needed.
+   Each output tile carries the raw ESA WorldCover class code as its pixel value (plus an alpha channel for nodata),
+   which the render step classifies directly — no fragile color matching.
 
 You can pass a zoom range as parameter (default `0-6`):
 
