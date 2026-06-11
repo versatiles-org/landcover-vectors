@@ -128,6 +128,6 @@ const vrtXml =
 await fs.writeFile(vrtPath, vrtXml);
 
 console.error('Merging %d tiles → %s', fgbs.length, file.geometry);
-await run('ogr2ogr', ['-f', 'FlatGeobuf', '-nln', 'landcover', file.geometry, vrtPath]);
+await run('ogr2ogr', ['-progress', '-f', 'FlatGeobuf', '-nln', 'landcover', file.geometry, vrtPath]);
 
 console.error('Done. Geometry written to %s', file.geometry);
