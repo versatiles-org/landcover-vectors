@@ -27,7 +27,7 @@ const RETRIES = 3;
 // download one source tile to the local mirror at reduced resolution, skipping if
 // already present. Reads only the matching overview (small transfer), keeps the
 // native projection and class codes (-r nearest), and writes atomically.
-const download = async (key) => {
+async function download(key) {
 	const dest = path.join(srcdir, path.basename(key));
 	if (existsSync(dest)) return false; // an existing file is complete (atomic rename below)
 
@@ -59,22 +59,20 @@ const download = async (key) => {
 			await sleep(attempt * 1000);
 		}
 	}
-};
+}
 
-(async () => {
-	await fs.mkdir(srcdir, { recursive: true });
+await fs.mkdir(srcdir, { recursive: true });
 
-	console.error('Listing source tiles from s3://esa-worldcover/%s …', PREFIX);
-	const keys = await listSourceKeys();
-	console.error('Found %d source tiles', keys.length);
+console.error('Listing source tiles from s3://esa-worldcover/%s …', PREFIX);
+const keys = await listSourceKeys();
+console.error('Found %d source tiles', keys.length);
 
-	let fetched = 0;
-	const bar = progress(keys.length, 'Downloading');
-	await pMap(keys, CONCURRENCY, async (key) => {
-		if (await download(key)) fetched++;
-		bar.tick();
-	});
-	bar.done();
+let fetched = 0;
+const bar = progress(keys.length, 'Downloading');
+await pMap(keys, CONCURRENCY, async (key) => {
+	if (await download(key)) fetched++;
+	bar.tick();
+});
+bar.done();
 
-	console.error('Done. %d downloaded, %d already cached. Mirror in %s', fetched, keys.length - fetched, srcdir);
-})();
+console.error('Done. %d downloaded, %d already cached. Mirror in %s', fetched, keys.length - fetched, srcdir);

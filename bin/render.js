@@ -22,7 +22,7 @@ const { pathDataToPolys } = svgPathToPolygons;
 
 const srcdir = path.resolve(__dirname, '../tiles/esa-worldcover');
 
-const render = async function render(z, x, y) {
+async function render(z, x, y) {
 	// destination
 	const dest = path.resolve(__dirname, `../tiles/vectortiles/${z}/${x}/${y}.pbf`);
 
@@ -146,25 +146,24 @@ const render = async function render(z, x, y) {
 	const pbf = vtt.pack([vectortile]);
 	await fs.mkdir(path.dirname(dest), { recursive: true });
 	await fs.writeFile(dest, pbf);
-};
+}
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
-	(async () => {
-		let z1 = parseInt(process.argv[2] || '6', 10);
-		for (let z = 0; z <= z1; z++) {
-			const tiles = await listZoomTiles(srcdir, z);
-			if (tiles.length === 0) continue;
-			const bar = progress(tiles.length, `Rendering z${z}`);
-			for (const { x, y } of tiles) {
-				await render(z, x, y);
-				bar.tick();
-			}
-			bar.done();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+	const z1 = parseInt(process.argv[2] || '6', 10);
+	for (let z = 0; z <= z1; z++) {
+		const tiles = await listZoomTiles(srcdir, z);
+		if (tiles.length === 0) continue;
+		const bar = progress(tiles.length, `Rendering z${z}`);
+		for (const { x, y } of tiles) {
+			await render(z, x, y);
+			bar.tick();
 		}
+		bar.done();
+	}
 
-		// write tilejson
-		await fs.writeFile(
-			path.resolve(__dirname, `../tiles/vectortiles-simplified/tile.json`),
-			JSON.stringify(config.vectorTileJSON(), null, '\t'),
-		);
-	})();
+	// write tilejson
+	await fs.writeFile(
+		path.resolve(__dirname, `../tiles/vectortiles-simplified/tile.json`),
+		JSON.stringify(config.vectorTileJSON(), null, '\t'),
+	);
+}

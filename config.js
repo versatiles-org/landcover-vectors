@@ -25,12 +25,12 @@ export const codemap = {
 };
 
 // classify a single pixel by its class code, returns the landcover class or undefined
-export const classifyCode = function (code) {
+export function classifyCode(code) {
 	return codemap[code];
-};
+}
 
 // shared tilejson for the vector tile sets
-export const vectorTileJSON = function () {
+export function vectorTileJSON() {
 	return {
 		tilejson: '3.0.0',
 		attribution:
@@ -55,4 +55,4 @@ export const vectorTileJSON = function () {
 			},
 		],
 	};
-};
+}

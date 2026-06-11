@@ -22,44 +22,42 @@ import path from 'node:path';
 
 import { srcdir, workdir, run } from '../lib/worldcover.js';
 
-(async () => {
-	const zoom = process.argv[2] || '0-6';
+const zoom = process.argv[2] || '0-6';
 
-	await fs.mkdir(workdir, { recursive: true });
+await fs.mkdir(workdir, { recursive: true });
 
-	// enumerate the downloaded reduced tiles (fully offline)
-	const sources = (await fs.readdir(srcdir)).filter((f) => f.endsWith('.tif')).map((f) => path.join(srcdir, f));
-	if (sources.length === 0) throw new Error(`no source tiles in ${srcdir} — run "npm run download" first`);
-	console.error('Tiling %d source tiles', sources.length);
+// enumerate the downloaded reduced tiles (fully offline)
+const sources = (await fs.readdir(srcdir)).filter((f) => f.endsWith('.tif')).map((f) => path.join(srcdir, f));
+if (sources.length === 0) throw new Error(`no source tiles in ${srcdir} — run "npm run download" first`);
+console.error('Tiling %d source tiles', sources.length);
 
-	// virtual mosaic over the local reduced tiles (EPSG:4326). Rebuilt every run so a
-	// resumed/expanded download is always fully included (cheap on local disk).
-	const listPath = path.join(srcdir, 'sources.txt');
-	await fs.writeFile(listPath, sources.join('\n') + '\n');
-	const vrtPath = path.join(srcdir, 'worldcover.vrt');
-	await run('gdalbuildvrt', ['-overwrite', '-input_file_list', listPath, vrtPath]);
+// virtual mosaic over the local reduced tiles (EPSG:4326). Rebuilt every run so a
+// resumed/expanded download is always fully included (cheap on local disk).
+const listPath = path.join(srcdir, 'sources.txt');
+await fs.writeFile(listPath, sources.join('\n') + '\n');
+const vrtPath = path.join(srcdir, 'worldcover.vrt');
+await run('gdalbuildvrt', ['-overwrite', '-input_file_list', listPath, vrtPath]);
 
-	// cut the web-mercator XYZ pyramid (the GDAL "gdal raster tile" program)
-	const [minZoom, maxZoom] = zoom.includes('-') ? zoom.split('-') : [zoom, zoom];
-	await run(
-		'gdal',
-		[
-			['raster', 'tile'],
-			['--convention', 'xyz'],
-			['--tile-size', '4096'],
-			['--min-zoom', minZoom],
-			['--max-zoom', maxZoom],
-			['-r', 'mode'],
-			['--overview-resampling', 'mode'],
-			'--add-alpha',
-			'--skip-blank',
-			'--resume',
-			['--webviewer', 'none'],
-			['--num-threads', 'ALL_CPUS'],
-			['-i', vrtPath],
-			['-o', workdir],
-		].flat(),
-	);
+// cut the web-mercator XYZ pyramid (the GDAL "gdal raster tile" program)
+const [minZoom, maxZoom] = zoom.includes('-') ? zoom.split('-') : [zoom, zoom];
+await run(
+	'gdal',
+	[
+		['raster', 'tile'],
+		['--convention', 'xyz'],
+		['--tile-size', '4096'],
+		['--min-zoom', minZoom],
+		['--max-zoom', maxZoom],
+		['-r', 'mode'],
+		['--overview-resampling', 'mode'],
+		'--add-alpha',
+		'--skip-blank',
+		'--resume',
+		['--webviewer', 'none'],
+		['--num-threads', 'ALL_CPUS'],
+		['-i', vrtPath],
+		['-o', workdir],
+	].flat(),
+);
 
-	console.error('Done. XYZ tiles written to %s', workdir);
-})();
+console.error('Done. XYZ tiles written to %s', workdir);
