@@ -1,166 +1,125 @@
-// vectorize tiles and combine into vectortiles
-// warning: potrace-wasm appears to leak memory
-// FIXME: put into worker, hope it fixes the memory leak
+// Render imported raster tiles into MVT vector tiles, in parallel.
+//
+// Scans every zoom level up front, skips tiles whose output already exists, and
+// feeds the remaining work to a pool of worker threads (one per core, see
+// bin/render-worker.js). A single progress bar covers all the tiles that actually
+// need rendering. Each worker reports its memory after every tile so the pool can
+// recycle it once it grows too large — which bounds the known potrace-wasm leak.
+//
+// Tuning via env: RENDER_WORKERS (default cores-1), RENDER_MAX_RSS_MB (default 1024).
 
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
+import { Worker } from 'node:worker_threads';
 import { pathToFileURL } from 'node:url';
 
-import svgPathToPolygons from 'svg-path-to-polygons';
-import potrace from 'potrace-wasm';
-import sharp from 'sharp';
-import vtt from 'vtt';
-
 import exists from '../lib/exists.js';
-import rewind from '../lib/rewind.js';
 import { listZoomTiles } from '../lib/tiles.js';
 import { progress } from '../lib/progress.js';
 import * as config from '../config.js';
 
-const { pathDataToPolys } = svgPathToPolygons;
+const WORKERS = parseInt(process.env.RENDER_WORKERS, 10) || Math.max(1, os.availableParallelism() - 1);
+const MAX_RSS = (parseInt(process.env.RENDER_MAX_RSS_MB, 10) || 1024) * 1024 * 1024;
+const MAX_RETRIES = 2; // re-queue a tile this many times if its worker crashes
 
-const srcdir = config.dir.raster;
+const workerURL = new URL('./render-worker.js', import.meta.url);
 
-async function render(z, x, y) {
-	// destination
-	const dest = path.join(config.dir.vector, `${z}/${x}/${y}.pbf`);
+// run all tasks through a pool of recycling worker threads
+function renderPool(tasks) {
+	return new Promise((resolve) => {
+		const bar = progress(tasks.length, 'Rendering');
+		let next = 0;
+		let active = 0;
+		let failures = 0;
 
-	// abort if tile exists
-	if (await exists(dest)) return;
-
-	// load the imported class-code tile (class code = first channel, alpha = last)
-	const { data, info } = await sharp(path.join(srcdir, `${z}/${x}/${y}.png`))
-		.raw()
-		.toBuffer({ resolveWithObject: true });
-	const stride = info.channels;
-	const pixels = info.width * info.height;
-
-	// scale factors from the source resolution to the 4096 MVT extent
-	const sx = 4096 / info.width;
-	const sy = 4096 / info.height;
-
-	// prepare vectortile
-	const vectortile = {
-		version: 2,
-		name: 'landcover-vectors',
-		extent: 4096,
-		features: [],
-		keys: ['kind'],
-		values: [],
-	};
-
-	// iterate layers
-	for (let layer of config.layers) {
-		// build a monochrome mask for this kind from the class codes
-		// (0 = present, 0xff = absent); skip layers absent from this (sparse) tile
-		let mask = null;
-		for (let p = 0; p < pixels; p++) {
-			const i = p * stride;
-			if (data[i + stride - 1] === 0) continue; // nodata
-			if (config.classifyCode(data[i]) !== layer) continue;
-			if (!mask) mask = Buffer.alloc(pixels, 0xff);
-			mask[p] = 0; // present
+		function assign(w) {
+			if (next >= tasks.length) return retire(w);
+			const task = tasks[next++];
+			w.current = task;
+			w.postMessage(task);
 		}
-		if (!mask) continue;
 
-		// extend 10 pixels, get buffer and metadata
-		const { data: edata, info: einfo } = await sharp(mask, {
-			raw: { width: info.width, height: info.height, channels: 1 },
-		})
-			.extend({ top: 10, left: 10, right: 10, bottom: 10, extendWith: 'copy' })
-			.ensureAlpha()
-			.raw()
-			.toBuffer({ resolveWithObject: true });
-
-		// vectorize with potrace-wasm
-		const vectors = await potrace.loadFromImageData(edata, einfo.width, einfo.height, {
-			pathonly: true,
-			turdsize: 2,
-			transform: false,
-		});
-
-		// check if vectors were found
-		if (vectors.length > 0) {
-			// add layer to values
-			vectortile.values.push(layer);
-
-			for (const vector of vectors) {
-				// turn vector paths into polygons
-				const polygon = pathDataToPolys(vector);
-
-				// turn polygons into geometry
-				const geometry = polygon
-					.map((r) => {
-						// clip vector by extend
-						return r.map((c) => {
-							c[0] = Math.min(einfo.width, Math.max(0, c[0] - 10));
-							c[1] = Math.min(einfo.height, Math.max(0, c[1] - 10));
-							return c;
-						});
-					})
-					.map((r) => {
-						// scale and round
-						return r
-							.map((c) => {
-								// scale to 4096×4096 and round to integers
-								c[0] = Math.round(c[0] * sx);
-								c[1] = Math.round(c[1] * sy);
-								return c;
-							})
-							.filter((c, i, a) => {
-								// filter double coordinates
-								return i === 0 || c[0] !== a[i - 1][0] || c[1] !== a[i - 1][1];
-							})
-							.filter((c, i, a) => {
-								// filter "180° corners" aka pointless nodes on a straight line
-								return (
-									i === 0 ||
-									i === a.length - 1 ||
-									Math.atan2(c[1] - a[i - 1][1], c[0] - a[i - 1][1]) !==
-										Math.atan2(a[i + 1][1] - c[1], a[i + 1][0] - c[0])
-								);
-							}); // FIXME apply simplification directly?
-					});
-
-				// enforce MVT 2.1 ring winding (exterior positive, holes negative)
-				const rewound = rewind(geometry);
-
-				// add feature to vectortile
-				vectortile.features.push({
-					id: vectortile.features.length + 1,
-					type: 3,
-					geometry: rewound,
-					properties: {
-						kind: layer, // layer type
-					},
-				});
+		function retire(w) {
+			w.dead = true;
+			active--;
+			w.terminate();
+			if (active === 0) {
+				bar.done();
+				if (failures) console.error('%d tile(s) failed — re-run to retry', failures);
+				resolve();
 			}
 		}
-	}
 
-	// nothing to write for tiles without any features (sparse coverage)
-	if (vectortile.features.length === 0) return;
+		function recycle(w) {
+			w.dead = true;
+			active--;
+			w.terminate();
+			spawn(); // fresh worker reclaims the leaked WASM heap and picks up the next task
+		}
 
-	// pack and write tile
-	const pbf = vtt.pack([vectortile]);
-	await fs.mkdir(path.dirname(dest), { recursive: true });
-	await fs.writeFile(dest, pbf);
+		function spawn() {
+			const w = new Worker(workerURL);
+			w.current = null;
+			w.dead = false;
+			active++;
+
+			w.on('message', (msg) => {
+				bar.tick();
+				if (!msg.ok) {
+					failures++;
+					process.stderr.write(`\n  failed ${msg.task.z}/${msg.task.x}/${msg.task.y}: ${msg.error}\n`);
+				}
+				w.current = null;
+				if (msg.rss > MAX_RSS) recycle(w);
+				else assign(w);
+			});
+
+			w.on('error', (err) => {
+				// uncaught crash (e.g. a WASM abort): re-queue its tile and replace it
+				if (w.dead) return;
+				w.dead = true;
+				active--;
+				const task = w.current;
+				if (task) {
+					task.attempts = (task.attempts || 0) + 1;
+					if (task.attempts <= MAX_RETRIES) {
+						tasks.push(task); // retry later
+					} else {
+						failures++;
+						bar.tick();
+						process.stderr.write(`\n  giving up on ${task.z}/${task.x}/${task.y} after ${MAX_RETRIES} crashes\n`);
+					}
+				}
+				process.stderr.write(`\n  worker crashed (${err.message}); restarting\n`);
+				spawn();
+			});
+
+			assign(w);
+		}
+
+		for (let i = 0; i < Math.min(WORKERS, tasks.length); i++) spawn();
+	});
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
 	const z1 = parseInt(process.argv[2] || '6', 10);
+
+	// scan every zoom up front; keep only tiles whose output doesn't exist yet
+	console.error('Scanning tiles …');
+	const tasks = [];
 	for (let z = 0; z <= z1; z++) {
-		const tiles = await listZoomTiles(srcdir, z);
-		if (tiles.length === 0) continue;
-		const bar = progress(tiles.length, `Rendering z${z}`);
-		for (const { x, y } of tiles) {
-			await render(z, x, y);
-			bar.tick();
+		for (const { x, y } of await listZoomTiles(config.dir.raster, z)) {
+			const dest = path.join(config.dir.vector, `${z}/${x}/${y}.pbf`);
+			if (!(await exists(dest))) tasks.push({ z, x, y });
 		}
-		bar.done();
 	}
+	console.error('%d tiles to render (%d workers)', tasks.length, WORKERS);
+
+	if (tasks.length > 0) await renderPool(tasks);
 
 	// write tilejson
+	await fs.mkdir(config.dir.simplified, { recursive: true });
 	await fs.writeFile(
 		path.join(config.dir.simplified, 'tile.json'),
 		JSON.stringify(config.vectorTileJSON(), null, '\t'),
