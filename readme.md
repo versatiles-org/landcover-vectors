@@ -63,7 +63,18 @@ a single FlatGeobuf at `data/landcover.fgb`. The step is resumable — already-p
 This is the geospatially-correct vectorization: polygons follow class boundaries exactly, with **no per-tile seams**
 (unlike tracing each tile separately). Polygons split at source-tile boundaries are healed when tiling.
 
-Tuning: `POLYGONIZE_SIEVE` drops connected regions smaller than this many pixels (default `8`; `0` disables).
+Each tile is downsampled to the target zoom resolution before polygonizing, so the geometry isn't far finer than the
+tiles can show — this keeps the intermediate geometry small (polygonizing the full ~74 m mirror produces several
+times more vertices and tiny polygons than zoom 6 needs).
+
+Tuning via environment variables:
+
+- `POLYGONIZE_SCALE` — downsample each source tile to this fraction first (default `50%`, i.e. ~74 m → ~152 m,
+  native to zoom 6, using dominant-class resampling). Use `100%` to keep full mirror resolution for zoom 7.
+- `POLYGONIZE_SIEVE` — drop connected regions smaller than this many pixels (default `8`; `0` disables).
+
+> The per-tile files in `data/polygons` plus the merged `data/landcover.fgb` together use about twice the geometry
+> size; once tiling succeeds you can delete `data/polygons` (it only exists to make the step resumable).
 
 ### Tile
 

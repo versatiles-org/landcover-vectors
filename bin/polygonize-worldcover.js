@@ -19,6 +19,12 @@ import { run, runQuiet, pMap } from '../lib/worldcover.js';
 import { progress } from '../lib/progress.js';
 import { dir, file, codemap } from '../config.js';
 
+// downsample each source tile before polygonizing, so the geometry matches the
+// target zoom rather than the (finer) mirror resolution. The mirror is ~74 m
+// (factor 8, z7-ready); 50% → ~152 m, which is native to zoom 6 and yields ~4×
+// smaller geometry with no z6 quality loss. Use mode (dominant class) for categorical
+// downsampling. Set to '100%' to keep full mirror resolution (e.g. for zoom 7).
+const SCALE = process.env.POLYGONIZE_SCALE || '50%';
 const SIEVE = process.env.POLYGONIZE_SIEVE !== undefined ? parseInt(process.env.POLYGONIZE_SIEVE, 10) : 8; // px; 0 = off
 const CONCURRENCY = Math.max(1, os.availableParallelism() - 1);
 
@@ -29,14 +35,22 @@ const whens = Object.entries(codemap)
 	.join(' ');
 const SQL = `SELECT *, CASE code ${whens} END AS kind FROM tile WHERE code IN (${codes.join(',')})`;
 
-// sieve → polygonize → tag with kind, writing one FlatGeobuf for a source tile
+// downsample → sieve → polygonize → tag with kind, writing one FlatGeobuf for a source tile
 async function polygonizeTile(srcTif, outFgb) {
 	const stem = path.join(os.tmpdir(), 'lc-' + path.basename(outFgb, '.fgb'));
+	const scaled = `${stem}.scale.tif`;
 	const sieved = `${stem}.sieve.tif`;
 	const codeFgb = `${stem}.code.fgb`;
 	try {
-		const raster = SIEVE > 0 ? sieved : srcTif;
-		if (SIEVE > 0) await runQuiet('gdal_sieve.py', ['-q', '-st', String(SIEVE), srcTif, sieved]);
+		let raster = srcTif;
+		if (SCALE !== '100%') {
+			await runQuiet('gdal_translate', ['-q', '-r', 'mode', '-outsize', SCALE, SCALE, raster, scaled]);
+			raster = scaled;
+		}
+		if (SIEVE > 0) {
+			await runQuiet('gdal_sieve.py', ['-q', '-st', String(SIEVE), raster, sieved]);
+			raster = sieved;
+		}
 		await runQuiet('gdal', [
 			'raster',
 			'polygonize',
@@ -66,6 +80,7 @@ async function polygonizeTile(srcTif, outFgb) {
 			codeFgb,
 		]);
 	} finally {
+		await fs.rm(scaled, { force: true });
 		await fs.rm(sieved, { force: true });
 		await fs.rm(codeFgb, { force: true });
 	}
@@ -75,7 +90,7 @@ await fs.mkdir(dir.work, { recursive: true });
 
 const tiles = (await fs.readdir(dir.source)).filter((f) => f.endsWith('.tif'));
 if (tiles.length === 0) throw new Error(`no source tiles in ${dir.source} — run "npm run download" first`);
-console.error('Polygonizing %d source tiles (%d workers, sieve=%d)', tiles.length, CONCURRENCY, SIEVE);
+console.error('Polygonizing %d source tiles (%d workers, scale=%s, sieve=%d)', tiles.length, CONCURRENCY, SCALE, SIEVE);
 
 // 1. polygonize every source tile in parallel (resumable: skip tiles already done)
 const bar = progress(tiles.length, 'Polygonizing');
