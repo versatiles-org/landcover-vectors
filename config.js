@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // base directory for everything the pipeline downloads and generates
-export const datadir = path.resolve(__dirname, 'data');
+// (override with the DATA_DIR env var, e.g. to process into a scratch location)
+export const datadir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.resolve(__dirname, 'data');
 
 // well-known subdirectories within the data folder, used across every step
 export const dir = {

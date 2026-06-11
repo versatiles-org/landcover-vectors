@@ -23,6 +23,9 @@ To run the whole pipeline (download → tile → render → simplify → pack) i
 npm run build
 ```
 
+All steps read and write under `data/` by default; set the `DATA_DIR` environment variable to use a different
+location.
+
 ### Download source data
 
 ```sh
@@ -90,8 +93,16 @@ node bin/render.js 4
 npm run render -- 4
 ```
 
-⚠️ Note that `potrace-wasm` appears to leak memory and the script will run out of memory eventually.
-You can run the script again, already created tiles will be skipped.
+Rendering runs **in parallel**: it scans all zoom levels first, skips tiles whose output already exists, and feeds
+the rest to a pool of worker threads (one per core) behind a single progress bar. `potrace-wasm` leaks memory, so
+each worker reports its memory after every tile and the pool recycles it once it grows too large — this keeps the
+run bounded. The step is also resumable: if it's interrupted, just run it again and already-rendered tiles are
+skipped.
+
+Tuning via environment variables:
+
+- `RENDER_WORKERS` — number of worker threads (default: CPU cores − 1)
+- `RENDER_MAX_RSS_MB` — recycle a worker once its memory exceeds this (default: 1024)
 
 ### Simplify vector tile polygons
 
