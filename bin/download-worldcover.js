@@ -17,6 +17,7 @@ import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { BUCKET, PREFIX, srcdir, runQuiet, pMap, listSourceKeys } from '../lib/worldcover.js';
+import { progress } from '../lib/progress.js';
 
 const FACTOR = 8; // downsample each source tile by this factor on download
 const PERCENT = `${100 / FACTOR}%`; // gdal_translate -outsize argument
@@ -67,16 +68,13 @@ const download = async (key) => {
 	const keys = await listSourceKeys();
 	console.error('Found %d source tiles', keys.length);
 
-	let done = 0;
 	let fetched = 0;
+	const bar = progress(keys.length, 'Downloading');
 	await pMap(keys, CONCURRENCY, async (key) => {
 		if (await download(key)) fetched++;
-		done++;
-		if (done % 25 === 0 || done === keys.length) {
-			process.stderr.write(`  ${done}/${keys.length} tiles (${fetched} downloaded, ${done - fetched} cached)\r`);
-		}
+		bar.tick();
 	});
-	process.stderr.write('\n');
+	bar.done();
 
-	console.error('Done. Reduced-resolution mirror in %s', srcdir);
+	console.error('Done. %d downloaded, %d already cached. Mirror in %s', fetched, keys.length - fetched, srcdir);
 })();

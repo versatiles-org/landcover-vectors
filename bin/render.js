@@ -14,6 +14,7 @@ import vtt from 'vtt';
 import exists from '../lib/exists.js';
 import rewind from '../lib/rewind.js';
 import { listZoomTiles } from '../lib/tiles.js';
+import { progress } from '../lib/progress.js';
 import * as config from '../config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,14 +26,8 @@ const render = async function render(z, x, y) {
 	// destination
 	const dest = path.resolve(__dirname, `../tiles/vectortiles/${z}/${x}/${y}.pbf`);
 
-	// take time
-	const t = Date.now();
-
 	// abort if tile exists
-	if (await exists(dest)) {
-		console.error('Tile %s/%s/%s.pbf already rendered', z, x, y);
-		return;
-	}
+	if (await exists(dest)) return;
 
 	// load the imported class-code tile (class code = first channel, alpha = last)
 	const { data, info } = await sharp(path.join(srcdir, `${z}/${x}/${y}.png`))
@@ -151,18 +146,6 @@ const render = async function render(z, x, y) {
 	const pbf = vtt.pack([vectortile]);
 	await fs.mkdir(path.dirname(dest), { recursive: true });
 	await fs.writeFile(dest, pbf);
-
-	// status
-	console.log(
-		'Rendered %s/%s/%s.pbf in %ss (%skb)',
-		z,
-		x,
-		y,
-		((Date.now() - t) / 1000).toFixed(2),
-		(pbf.length / 1024).toFixed(2),
-	);
-
-	return;
 };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
@@ -170,10 +153,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
 		let z1 = parseInt(process.argv[2] || '6', 10);
 		for (let z = 0; z <= z1; z++) {
 			const tiles = await listZoomTiles(srcdir, z);
-			console.error('Rendering z%d (%d tiles)', z, tiles.length);
+			if (tiles.length === 0) continue;
+			const bar = progress(tiles.length, `Rendering z${z}`);
 			for (const { x, y } of tiles) {
 				await render(z, x, y);
+				bar.tick();
 			}
+			bar.done();
 		}
 
 		// write tilejson
