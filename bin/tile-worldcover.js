@@ -1,10 +1,11 @@
 // Build the vector tile pyramid from the merged polygon geometry, using tippecanoe.
 //
 // tippecanoe simplifies the geometry per zoom level and tiles it seamlessly in one
-// pass. --coalesce-smallest-as-needed merges the tile-boundary fragments left by
-// polygonization (keeping coverage), and --drop-densest-as-needed sheds features so
-// that dense low-zoom tiles — z0 is the whole world in a single tile — fit the MVT
-// size limit instead of blowing up.
+// pass. When a tile would exceed the size limit (z0 is the whole world in one tile),
+// it keeps the coverage complete by simplifying harder — --simplification scales the
+// per-zoom tolerance, so it mostly affects the low zooms — and merging the smallest
+// polygons into their neighbours (--coalesce-smallest-as-needed). Features are never
+// dropped, which would leave holes in the landcover.
 //
 // Requires tippecanoe on PATH (e.g. `brew install tippecanoe`).
 
@@ -44,8 +45,11 @@ const args = [
 	'kind:string',
 	'--include',
 	'kind', // keep only the kind attribute
-	'--coalesce-smallest-as-needed', // merge tile-boundary fragments instead of dropping
-	'--drop-densest-as-needed', // shed features so dense low-zoom tiles fit (bounds size + memory)
+	// keep oversized tiles complete: simplify harder + merge the smallest polygons into
+	// their neighbours, rather than dropping features (which would leave holes)
+	'--simplification',
+	process.env.TIPPECANOE_SIMPLIFICATION || '10',
+	'--coalesce-smallest-as-needed',
 	'--name',
 	meta.name,
 	'--attribution',
@@ -54,10 +58,12 @@ const args = [
 	meta.description,
 ];
 
+// allow larger tiles before reduction kicks in (helps dense low zooms stay detailed)
+if (process.env.TIPPECANOE_MAX_TILE_BYTES) args.push('--maximum-tile-bytes', process.env.TIPPECANOE_MAX_TILE_BYTES);
+
 // --detect-shared-borders gives cleaner class boundaries but is very memory-heavy at
-// low zoom (z0 is the whole world in one tile) and can blow up tile 0/0/0. The
-// geometry is already coverage-simplified upstream, so it's redundant; enable it only
-// with plenty of RAM via TIPPECANOE_SHARED_BORDERS=1.
+// low zoom and can blow up tile 0/0/0. The geometry is already coverage-simplified
+// upstream, so it's redundant; enable it only with plenty of RAM via TIPPECANOE_SHARED_BORDERS=1.
 if (process.env.TIPPECANOE_SHARED_BORDERS === '1') args.push('--detect-shared-borders');
 
 args.push(file.geometry);

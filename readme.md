@@ -100,9 +100,10 @@ npm run tile
 
 This builds the vector tile pyramid from the merged geometry with [tippecanoe](https://github.com/felt/tippecanoe),
 writing `data/landcover.mbtiles`. tippecanoe simplifies the geometry per zoom level and tiles it seamlessly in one
-pass: `--coalesce-smallest-as-needed` merges the tile-boundary fragments left by polygonization rather than dropping
-them, and `--drop-densest-as-needed` sheds features so that dense low-zoom tiles (z0 is the whole world in one tile)
-fit the MVT size limit instead of running out of memory.
+pass. When a tile would exceed the MVT size limit — z0 is the whole world in a single tile — it keeps the **coverage
+complete** by simplifying harder (`--simplification`, which mostly affects the low zooms) and merging the smallest
+polygons into their neighbours (`--coalesce-smallest-as-needed`). Features are **never dropped**, which would leave
+holes in the landcover.
 
 By default zoom levels 0–6 are created; pass a range as parameter:
 
@@ -112,9 +113,14 @@ node bin/tile-worldcover.js 0-4
 npm run tile -- 0-4
 ```
 
-> tippecanoe's `--detect-shared-borders` would keep class boundaries even cleaner, but it's very memory-heavy at low
-> zoom and can blow up tile 0/0/0. The geometry is already coverage-simplified in the polygonize step, so it's left
-> off by default; enable it with `TIPPECANOE_SHARED_BORDERS=1` if the machine has plenty of RAM.
+Tuning via environment variables:
+
+- `TIPPECANOE_SIMPLIFICATION` — simplification factor (default `10`; higher = coarser low-zoom geometry, smaller tiles).
+- `TIPPECANOE_MAX_TILE_BYTES` — raise the tile size limit (e.g. `1000000`) so low zooms keep more detail before
+  reduction kicks in.
+- `TIPPECANOE_SHARED_BORDERS=1` — enable `--detect-shared-borders` for even cleaner class boundaries; it's
+  memory-heavy at low zoom (can blow up tile 0/0/0) and the geometry is already coverage-simplified upstream, so
+  it's off by default.
 
 ### Convert to Versatiles container
 
