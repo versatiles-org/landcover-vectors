@@ -27,7 +27,7 @@ export function blurPath(i) {
 	return path.join(dir.channels, `ch${String(i + 1).padStart(2, '0')}-blur.tif`);
 }
 
-const SIGMA = process.env.BLUR_SIGMA || '4';
+const RADIUS = process.env.BLUR_SIGMA || '4';
 const CONCURRENCY = process.env.BLUR_CONCURRENCY ? parseInt(process.env.BLUR_CONCURRENCY, 10) : CPU_CORES;
 
 // keep ImageMagick's disk-backed pixel cache on the data disk, not a RAM-backed /tmp
@@ -37,7 +37,7 @@ for (let i = 0; i < channels.length; i++) {
 	if (!existsSync(maskPath(i))) throw new Error(`missing ${maskPath(i)} — run "npm run channels" first`);
 }
 
-console.error('Blurring %d masks (σ=%s px, %d workers)', channels.length, SIGMA, CONCURRENCY);
+console.error('Blurring %d masks (σ=%s px, %d workers)', channels.length, RADIUS, CONCURRENCY);
 const bar = progress(channels.length, 'Blur');
 await pMap(
 	channels.map((_, i) => i),
@@ -46,15 +46,9 @@ await pMap(
 		const out = blurPath(i);
 		if (!existsSync(out)) {
 			await runQuiet('magick', [
-				'-limit',
-				'memory',
-				'4GiB',
-				'-limit',
-				'map',
-				'8GiB',
 				maskPath(i),
-				'-gaussian-blur',
-				`0x${SIGMA}`,
+				'-gaussian',
+				`${RADIUS}`,
 				'-depth',
 				'8',
 				'-compress',
