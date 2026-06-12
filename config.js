@@ -13,7 +13,6 @@ export const datadir = path.resolve(__dirname, 'data');
 // the standard Mercator square (±MERC metres ≈ ±85.0511°). SIZE = 2^15 = 32768 is exactly
 // zoom-7 tile resolution (128 tiles × 256 px), so the grid aligns to tile boundaries and
 // the pixels are square.
-export const SIZE = 32768;
 export const MERC = 20037508.342789244;
 
 // build zoom levels 0..MAXLEVEL. Each level is rendered from its own raster and simplified
@@ -55,10 +54,10 @@ export const file = {
 // level below MAXLEVEL, so both stay constant in pixels across levels (as does the blur
 // radius). At MAXLEVEL they equal the base values (SIZE px, 2000 m).
 export function sizeForLevel(z) {
-	return SIZE >> (MAXLEVEL - z); // px, square: 512 (z0) … 32768 (z6)
+	return 65536 >> (MAXLEVEL - z); // px, square: 512 (z0) … 32768 (z6)
 }
 export function simplifyForLevel(z) {
-	return 2000 << (MAXLEVEL - z); // metres (EPSG:3857): 2000 (z6) … 128000 (z0)
+	return 1000 << (MAXLEVEL - z); // metres (EPSG:3857): 2000 (z6) … 128000 (z0)
 }
 export function tilesForLevel(z) {
 	return path.join(datadir, `landcover-z${z}.mbtiles`); // per-level tiles, merged in pack
