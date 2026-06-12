@@ -41,24 +41,6 @@ const taggedFgb = path.join(datadir, '_tagged.fgb');
 const simplifiedFgb = path.join(datadir, '_simplified.fgb');
 
 try {
-	// 1. sieve
-	let raster = file.code;
-	if (SIEVE > 0) {
-		console.error('Sieving specks < %d px', SIEVE);
-		await run('gdal', [
-			'raster',
-			'sieve',
-			'--overwrite',
-			'--size-threshold',
-			String(SIEVE),
-			'-i',
-			file.code,
-			'-o',
-			sieved,
-		]);
-		raster = sieved;
-	}
-
 	// 2. polygonize
 	console.error('Polygonizing → %s', codeFgb);
 	await fs.rm(codeFgb, { force: true });
