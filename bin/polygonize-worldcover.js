@@ -22,7 +22,9 @@ import path from 'node:path';
 import { run } from '../lib/worldcover.js';
 import { file, datadir, channels } from '../config.js';
 
-const SIEVE = process.env.POLYGONIZE_SIEVE !== undefined ? parseInt(process.env.POLYGONIZE_SIEVE, 10) : 8; // px; 0 = off
+// the argmax step already sieves (regions < a circle of the blur radius), so this is
+// off by default; set POLYGONIZE_SIEVE to a pixel count for an extra pass before polygonizing
+const SIEVE = process.env.POLYGONIZE_SIEVE !== undefined ? parseInt(process.env.POLYGONIZE_SIEVE, 10) : 0; // px; 0 = off
 const SIMPLIFY = process.env.POLYGONIZE_SIMPLIFY !== undefined ? process.env.POLYGONIZE_SIMPLIFY : '600'; // m; 0 = off
 const simplifying = SIMPLIFY && SIMPLIFY !== '0';
 

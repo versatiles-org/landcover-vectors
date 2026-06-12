@@ -111,9 +111,11 @@ This reduces the 10 blurred masks to a single-band **code raster** (`data/landco
 the channel with the highest blurred value wins, and the pixel gets that channel's code (`10, 20, … 100`). It is
 done with stock `gdal raster` commands, which stream block by block (no need to hold the ten gigapixel bands in
 RAM): `gdal raster calc --dialect builtin --calc argmax` returns the 1-based index of the winning channel (ties
-break toward the lowest index), `gdal raster reclassify` maps index `1..10` → code `10..100`, and `gdal raster
-edit` re-attaches the EPSG:3857 georeferencing that ImageMagick stripped. Because the blurred masks form a smooth
-partition, the result is a clean coverage — every pixel exactly one code, with curved shared borders.
+break toward the lowest index); `gdal raster sieve` merges regions smaller than a circle of the blur radius
+(π·r² pixels) into their neighbour, dropping speckle below the scale the blur can resolve; `gdal raster
+reclassify` maps index `1..10` → code `10..100`; and `gdal raster edit` re-attaches the EPSG:3857 georeferencing
+that ImageMagick stripped. Because the blurred masks form a smooth partition, the result is a clean coverage —
+every pixel exactly one code, with curved shared borders.
 
 ### Polygonize
 
@@ -134,8 +136,8 @@ classes stay aligned — no slivers/gaps — and `--preserve-boundary` keeps the
 
 Tuning via environment variables:
 
-- `POLYGONIZE_SIEVE` — merge connected regions smaller than this many pixels into their neighbour (default `8`;
-  `0` disables).
+- `POLYGONIZE_SIEVE` — extra pre-polygonize sieve, in pixels (default `0` = off, since the argmax step already
+  sieves); set a pixel count to merge connected regions smaller than that into their neighbour.
 - `POLYGONIZE_SIMPLIFY` — coverage-simplification tolerance in metres (EPSG:3857; default `600` ≈ half a pixel;
   larger removes more detail and shrinks further; `0` disables and leaves simplification to tippecanoe).
 

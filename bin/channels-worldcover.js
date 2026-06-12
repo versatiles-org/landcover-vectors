@@ -15,16 +15,10 @@
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
-import path from 'node:path';
 
 import { runQuiet, pMap } from '../lib/worldcover.js';
 import { progress } from '../lib/progress.js';
-import { dir, file, channels } from '../config.js';
-
-// path of the raw (unblurred) mask for channel index i (0-based)
-export function maskPath(i) {
-	return path.join(dir.channels, `ch${String(i + 1).padStart(2, '0')}.tif`);
-}
+import { dir, file, channels, maskPath } from '../config.js';
 
 const CONCURRENCY = Math.max(1, Math.min(4, os.availableParallelism() - 1));
 

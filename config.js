@@ -23,6 +23,21 @@ export const dir = {
 	channels: path.join(datadir, 'channels'), // per-class membership masks + blurred masks
 };
 
+// paths of the per-class masks (channel index i, 0-based): the raw 0/255 membership
+// mask (channels step) and its blurred version (blur step). Defined here so the steps
+// share them without importing one another (each step script runs work on import).
+export function maskPath(i) {
+	return path.join(dir.channels, `ch${String(i + 1).padStart(2, '0')}.tif`);
+}
+export function blurPath(i) {
+	return path.join(dir.channels, `ch${String(i + 1).padStart(2, '0')}-blur.tif`);
+}
+
+// Gaussian blur radius (σ in pixels) applied to each mask before the argmax (BLUR_SIGMA
+// env, default 4). The argmax step also derives its sieve threshold from it — removing
+// regions smaller than a circle of this radius (π·r² pixels).
+export const BLUR_RADIUS = parseFloat(process.env.BLUR_SIGMA || '4');
+
 // files within the data folder
 export const file = {
 	warped: path.join(datadir, 'worldcover-3857.tif'), // reprojected world raster (reproject → channels)
