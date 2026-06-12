@@ -10,15 +10,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "download": "node bin/download-worldcover.js",
-    "reproject": "node bin/reproject-worldcover.js",
-    "channels": "node bin/channels-worldcover.js",
-    "blur": "node bin/blur-worldcover.js",
-    "argmax": "node bin/argmax-worldcover.js",
-    "polygonize": "node bin/polygonize-worldcover.js",
-    "tile": "node bin/tile-worldcover.js",
-    "pack": "versatiles convert -c brotli data/landcover.mbtiles landcover-vectors.versatiles",
-    "build": "npm run download && npm run reproject && npm run channels && npm run blur && npm run argmax && npm run polygonize && npm run tile && npm run pack",
+    "build": "node bin/build.js",
     "upgrade": "npx npm-check-updates -u && npm install",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
