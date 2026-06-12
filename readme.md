@@ -11,8 +11,8 @@ There are to complement OSM tiles on lower zoom levels.
 ## Requirements
 
 - `node` (or `bun`)
-- [`GDAL`](https://gdal.org/) ≥ 3.11 with `gdalbuildvrt`, `gdalwarp`, `gdal_calc.py`, `ogr2ogr`, `gdal raster sieve`, `gdal raster polygonize` and `gdal vector simplify-coverage` on `PATH`
-- Python 3 with the GDAL bindings (`osgeo.gdal`) and `numpy` (used by the argmax step; both ship with the GDAL install)
+- [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdalwarp`, `gdal_calc.py`, `ogr2ogr` and the `gdal raster` / `gdal vector` subcommands `calc`, `reclassify`, `edit`, `sieve`, `polygonize` and `simplify-coverage` on `PATH`
+- Python 3 with `numpy` (used by `gdal_calc.py` in the channels step; both ship with the GDAL install)
 - [`ImageMagick`](https://imagemagick.org/) 7 (`magick`) — used for the Gaussian blur
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`)
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
@@ -108,12 +108,12 @@ npm run argmax
 ```
 
 This reduces the 10 blurred masks to a single-band **code raster** (`data/landcover-code.tif`): for every pixel,
-the channel with the highest blurred value wins, and the pixel gets that channel's code (`10, 20, … 100`). The
-heavy raster math runs in `lib/argmax.py` (GDAL Python bindings + numpy), block by block to stay within RAM, and
-re-attaches the EPSG:3857 georeferencing copied from the reprojected raster. Because the blurred masks form a
-smooth partition, the result is a clean coverage — every pixel exactly one code, with curved shared borders.
-
-- `ARGMAX_BLOCK_ROWS` — raster rows held in memory at once (default `2048`; 10 byte bands × rows × 32768 px).
+the channel with the highest blurred value wins, and the pixel gets that channel's code (`10, 20, … 100`). It is
+done with stock `gdal raster` commands, which stream block by block (no need to hold the ten gigapixel bands in
+RAM): `gdal raster calc --dialect builtin --calc argmax` returns the 1-based index of the winning channel (ties
+break toward the lowest index), `gdal raster reclassify` maps index `1..10` → code `10..100`, and `gdal raster
+edit` re-attaches the EPSG:3857 georeferencing that ImageMagick stripped. Because the blurred masks form a smooth
+partition, the result is a clean coverage — every pixel exactly one code, with curved shared borders.
 
 ### Polygonize
 
