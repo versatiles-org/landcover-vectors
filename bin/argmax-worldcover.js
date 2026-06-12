@@ -33,7 +33,7 @@ const named = inputs.flatMap((p, i) => ['-i', `${String.fromCharCode(65 + i)}=${
 // index 1..10 → code (10..100)
 const mapping = channels.map((c, i) => `${i + 1}=${c.code}`).join(';');
 // drop regions smaller than a circle of the blur radius
-const sieveThreshold = Math.round(Math.PI * BLUR_RADIUS * BLUR_RADIUS);
+const sieveThreshold = 10 * Math.round(Math.PI * BLUR_RADIUS * BLUR_RADIUS);
 const indexTif = path.join(datadir, '_index.tif');
 const sievedTif = path.join(datadir, '_sieved.tif');
 

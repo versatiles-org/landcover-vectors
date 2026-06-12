@@ -25,7 +25,7 @@ import { file, datadir, channels } from '../config.js';
 // the argmax step already sieves (regions < a circle of the blur radius), so this is
 // off by default; set POLYGONIZE_SIEVE to a pixel count for an extra pass before polygonizing
 const SIEVE = process.env.POLYGONIZE_SIEVE !== undefined ? parseInt(process.env.POLYGONIZE_SIEVE, 10) : 0; // px; 0 = off
-const SIMPLIFY = process.env.POLYGONIZE_SIMPLIFY !== undefined ? process.env.POLYGONIZE_SIMPLIFY : '3000'; // m; 0 = off
+const SIMPLIFY = process.env.POLYGONIZE_SIMPLIFY !== undefined ? process.env.POLYGONIZE_SIMPLIFY : '2000'; // m; 0 = off
 const simplifying = SIMPLIFY && SIMPLIFY !== '0';
 
 // SQL (SQLite dialect): map code → kind and drop the no-data class (kind === null)
