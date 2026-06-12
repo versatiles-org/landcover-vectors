@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+export const CPU_CORES = 4;
 
 // base directory for everything the pipeline downloads and generates
 // (override with the DATA_DIR env var, e.g. to process into a scratch location)

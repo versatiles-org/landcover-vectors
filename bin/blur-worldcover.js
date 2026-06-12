@@ -19,7 +19,7 @@ import path from 'node:path';
 
 import { runQuiet, pMap } from '../lib/worldcover.js';
 import { progress } from '../lib/progress.js';
-import { dir, datadir, channels } from '../config.js';
+import { dir, datadir, channels, CPU_CORES } from '../config.js';
 import { maskPath } from './channels-worldcover.js';
 
 // path of the blurred mask for channel index i (0-based)
@@ -28,7 +28,7 @@ export function blurPath(i) {
 }
 
 const SIGMA = process.env.BLUR_SIGMA || '4';
-const CONCURRENCY = process.env.BLUR_CONCURRENCY ? parseInt(process.env.BLUR_CONCURRENCY, 10) : 3;
+const CONCURRENCY = process.env.BLUR_CONCURRENCY ? parseInt(process.env.BLUR_CONCURRENCY, 10) : CPU_CORES;
 
 // keep ImageMagick's disk-backed pixel cache on the data disk, not a RAM-backed /tmp
 process.env.MAGICK_TMPDIR = datadir;
