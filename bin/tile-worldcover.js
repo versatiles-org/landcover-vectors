@@ -16,7 +16,7 @@ import path from 'node:path';
 import { run } from '../lib/worldcover.js';
 import { datadir, file, meta } from '../config.js';
 
-const zoom = process.argv[2] || '0-7';
+const zoom = process.argv[2] || '6';
 const [minZoom, maxZoom] = zoom.includes('-') ? zoom.split('-') : [zoom, zoom];
 
 if (!existsSync(file.geometry)) {

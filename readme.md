@@ -160,7 +160,7 @@ complete** by simplifying harder (`--simplification`, which mostly affects the l
 polygons into their neighbours (`--coalesce-smallest-as-needed`). Features are **never dropped**, which would leave
 holes in the landcover.
 
-By default zoom levels 0–7 are created; pass a range as parameter:
+By default only zoom level 6 is created; pass a single level or a range as parameter:
 
 ```sh
 node bin/tile-worldcover.js 0-4
