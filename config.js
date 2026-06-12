@@ -46,7 +46,7 @@ export const tilesPath = (z) => path.join(dir.tile, `${z}_landcover.mbtiles`);
 
 // Gaussian blur radius (σ in pixels) applied to each mask before the argmax. The argmax
 // step also derives its sieve threshold from it.
-export const BLUR_RADIUS = 4;
+export const BLUR_RADIUS = 2;
 
 // final merged output of the pack step (all per-level tilesets joined)
 export const file = {
