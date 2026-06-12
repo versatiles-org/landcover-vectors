@@ -10,6 +10,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "download": "node bin/download.js",
     "build": "node bin/build.js",
     "upgrade": "npx npm-check-updates -u && npm install",
     "format": "prettier --write .",
