@@ -13,7 +13,7 @@ There are to complement OSM tiles on lower zoom levels.
 - `node` (or `bun`)
 - [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdalwarp`, `gdal_calc.py`, `ogr2ogr` and the `gdal raster` / `gdal vector` subcommands `calc`, `reclassify`, `edit`, `sieve`, `polygonize` and `simplify-coverage` on `PATH`
 - Python 3 with `numpy` (used by `gdal_calc.py` in the channels step; both ship with the GDAL install)
-- [`libvips`](https://www.libvips.org/) (`vips`) for the Gaussian blur, or [`ImageMagick`](https://imagemagick.org/) 7 (`magick`) as a fallback (libvips is much faster on the gigapixel masks)
+- [`libvips`](https://www.libvips.org/) (`vips`) — used for the Gaussian blur
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`)
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
 
@@ -91,10 +91,9 @@ npm run blur
 This Gaussian-blurs each mask into `data/blurred` (`ch01…ch10.tif`). Blurring turns the hard masks into smooth fields so the
 next step's per-pixel argmax yields **curved** class boundaries instead of the pixel staircase, while shared
 borders stay exact (the masks still sum to a partition). GDAL has no Gaussian filter, so this uses
-[`libvips`](https://www.libvips.org/) (`vips gaussblur`) when available — much faster on the gigapixel masks, as
-it streams and works in 8-bit — and falls back to ImageMagick (`magick -blur`) otherwise. The blur is an
-approximation either way; exactness doesn't matter, since the result only feeds an argmax. Both strip the GeoTIFF
-georeferencing — intentional, the argmax step re-attaches it.
+[`libvips`](https://www.libvips.org/) (`vips gaussblur`) — fast on the gigapixel masks, as it streams and works
+in 8-bit. The blur is an approximation; exactness doesn't matter, since the result only feeds an argmax. vips
+strips the GeoTIFF georeferencing — intentional, the argmax step re-attaches it.
 
 The blur radius is `BLUR_RADIUS` in `config.js` (σ = 4 px; at this resolution one pixel ≈ 1.2 km). libvips uses
 its fastest `approximate` precision.
