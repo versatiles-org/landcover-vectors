@@ -1,6 +1,5 @@
 .DS_Store
-/node_modules
-/data
-/attic
+*.qml
 *.versatiles
-__pycache__/
+/data
+/node_modules
