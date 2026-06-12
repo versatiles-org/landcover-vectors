@@ -20,15 +20,17 @@ export const MERC = 20037508.342789244;
 // tilesets are merged in the pack step.
 export const MAXLEVEL = 6;
 
-// one folder per step under the data folder; each holds that step's per-level results
+// one folder per step under the data folder; each holds that step's per-level results.
+// The folders are numbered by step order (0_… download, 1_… reproject, …) so they sort
+// in pipeline order on disk.
 export const dir = {
-	source: path.join(datadir, 'esa-worldcover-src'), // reduced-resolution raster mirror (download)
-	reproject: path.join(datadir, 'reproject'), // per-level EPSG:3857 world raster
-	channels: path.join(datadir, 'channels'), // per-level, per-class membership masks
-	blur: path.join(datadir, 'blur'), // per-level, per-class blurred masks
-	argmax: path.join(datadir, 'argmax'), // per-level code raster
-	polygonize: path.join(datadir, 'polygonize'), // per-level polygon geometry
-	tile: path.join(datadir, 'tile'), // per-level single-zoom tilesets
+	source: path.join(datadir, '0_esa-worldcover-src'), // reduced-resolution raster mirror (download)
+	reproject: path.join(datadir, '1_reproject'), // per-level EPSG:3857 world raster
+	channels: path.join(datadir, '2_channels'), // per-level, per-class membership masks
+	blur: path.join(datadir, '3_blur'), // per-level, per-class blurred masks
+	argmax: path.join(datadir, '4_argmax'), // per-level code raster
+	polygonize: path.join(datadir, '5_polygonize'), // per-level polygon geometry
+	tile: path.join(datadir, '6_tile'), // per-level single-zoom tilesets
 };
 
 // per-step, per-level result paths. Every step writes its result to one of these,
@@ -58,7 +60,7 @@ export function sizeForLevel(z) {
 	return 65536 >> (MAXLEVEL - z); // px, square: 512 (z0) … 32768 (z6)
 }
 export function simplifyForLevel(z) {
-	return 1000 << (MAXLEVEL - z); // metres (EPSG:3857): 2000 (z6) … 128000 (z0)
+	return 2000 << (MAXLEVEL - z); // metres (EPSG:3857): 2000 (z6) … 128000 (z0)
 }
 
 // The 10 channels of the blur/argmax stage, in order. Channel i (1-based) carries
