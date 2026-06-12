@@ -29,10 +29,9 @@ npm run build
 
 (`download → reproject → channels → blur → argmax → polygonize → tile → pack`)
 
-All steps read and write under `data/` by default; set the `DATA_DIR` environment variable to use a different
-location. Each step writes its output to a file and is skipped/overwritten on re-run, so the pipeline is
-resumable. This is a heavy run — a global one-gigapixel warp, ten gigapixel blurs and a global coverage
-simplify — expect tens of minutes and several GB of scratch in `data/`.
+All steps read and write under `data/`. Each step writes its output to a file and is skipped/overwritten on
+re-run, so the pipeline is resumable. This is a heavy run — a global one-gigapixel warp, ten gigapixel blurs
+and a global coverage simplify — expect tens of minutes and several GB of scratch in `data/`.
 
 ### Download source data
 
@@ -97,11 +96,8 @@ it streams and works in 8-bit — and falls back to ImageMagick (`magick -blur`)
 approximation either way; exactness doesn't matter, since the result only feeds an argmax. Both strip the GeoTIFF
 georeferencing — intentional, the argmax step re-attaches it.
 
-- `BLUR_SIGMA` — Gaussian standard deviation in pixels (default `4`; the smoothing radius — larger = smoother,
-  blobbier boundaries). At this resolution one pixel ≈ 1.2 km.
-- `BLUR_PRECISION` — libvips blur precision `integer|float|approximate` (default `approximate`, the fastest;
-  ImageMagick fallback ignores it).
-- `BLUR_CONCURRENCY` — how many bands to blur at once (default: CPU cores).
+The blur radius is `BLUR_RADIUS` in `config.js` (σ = 4 px; at this resolution one pixel ≈ 1.2 km). libvips uses
+its fastest `approximate` precision.
 
 ### Argmax
 
@@ -130,20 +126,12 @@ npm run polygonize
 ```
 
 This vectorizes the code raster into the final `data/landcover.fgb`. It is a **single global** vectorization (no
-per-tile seams): sieve specks into their neighbour, polygonize with `gdal raster polygonize` (one polygon per
-connected code region, field `code`), tag each polygon with its Shortbread `kind` and drop the no-data class
-(code 100), coverage-simplify to replace the residual pixel staircase with straight lines, then reproject to
-EPSG:4326 for tippecanoe.
+per-tile seams): polygonize with `gdal raster polygonize` (one polygon per connected code region, field `code`),
+tag each polygon with its Shortbread `kind` and drop the no-data class, coverage-simplify to replace the residual
+pixel staircase with straight lines (tolerance 2000 m, EPSG:3857), then reproject to EPSG:4326 for tippecanoe.
 
 The simplification is **topology-preserving** (`gdal vector simplify-coverage`), so shared boundaries between
 classes stay aligned — no slivers/gaps — and `--preserve-boundary` keeps the world edge exact.
-
-Tuning via environment variables:
-
-- `POLYGONIZE_SIEVE` — extra pre-polygonize sieve, in pixels (default `0` = off, since the argmax step already
-  sieves); set a pixel count to merge connected regions smaller than that into their neighbour.
-- `POLYGONIZE_SIMPLIFY` — coverage-simplification tolerance in metres (EPSG:3857; default `600` ≈ half a pixel;
-  larger removes more detail and shrinks further; `0` disables and leaves simplification to tippecanoe).
 
 ### Tile
 
@@ -167,15 +155,6 @@ node bin/tile-worldcover.js 0-4
 # or
 npm run tile -- 0-4
 ```
-
-Tuning via environment variables:
-
-- `TIPPECANOE_SIMPLIFICATION` — simplification factor (default `10`; higher = coarser low-zoom geometry, smaller tiles).
-- `TIPPECANOE_MAX_TILE_BYTES` — raise the tile size limit (e.g. `1000000`) so low zooms keep more detail before
-  reduction kicks in.
-- `TIPPECANOE_SHARED_BORDERS=1` — enable `--detect-shared-borders` for even cleaner class boundaries; it's
-  memory-heavy at low zoom (can blow up tile 0/0/0) and the geometry is already coverage-simplified upstream, so
-  it's off by default.
 
 ### Convert to Versatiles container
 

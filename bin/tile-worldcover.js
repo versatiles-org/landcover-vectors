@@ -48,7 +48,7 @@ const args = [
 	// keep oversized tiles complete: simplify harder + merge the smallest polygons into
 	// their neighbours, rather than dropping features (which would leave holes)
 	'--simplification',
-	process.env.TIPPECANOE_SIMPLIFICATION || '10',
+	'10',
 	'--coalesce-smallest-as-needed',
 	'--name',
 	meta.name,
@@ -57,14 +57,6 @@ const args = [
 	'--description',
 	meta.description,
 ];
-
-// allow larger tiles before reduction kicks in (helps dense low zooms stay detailed)
-if (process.env.TIPPECANOE_MAX_TILE_BYTES) args.push('--maximum-tile-bytes', process.env.TIPPECANOE_MAX_TILE_BYTES);
-
-// --detect-shared-borders gives cleaner class boundaries but is very memory-heavy at
-// low zoom and can blow up tile 0/0/0. The geometry is already coverage-simplified
-// upstream, so it's redundant; enable it only with plenty of RAM via TIPPECANOE_SHARED_BORDERS=1.
-if (process.env.TIPPECANOE_SHARED_BORDERS === '1') args.push('--detect-shared-borders');
 
 args.push(file.geometry);
 

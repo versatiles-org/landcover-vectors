@@ -8,9 +8,8 @@
 // back to ImageMagick when `vips` is not on PATH. Either way the blur is an
 // approximation — exactness doesn't matter, since the result only feeds an argmax.
 //
-// BLUR_SIGMA (default 4) is the Gaussian standard deviation in pixels — the smoothing
-// radius from the spec; at this resolution one pixel ≈ 1.2 km. BLUR_PRECISION (vips
-// only, default `approximate`) trades accuracy for speed. Both tools strip the GeoTIFF
+// The blur radius (σ) is config.BLUR_RADIUS pixels; at this resolution one pixel ≈ 1.2 km.
+// vips uses `approximate` precision (fastest). Both tools strip the GeoTIFF
 // georeferencing; that is intentional — the argmax step re-attaches it.
 //
 // Requires libvips (vips) or ImageMagick 7 (magick) on PATH.
@@ -20,16 +19,13 @@ import { existsSync } from 'node:fs';
 
 import { runQuiet, pMap, commandExists } from '../lib/worldcover.js';
 import { progress } from '../lib/progress.js';
-import { dir, datadir, channels, CPU_CORES, BLUR_RADIUS, maskPath, blurPath } from '../config.js';
+import { dir, channels, CPU_CORES, BLUR_RADIUS, maskPath, blurPath } from '../config.js';
 
-const CONCURRENCY = process.env.BLUR_CONCURRENCY ? parseInt(process.env.BLUR_CONCURRENCY, 10) : CPU_CORES;
-const PRECISION = process.env.BLUR_PRECISION || 'approximate'; // vips gaussblur: integer|float|approximate
+const CONCURRENCY = CPU_CORES;
+const PRECISION = 'approximate'; // vips gaussblur precision (fastest)
 const useVips = await commandExists('vips');
 if (!useVips && !(await commandExists('magick')))
 	throw new Error('need libvips (vips) or ImageMagick (magick) on PATH');
-
-// keep ImageMagick's disk-backed pixel cache on the data disk, not a RAM-backed /tmp
-process.env.MAGICK_TMPDIR = datadir;
 
 for (let i = 0; i < channels.length; i++) {
 	if (!existsSync(maskPath(i))) throw new Error(`missing ${maskPath(i)} — run "npm run channels" first`);

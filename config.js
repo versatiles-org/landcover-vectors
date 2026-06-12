@@ -7,8 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const CPU_CORES = 4;
 
 // base directory for everything the pipeline downloads and generates
-// (override with the DATA_DIR env var, e.g. to process into a scratch location)
-export const datadir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.resolve(__dirname, 'data');
+export const datadir = path.resolve(__dirname, 'data');
 
 // the world raster is rendered in EPSG:3857 (Web Mercator) at SIZE×SIZE pixels covering
 // the standard Mercator square (±MERC metres ≈ ±85.0511°). SIZE = 2^15 = 32768 is exactly
@@ -35,10 +34,9 @@ export function blurPath(i) {
 	return path.join(dir.blurred, `ch${String(i + 1).padStart(2, '0')}.tif`);
 }
 
-// Gaussian blur radius (σ in pixels) applied to each mask before the argmax (BLUR_SIGMA
-// env, default 4). The argmax step also derives its sieve threshold from it — removing
-// regions smaller than a circle of this radius (π·r² pixels).
-export const BLUR_RADIUS = parseFloat(process.env.BLUR_SIGMA || '4');
+// Gaussian blur radius (σ in pixels) applied to each mask before the argmax. The argmax
+// step also derives its sieve threshold from it.
+export const BLUR_RADIUS = 4;
 
 // files within the data folder
 export const file = {
@@ -65,7 +63,7 @@ export const channels = [
 	{ code: 40, kind: 'farmland', color: '#F0E7D1', calc: '255*(A==40)' }, // cropland
 	{ code: 50, kind: 'urban', color: '#EAE6E133', calc: '255*(A==50)' }, // built-up
 	{ code: 60, kind: 'bare', color: '#FAFAED', calc: '255*((A==60)|(A==100))' }, // bare/sparse vegetation + moss and lichen
-	{ code: 70, kind: 'snow', color:'#FFFFFF', calc: '255*(A==70)' }, // snow and ice
+	{ code: 70, kind: 'snow', color: '#FFFFFF', calc: '255*(A==70)' }, // snow and ice
 	{ code: 80, kind: 'wetland', color: '#D3E6DB', calc: '255*((A==90)|(A==95))' }, // herbaceous wetland + mangroves
 ];
 
