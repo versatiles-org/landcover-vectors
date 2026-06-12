@@ -4,5 +4,7 @@
 // (bin/build.js): download the mirror once, then build from it as often as you like.
 
 import { download } from '../lib/steps.js';
+import { requireCommands } from '../lib/worldcover.js';
 
+await requireCommands(['gdal_translate']);
 await download();
