@@ -27,7 +27,7 @@ export function blurPath(i) {
 	return path.join(dir.channels, `ch${String(i + 1).padStart(2, '0')}-blur.tif`);
 }
 
-const SIGMA = process.env.BLUR_SIGMA || '8';
+const SIGMA = process.env.BLUR_SIGMA || '4';
 const CONCURRENCY = process.env.BLUR_CONCURRENCY ? parseInt(process.env.BLUR_CONCURRENCY, 10) : CPU_CORES;
 
 // keep ImageMagick's disk-backed pixel cache on the data disk, not a RAM-backed /tmp
