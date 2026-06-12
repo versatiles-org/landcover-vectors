@@ -13,7 +13,7 @@ There are to complement OSM tiles on lower zoom levels.
 - `node` (or `bun`)
 - [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdalwarp`, `gdal_calc.py`, `ogr2ogr` and the `gdal raster` / `gdal vector` subcommands `calc`, `reclassify`, `edit`, `sieve`, `polygonize` and `simplify-coverage` on `PATH`
 - Python 3 with `numpy` (used by `gdal_calc.py` in the channels step; both ship with the GDAL install)
-- [`ImageMagick`](https://imagemagick.org/) 7 (`magick`) — used for the Gaussian blur
+- [`libvips`](https://www.libvips.org/) (`vips`) for the Gaussian blur, or [`ImageMagick`](https://imagemagick.org/) 7 (`magick`) as a fallback (libvips is much faster on the gigapixel masks)
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`)
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
 
@@ -89,15 +89,19 @@ node bin/blur-worldcover.js
 npm run blur
 ```
 
-This Gaussian-blurs each mask with ImageMagick (`ch01…ch10-blur.tif`). Blurring turns the hard masks into smooth
-fields so the next step's per-pixel argmax yields **curved** class boundaries instead of the pixel staircase,
-while shared borders stay exact (the masks still sum to a partition). GDAL has no Gaussian filter, so ImageMagick
-does it, one gigapixel band at a time, paging to disk via `MAGICK_TMPDIR` when it exceeds its memory limit.
-ImageMagick strips the GeoTIFF georeferencing — intentional, the argmax step re-attaches it.
+This Gaussian-blurs each mask (`ch01…ch10-blur.tif`). Blurring turns the hard masks into smooth fields so the
+next step's per-pixel argmax yields **curved** class boundaries instead of the pixel staircase, while shared
+borders stay exact (the masks still sum to a partition). GDAL has no Gaussian filter, so this uses
+[`libvips`](https://www.libvips.org/) (`vips gaussblur`) when available — much faster on the gigapixel masks, as
+it streams and works in 8-bit — and falls back to ImageMagick (`magick -blur`) otherwise. The blur is an
+approximation either way; exactness doesn't matter, since the result only feeds an argmax. Both strip the GeoTIFF
+georeferencing — intentional, the argmax step re-attaches it.
 
 - `BLUR_SIGMA` — Gaussian standard deviation in pixels (default `4`; the smoothing radius — larger = smoother,
   blobbier boundaries). At this resolution one pixel ≈ 1.2 km.
-- `BLUR_CONCURRENCY` — how many bands to blur at once (default `3`).
+- `BLUR_PRECISION` — libvips blur precision `integer|float|approximate` (default `approximate`, the fastest;
+  ImageMagick fallback ignores it).
+- `BLUR_CONCURRENCY` — how many bands to blur at once (default: CPU cores).
 
 ### Argmax
 
@@ -114,7 +118,7 @@ RAM): `gdal raster calc --dialect builtin --calc argmax` returns the 1-based ind
 break toward the lowest index); `gdal raster sieve` merges regions smaller than a circle of the blur radius
 (π·r² pixels) into their neighbour, dropping speckle below the scale the blur can resolve; `gdal raster
 reclassify` maps index `1..10` → code `10..100`; and `gdal raster edit` re-attaches the EPSG:3857 georeferencing
-that ImageMagick stripped. Because the blurred masks form a smooth partition, the result is a clean coverage —
+that the blur stripped. Because the blurred masks form a smooth partition, the result is a clean coverage —
 every pixel exactly one code, with curved shared borders.
 
 ### Polygonize

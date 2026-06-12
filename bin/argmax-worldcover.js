@@ -10,7 +10,7 @@
 //                  (π·r² pixels) into their neighbour, dropping speckle below the
 //                  scale the blur can resolve.
 //   3. reclassify — map index 1..10 → code 10..100 (from config.channels).
-//   4. edit      — re-attach the EPSG:3857 georeferencing that ImageMagick stripped
+//   4. edit      — re-attach the EPSG:3857 georeferencing that the blur stripped
 //                  from the blurred masks (CRS + the world Mercator bbox).
 //
 // The result, data/landcover-code.tif, is a clean coverage (every pixel one code) and
