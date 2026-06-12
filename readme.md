@@ -89,7 +89,7 @@ node bin/blur-worldcover.js
 npm run blur
 ```
 
-This Gaussian-blurs each mask (`ch01…ch10-blur.tif`). Blurring turns the hard masks into smooth fields so the
+This Gaussian-blurs each mask into `data/blurred` (`ch01…ch10.tif`). Blurring turns the hard masks into smooth fields so the
 next step's per-pixel argmax yields **curved** class boundaries instead of the pixel staircase, while shared
 borders stay exact (the masks still sum to a partition). GDAL has no Gaussian filter, so this uses
 [`libvips`](https://www.libvips.org/) (`vips gaussblur`) when available — much faster on the gigapixel masks, as

@@ -20,17 +20,19 @@ export const MERC = 20037508.342789244;
 // directories within the data folder, used across the pipeline
 export const dir = {
 	source: path.join(datadir, 'esa-worldcover-src'), // reduced-resolution raster mirror (download)
-	channels: path.join(datadir, 'channels'), // per-class membership masks + blurred masks
+	channels: path.join(datadir, 'channels'), // per-class membership masks (channels step)
+	blurred: path.join(datadir, 'blurred'), // blurred per-class masks (blur step)
 };
 
 // paths of the per-class masks (channel index i, 0-based): the raw 0/255 membership
-// mask (channels step) and its blurred version (blur step). Defined here so the steps
-// share them without importing one another (each step script runs work on import).
+// mask (channels step) and its blurred version (blur step), in their own folders.
+// Defined here so the steps share them without importing one another (each step
+// script runs work on import).
 export function maskPath(i) {
 	return path.join(dir.channels, `ch${String(i + 1).padStart(2, '0')}.tif`);
 }
 export function blurPath(i) {
-	return path.join(dir.channels, `ch${String(i + 1).padStart(2, '0')}-blur.tif`);
+	return path.join(dir.blurred, `ch${String(i + 1).padStart(2, '0')}.tif`);
 }
 
 // Gaussian blur radius (σ in pixels) applied to each mask before the argmax (BLUR_SIGMA

@@ -34,6 +34,7 @@ process.env.MAGICK_TMPDIR = datadir;
 for (let i = 0; i < channels.length; i++) {
 	if (!existsSync(maskPath(i))) throw new Error(`missing ${maskPath(i)} — run "npm run channels" first`);
 }
+await fs.mkdir(dir.blurred, { recursive: true });
 
 // blur one mask: vips writes a deflate-compressed 8-bit TIFF; ImageMagick is the fallback
 function blur(src, out) {
@@ -69,4 +70,4 @@ await pMap(
 );
 bar.done();
 
-console.error('Done. Blurred masks in %s — run "npm run argmax" next', dir.channels);
+console.error('Done. Blurred masks in %s — run "npm run argmax" next', dir.blurred);
