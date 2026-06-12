@@ -11,21 +11,28 @@ There are to complement OSM tiles on lower zoom levels.
 ## Requirements
 
 - `node` (or `bun`)
-- [`GDAL`](https://gdal.org/) ≥ 3.11 with the `gdal_translate`, `ogr2ogr`, `gdal raster sieve`, `gdal raster polygonize` and `gdal vector simplify-coverage` programs on `PATH`
+- [`GDAL`](https://gdal.org/) ≥ 3.11 with `gdalbuildvrt`, `gdalwarp`, `gdal_calc.py`, `ogr2ogr`, `gdal raster sieve`, `gdal raster polygonize` and `gdal vector simplify-coverage` on `PATH`
+- Python 3 with the GDAL bindings (`osgeo.gdal`) and `numpy` (used by the argmax step; both ship with the GDAL install)
+- [`ImageMagick`](https://imagemagick.org/) 7 (`magick`) — used for the Gaussian blur
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`)
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
 
 ## How it's made
 
-Each step below can be run directly with `node`, or via its npm script (shown after the `# or` line).
-To run the whole pipeline (download → polygonize → merge → tile → pack) in order:
+The pipeline renders one global Web Mercator raster, smooths each landcover class, and reads the smoothed
+classes back as clean polygons. Each step can be run directly with `node`, or via its npm script (shown after
+the `# or` line). To run the whole pipeline in order:
 
 ```sh
 npm run build
 ```
 
+(`download → reproject → channels → blur → argmax → polygonize → tile → pack`)
+
 All steps read and write under `data/` by default; set the `DATA_DIR` environment variable to use a different
-location.
+location. Each step writes its output to a file and is skipped/overwritten on re-run, so the pipeline is
+resumable. This is a heavy run — a global one-gigapixel warp, ten gigapixel blurs and a global coverage
+simplify — expect tens of minutes and several GB of scratch in `data/`.
 
 ### Download source data
 
@@ -38,8 +45,8 @@ npm run download
 This downloads a reduced-resolution local mirror of [ESA WorldCover 2021 (v200)](https://registry.opendata.aws/esa-worldcover-vito/)
 from AWS Open Data (`s3://esa-worldcover`). Each of the 2651 source GeoTIFFs is downsampled by a factor of 8 on the
 way in (reading its matching internal overview, so only a small fraction of the full 10 m data is transferred) and
-written to `data/esa-worldcover-src` in its native EPSG:4326. 1/8 (~74 m/px) keeps full detail for zoom 0–6, with
-headroom for zoom 7 — so the whole mirror is only a few hundred MB instead of the full ~124 GB.
+written to `data/esa-worldcover-src` in its native EPSG:4326. 1/8 (~74 m/px) keeps full detail for zoom 0–7 — so
+the whole mirror is only a few hundred MB instead of the full ~124 GB.
 
 Downloads run in parallel, are retried, written atomically, and skipped if already present — so the step is robust
 against network errors and resumable (re-running continues where it left off).
@@ -47,7 +54,68 @@ against network errors and resumable (re-running continues where it left off).
 > The old download step used the Terrascope WMTS service, which is no longer available — hence the move to the AWS
 > Open Data mirror.
 
-### Vectorize (polygonize)
+### Reproject
+
+```sh
+node bin/reproject-worldcover.js
+# or
+npm run reproject
+```
+
+This mosaics the source tiles (`gdalbuildvrt`) and reprojects them to a single global EPSG:3857 (Web Mercator)
+raster of **32768×32768** pixels covering the standard Mercator square (±20037508.34 m ≈ ±85.0511°), written to
+`data/worldcover-3857.tif`. 32768 = 2¹⁵ is exactly zoom-7 tile resolution, so the grid is tile-aligned and the
+pixels are square. Resampling is `-r mode` (dominant class) — the only correct choice for categorical data —
+and the single Byte band keeps the ESA class codes `{0,10,…,100}`. DEFLATE keeps the file small.
+
+### Channels
+
+```sh
+node bin/channels-worldcover.js
+# or
+npm run channels
+```
+
+This splits the world raster into **10 per-class membership masks** in `data/channels` (`ch01…ch10.tif`), one
+`gdal_calc.py` call each: a single Byte band that is 255 where the pixel belongs to that class and 0 elsewhere.
+The ten classes partition the legend (moss merges into `bare`, mangroves into `wetland`), and the tenth channel
+is "no data / no landcover" (ESA 0), so across all masks every pixel is 255 in exactly one channel.
+
+### Blur
+
+```sh
+node bin/blur-worldcover.js
+# or
+npm run blur
+```
+
+This Gaussian-blurs each mask with ImageMagick (`ch01…ch10-blur.tif`). Blurring turns the hard masks into smooth
+fields so the next step's per-pixel argmax yields **curved** class boundaries instead of the pixel staircase,
+while shared borders stay exact (the masks still sum to a partition). GDAL has no Gaussian filter, so ImageMagick
+does it, one gigapixel band at a time, paging to disk via `MAGICK_TMPDIR` when it exceeds its memory limit.
+ImageMagick strips the GeoTIFF georeferencing — intentional, the argmax step re-attaches it.
+
+- `BLUR_SIGMA` — Gaussian standard deviation in pixels (default `4`; the smoothing radius — larger = smoother,
+  blobbier boundaries). At this resolution one pixel ≈ 1.2 km.
+- `BLUR_CONCURRENCY` — how many bands to blur at once (default `3`).
+
+### Argmax
+
+```sh
+node bin/argmax-worldcover.js
+# or
+npm run argmax
+```
+
+This reduces the 10 blurred masks to a single-band **code raster** (`data/landcover-code.tif`): for every pixel,
+the channel with the highest blurred value wins, and the pixel gets that channel's code (`10, 20, … 100`). The
+heavy raster math runs in `lib/argmax.py` (GDAL Python bindings + numpy), block by block to stay within RAM, and
+re-attaches the EPSG:3857 georeferencing copied from the reprojected raster. Because the blurred masks form a
+smooth partition, the result is a clean coverage — every pixel exactly one code, with curved shared borders.
+
+- `ARGMAX_BLOCK_ROWS` — raster rows held in memory at once (default `2048`; 10 byte bands × rows × 32768 px).
+
+### Polygonize
 
 ```sh
 node bin/polygonize-worldcover.js
@@ -55,40 +123,21 @@ node bin/polygonize-worldcover.js
 npm run polygonize
 ```
 
-This vectorizes the raster mirror into **per-tile** polygon geometry. Each source tile is processed **in parallel**
-behind a single progress bar: downsampled to the target zoom resolution, sieved (small specks merged into their
-neighbour), polygonized with `gdal raster polygonize` (one polygon per connected class region), tagged with its
-Shortbread `kind`, and coverage-simplified to replace the pixel staircase with straight lines. The result is one
-FlatGeobuf per source tile in `data/polygons`.
+This vectorizes the code raster into the final `data/landcover.fgb`. It is a **single global** vectorization (no
+per-tile seams): sieve specks into their neighbour, polygonize with `gdal raster polygonize` (one polygon per
+connected code region, field `code`), tag each polygon with its Shortbread `kind` and drop the no-data class
+(code 100), coverage-simplify to replace the residual pixel staircase with straight lines, then reproject to
+EPSG:4326 for tippecanoe.
 
-This is the geospatially-correct vectorization: polygons follow class boundaries exactly, with **no per-tile seams**
-(unlike tracing each tile separately). The simplification is **topology-preserving** (so shared boundaries between
-classes stay aligned — no slivers/gaps), roughly halves the geometry, and runs **per tile** — keeping it parallel
-and low-memory, whereas a global coverage simplify needs the whole dataset in RAM and OOMs on large extents.
-`--preserve-boundary` keeps each tile's edge exact so the merge stays seamless. The step is resumable —
-already-polygonized tiles are skipped.
+The simplification is **topology-preserving** (`gdal vector simplify-coverage`), so shared boundaries between
+classes stay aligned — no slivers/gaps — and `--preserve-boundary` keeps the world edge exact.
 
 Tuning via environment variables:
 
-- `POLYGONIZE_SCALE` — downsample each source tile to this fraction first (default `50%`, i.e. ~74 m → ~152 m,
-  native to zoom 6, using dominant-class resampling). Use `100%` to keep full mirror resolution for zoom 7.
-- `POLYGONIZE_SIEVE` — drop connected regions smaller than this many pixels (default `100`; `0` disables).
-- `POLYGONIZE_SIMPLIFY` — coverage-simplification tolerance in degrees (default `0.0014` ≈ one ~152 m pixel; larger
-  removes more detail and shrinks further; `0` disables).
-
-### Merge
-
-```sh
-node bin/merge-worldcover.js
-# or
-npm run merge
-```
-
-The per-tile geometry is already simplified, so this just concatenates all the per-tile FlatGeobuf into the final
-`data/landcover.fgb` (via an OGR VRT union).
-
-> The per-tile files in `data/polygons` are kept so polygonize stays resumable; once the merge succeeds you can
-> delete `data/polygons`.
+- `POLYGONIZE_SIEVE` — merge connected regions smaller than this many pixels into their neighbour (default `8`;
+  `0` disables).
+- `POLYGONIZE_SIMPLIFY` — coverage-simplification tolerance in metres (EPSG:3857; default `600` ≈ half a pixel;
+  larger removes more detail and shrinks further; `0` disables and leaves simplification to tippecanoe).
 
 ### Tile
 
@@ -98,14 +147,14 @@ node bin/tile-worldcover.js
 npm run tile
 ```
 
-This builds the vector tile pyramid from the merged geometry with [tippecanoe](https://github.com/felt/tippecanoe),
+This builds the vector tile pyramid from the polygon geometry with [tippecanoe](https://github.com/felt/tippecanoe),
 writing `data/landcover.mbtiles`. tippecanoe simplifies the geometry per zoom level and tiles it seamlessly in one
 pass. When a tile would exceed the MVT size limit — z0 is the whole world in a single tile — it keeps the **coverage
 complete** by simplifying harder (`--simplification`, which mostly affects the low zooms) and merging the smallest
 polygons into their neighbours (`--coalesce-smallest-as-needed`). Features are **never dropped**, which would leave
 holes in the landcover.
 
-By default zoom levels 0–6 are created; pass a range as parameter:
+By default zoom levels 0–7 are created; pass a range as parameter:
 
 ```sh
 node bin/tile-worldcover.js 0-4
@@ -136,7 +185,7 @@ This compresses and packs the tiles into a versatiles container.
 
 There is one layer called `landcover-vectors` with a property `kind`. The `kind` values reuse the proposed
 Shortbread [`landcover` layer](https://github.com/shortbread-tiles/shortbread-docs/issues/144) vocabulary, so a
-style transitions seamlessly from these low-zoom tiles (z0–6) to OSM-based Shortbread tiles (z7+):
+style transitions seamlessly from these low-zoom tiles (z0–7) to OSM-based Shortbread tiles (z7+):
 
 - `bare` Bare / sparse vegetation, moss and lichen
 - `farmland` Cropland

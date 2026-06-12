@@ -3,3 +3,4 @@
 /data
 /attic
 *.versatiles
+__pycache__/

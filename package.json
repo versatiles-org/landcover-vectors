@@ -11,20 +11,17 @@
   },
   "scripts": {
     "download": "node bin/download-worldcover.js",
+    "reproject": "node bin/reproject-worldcover.js",
+    "channels": "node bin/channels-worldcover.js",
+    "blur": "node bin/blur-worldcover.js",
+    "argmax": "node bin/argmax-worldcover.js",
     "polygonize": "node bin/polygonize-worldcover.js",
-    "merge": "node bin/merge-worldcover.js",
     "tile": "node bin/tile-worldcover.js",
     "pack": "versatiles convert -c brotli data/landcover.mbtiles landcover-vectors.versatiles",
-    "build": "npm run download && npm run polygonize && npm run merge && npm run tile && npm run pack",
+    "build": "npm run download && npm run reproject && npm run channels && npm run blur && npm run argmax && npm run polygonize && npm run tile && npm run pack",
     "upgrade": "npx npm-check-updates -u && npm install",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
-  },
-  "dependencies": {
-    "potrace-wasm": "github:IguteChung/potrace-wasm",
-    "sharp": "^0.34.5",
-    "svg-path-to-polygons": "^0.1.0",
-    "vtt": "^0.0.3"
   },
   "devDependencies": {
     "npm-check-updates": "^22.2.3",
