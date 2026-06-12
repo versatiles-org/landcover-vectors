@@ -20,33 +20,34 @@ export const MERC = 20037508.342789244;
 // tilesets are merged in the pack step.
 export const MAXLEVEL = 6;
 
-// directories within the data folder, used across the pipeline
+// one folder per step under the data folder; each holds that step's per-level results
 export const dir = {
 	source: path.join(datadir, 'esa-worldcover-src'), // reduced-resolution raster mirror (download)
-	channels: path.join(datadir, 'channels'), // per-class membership masks (channels step)
-	blurred: path.join(datadir, 'blurred'), // blurred per-class masks (blur step)
+	reproject: path.join(datadir, 'reproject'), // per-level EPSG:3857 world raster
+	channels: path.join(datadir, 'channels'), // per-level, per-class membership masks
+	blur: path.join(datadir, 'blur'), // per-level, per-class blurred masks
+	argmax: path.join(datadir, 'argmax'), // per-level code raster
+	polygonize: path.join(datadir, 'polygonize'), // per-level polygon geometry
+	tile: path.join(datadir, 'tile'), // per-level single-zoom tilesets
 };
 
-// paths of the per-class masks (channel index i, 0-based): the raw 0/255 membership
-// mask (channels step) and its blurred version (blur step), in their own folders.
-// Defined here so the steps share them without importing one another (each step
-// script runs work on import).
-export function maskPath(i) {
-	return path.join(dir.channels, `ch${String(i + 1).padStart(2, '0')}.tif`);
-}
-export function blurPath(i) {
-	return path.join(dir.blurred, `ch${String(i + 1).padStart(2, '0')}.tif`);
-}
+// per-step, per-level result paths. Every step writes its result to one of these,
+// level-prefixed (e.g. reproject/6_worldcover.tif), never deletes it, and is skipped when
+// the file already exists — so an interrupted build resumes where it left off.
+const ch = (i) => `ch${String(i + 1).padStart(2, '0')}`;
+export const warpedPath = (z) => path.join(dir.reproject, `${z}_worldcover.tif`);
+export const maskPath = (z, i) => path.join(dir.channels, `${z}_${ch(i)}.tif`);
+export const blurPath = (z, i) => path.join(dir.blur, `${z}_${ch(i)}.tif`);
+export const codePath = (z) => path.join(dir.argmax, `${z}_landcover-code.tif`);
+export const geometryPath = (z) => path.join(dir.polygonize, `${z}_landcover.fgb`);
+export const tilesPath = (z) => path.join(dir.tile, `${z}_landcover.mbtiles`);
 
 // Gaussian blur radius (σ in pixels) applied to each mask before the argmax. The argmax
 // step also derives its sieve threshold from it.
 export const BLUR_RADIUS = 4;
 
-// files within the data folder
+// final merged output of the pack step (all per-level tilesets joined)
 export const file = {
-	warped: path.join(datadir, 'worldcover-3857.tif'), // reprojected world raster (reproject → channels)
-	code: path.join(datadir, 'landcover-code.tif'), // single-band argmax codes 10..100 (argmax → polygonize)
-	geometry: path.join(datadir, 'landcover.fgb'), // polygon geometry, EPSG:4326 (polygonize → tile)
 	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid z0..z6 (pack → versatiles)
 };
 
@@ -58,9 +59,6 @@ export function sizeForLevel(z) {
 }
 export function simplifyForLevel(z) {
 	return 1000 << (MAXLEVEL - z); // metres (EPSG:3857): 2000 (z6) … 128000 (z0)
-}
-export function tilesForLevel(z) {
-	return path.join(datadir, `landcover-z${z}.mbtiles`); // per-level tiles, merged in pack
 }
 
 // The 10 channels of the blur/argmax stage, in order. Channel i (1-based) carries

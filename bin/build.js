@@ -30,9 +30,9 @@ await requireCommands([
 for (let level = MAXLEVEL; level >= 0; level--) {
 	console.error('\n══════ level %d / %d ══════', level, MAXLEVEL);
 	await reproject(level);
-	await channels();
-	await blur();
-	await argmax();
+	await channels(level);
+	await blur(level);
+	await argmax(level);
 	await polygonize(level);
 	await tile(level);
 }
