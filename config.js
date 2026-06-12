@@ -58,16 +58,15 @@ export const file = {
 // "no data / no landcover" (ESA 0); its code 100 is dropped before tiling.
 // Legend: https://esa-worldcover.org/en/data-access
 export const channels = [
-	{ code: 10, kind: 'forest', calc: '255*(A==10)' }, // tree cover
-	{ code: 20, kind: 'scrub', calc: '255*(A==20)' }, // shrubland
-	{ code: 30, kind: 'grass', calc: '255*(A==30)' }, // grassland
-	{ code: 40, kind: 'farmland', calc: '255*(A==40)' }, // cropland
-	{ code: 50, kind: 'urban', calc: '255*(A==50)' }, // built-up
-	{ code: 60, kind: 'bare', calc: '255*((A==60)|(A==100))' }, // bare/sparse vegetation + moss and lichen
-	{ code: 70, kind: 'glacier', calc: '255*(A==70)' }, // snow and ice
-	{ code: 80, kind: 'water', calc: '255*(A==80)' }, // permanent water bodies
-	{ code: 90, kind: 'wetland', calc: '255*((A==90)|(A==95))' }, // herbaceous wetland + mangroves
-	{ code: 100, kind: null, calc: '255*(A==0)' }, // no data / no landcover (dropped before tiling)
+	{ code: 0, kind: null, calc: '255*((A==0)|(A==80))' }, // no data / no landcover (dropped before tiling)
+	{ code: 10, kind: 'forest', color: '#66AA44', calc: '255*(A==10)' }, // tree cover
+	{ code: 20, kind: 'scrub', color: '#E0E4E5', calc: '255*(A==20)' }, // shrubland
+	{ code: 30, kind: 'grass', color: '#D8E8C8', calc: '255*(A==30)' }, // grassland
+	{ code: 40, kind: 'farmland', color: '#F0E7D1', calc: '255*(A==40)' }, // cropland
+	{ code: 50, kind: 'urban', color: '#EAE6E133', calc: '255*(A==50)' }, // built-up
+	{ code: 60, kind: 'bare', color: '#FAFAED', calc: '255*((A==60)|(A==100))' }, // bare/sparse vegetation + moss and lichen
+	{ code: 70, kind: 'snow', color:'#FFFFFF', calc: '255*(A==70)' }, // snow and ice
+	{ code: 80, kind: 'wetland', color: '#D3E6DB', calc: '255*((A==90)|(A==95))' }, // herbaceous wetland + mangroves
 ];
 
 // metadata embedded in the generated tileset
