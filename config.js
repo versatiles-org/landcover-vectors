@@ -16,6 +16,11 @@ export const datadir = path.resolve(__dirname, 'data');
 export const SIZE = 32768;
 export const MERC = 20037508.342789244;
 
+// build zoom levels 0..MAXLEVEL. Each level is rendered from its own raster and simplified
+// at its own tolerance (see sizeForLevel / simplifyForLevel below), then the per-level
+// tilesets are merged in the pack step.
+export const MAXLEVEL = 6;
+
 // directories within the data folder, used across the pipeline
 export const dir = {
 	source: path.join(datadir, 'esa-worldcover-src'), // reduced-resolution raster mirror (download)
@@ -43,8 +48,21 @@ export const file = {
 	warped: path.join(datadir, 'worldcover-3857.tif'), // reprojected world raster (reproject → channels)
 	code: path.join(datadir, 'landcover-code.tif'), // single-band argmax codes 10..100 (argmax → polygonize)
 	geometry: path.join(datadir, 'landcover.fgb'), // polygon geometry, EPSG:4326 (polygonize → tile)
-	tiles: path.join(datadir, 'landcover.mbtiles'), // vector tile pyramid (tile → pack)
+	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid z0..z6 (pack → versatiles)
 };
+
+// per-zoom-level parameters. The raster halves and the simplify tolerance doubles each
+// level below MAXLEVEL, so both stay constant in pixels across levels (as does the blur
+// radius). At MAXLEVEL they equal the base values (SIZE px, 2000 m).
+export function sizeForLevel(z) {
+	return SIZE >> (MAXLEVEL - z); // px, square: 512 (z0) … 32768 (z6)
+}
+export function simplifyForLevel(z) {
+	return 2000 << (MAXLEVEL - z); // metres (EPSG:3857): 2000 (z6) … 128000 (z0)
+}
+export function tilesForLevel(z) {
+	return path.join(datadir, `landcover-z${z}.mbtiles`); // per-level tiles, merged in pack
+}
 
 // The 10 channels of the blur/argmax stage, in order. Channel i (1-based) carries
 // code i*10; after blurring all ten masks, each pixel is assigned the code of the
