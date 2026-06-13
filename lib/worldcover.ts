@@ -90,7 +90,7 @@ export async function pMap<T>(
 	async function next(): Promise<void> {
 		while (i < items.length) await worker(items[i++]);
 	}
-	await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, next));
+	await Promise.all(Array.from({ length: Math.min(Math.floor(concurrency), items.length) }, next));
 }
 
 // list every map GeoTIFF key in the bucket (paginated ListObjectsV2)
