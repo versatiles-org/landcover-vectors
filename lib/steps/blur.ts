@@ -10,11 +10,11 @@ import { existsSync } from 'node:fs';
 
 import { runQuiet, pMap, commandExists, atomic } from '../worldcover.ts';
 import { progress } from '../progress.ts';
-import { dir, channels as channelDefs, maskPath, blurPath, BLUR_RADIUS, CPU_CORES } from '../../config.ts';
+import { dir, channels as channelDefs, maskPath, blurPath, BLUR_RADIUS } from '../../config.ts';
 
 export async function blur(level: number): Promise<void> {
 	if (channelDefs.every((_, i) => existsSync(blurPath(level, i)))) return console.error('z%d blur: cached', level);
-	const CONCURRENCY = CPU_CORES;
+	const CONCURRENCY = 1;
 	const PRECISION = 'approximate'; // vips gaussblur precision (fastest)
 	if (!(await commandExists('vips'))) throw new Error('need libvips (vips) on PATH');
 	for (let i = 0; i < channelDefs.length; i++) {
