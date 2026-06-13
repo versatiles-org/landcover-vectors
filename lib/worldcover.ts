@@ -3,6 +3,8 @@
 // Data paths live in config.ts.
 
 import { spawn } from 'node:child_process';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 export const BUCKET = 'https://esa-worldcover.s3.eu-central-1.amazonaws.com';
 export const PREFIX = 'v200/2021/map/';
@@ -61,6 +63,21 @@ export async function requireCommands(cmds: string[]): Promise<void> {
 	const present = await Promise.all(cmds.map(commandExists));
 	const missing = cmds.filter((_, i) => !present[i]);
 	if (missing.length) throw new Error(`required command(s) not found on PATH: ${missing.join(', ')}`);
+}
+
+// Let `produce` write the result to a temp file (".tmp-"-prefixed, in the same folder),
+// then atomically rename it onto `out`. So a partial file from a crashed/killed command
+// never appears as a finished result (which the skip-if-exists logic would wrongly reuse).
+export async function atomic(out: string, produce: (tmp: string) => Promise<void>): Promise<void> {
+	const tmp = path.join(path.dirname(out), '.tmp-' + path.basename(out));
+	await fs.rm(tmp, { force: true }); // clear any leftover temp from a previous failed run
+	try {
+		await produce(tmp);
+		await fs.rename(tmp, out); // atomic on the same filesystem
+	} catch (err) {
+		await fs.rm(tmp, { force: true }); // never leave a partial temp behind
+		throw err;
+	}
 }
 
 // run worker over items with bounded concurrency

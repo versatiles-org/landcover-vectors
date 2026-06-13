@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { run } from '../worldcover.ts';
+import { run, atomic } from '../worldcover.ts';
 import { dir, datadir, geometryPath, tilesPath, meta } from '../../config.ts';
 
 export async function tile(level: number): Promise<void> {
@@ -23,28 +23,30 @@ export async function tile(level: number): Promise<void> {
 	await fs.mkdir(tmpdir, { recursive: true });
 
 	console.error('Tiling zoom %d → %s', level, out);
-	await run('tippecanoe', [
-		'-o',
-		out,
-		'--force',
-		'--temporary-directory',
-		tmpdir,
-		'--minimum-zoom',
-		String(level),
-		'--maximum-zoom',
-		String(level),
-		'--layer',
-		meta.layer,
-		'--attribute-type',
-		'kind:string',
-		'--include',
-		'kind',
-		'--name',
-		meta.name,
-		'--attribution',
-		meta.attribution,
-		'--description',
-		meta.description,
-		geom,
-	]);
+	await atomic(out, (tmp) =>
+		run('tippecanoe', [
+			'-o',
+			tmp,
+			'--force',
+			'--temporary-directory',
+			tmpdir,
+			'--minimum-zoom',
+			String(level),
+			'--maximum-zoom',
+			String(level),
+			'--layer',
+			meta.layer,
+			'--attribute-type',
+			'kind:string',
+			'--include',
+			'kind',
+			'--name',
+			meta.name,
+			'--attribution',
+			meta.attribution,
+			'--description',
+			meta.description,
+			geom,
+		]),
+	);
 }

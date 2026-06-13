@@ -11,7 +11,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { run } from '../worldcover.ts';
+import { run, atomic } from '../worldcover.ts';
 import { dir, MERC, MAXLEVEL, warpedPath, sizeForLevel } from '../../config.ts';
 
 export async function reproject(level: number): Promise<void> {
@@ -25,21 +25,23 @@ export async function reproject(level: number): Promise<void> {
 		const src = warpedPath(level + 1);
 		if (!existsSync(src)) throw new Error(`missing ${src} — reproject level ${level + 1} first`);
 		console.error('Downscaling worldcover to z%d (%d×%d, mode) → %s', level, size, size, out);
-		await run('gdal_translate', [
-			'-r',
-			'mode',
-			'-outsize',
-			String(size),
-			String(size),
-			'-co',
-			'COMPRESS=DEFLATE',
-			'-co',
-			'TILED=YES',
-			'-co',
-			'BIGTIFF=YES',
-			src,
-			out,
-		]);
+		await atomic(out, (tmp) =>
+			run('gdal_translate', [
+				'-r',
+				'mode',
+				'-outsize',
+				String(size),
+				String(size),
+				'-co',
+				'COMPRESS=DEFLATE',
+				'-co',
+				'TILED=YES',
+				'-co',
+				'BIGTIFF=YES',
+				src,
+				tmp,
+			]),
+		);
 		return;
 	}
 
@@ -56,34 +58,36 @@ export async function reproject(level: number): Promise<void> {
 	await run('gdalbuildvrt', ['-overwrite', '-input_file_list', listPath, vrtPath]);
 
 	console.error('Warping z%d to EPSG:3857 %d×%d → %s', level, size, size, out);
-	await run('gdalwarp', [
-		'-t_srs',
-		'EPSG:3857',
-		'-te',
-		String(-MERC),
-		String(-MERC),
-		String(MERC),
-		String(MERC),
-		'-ts',
-		String(size),
-		String(size),
-		'-r',
-		'mode',
-		'-ot',
-		'Byte',
-		'-of',
-		'GTiff',
-		'-co',
-		'COMPRESS=DEFLATE',
-		'-co',
-		'TILED=YES',
-		'-co',
-		'BIGTIFF=YES',
-		'-multi',
-		'-wo',
-		'NUM_THREADS=ALL_CPUS',
-		'-overwrite',
-		vrtPath,
-		out,
-	]);
+	await atomic(out, (tmp) =>
+		run('gdalwarp', [
+			'-t_srs',
+			'EPSG:3857',
+			'-te',
+			String(-MERC),
+			String(-MERC),
+			String(MERC),
+			String(MERC),
+			'-ts',
+			String(size),
+			String(size),
+			'-r',
+			'mode',
+			'-ot',
+			'Byte',
+			'-of',
+			'GTiff',
+			'-co',
+			'COMPRESS=DEFLATE',
+			'-co',
+			'TILED=YES',
+			'-co',
+			'BIGTIFF=YES',
+			'-multi',
+			'-wo',
+			'NUM_THREADS=ALL_CPUS',
+			'-overwrite',
+			vrtPath,
+			tmp,
+		]),
+	);
 }

@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { runQuiet, pMap, listSourceKeys, BUCKET, PREFIX } from '../worldcover.ts';
+import { runQuiet, pMap, atomic, listSourceKeys, BUCKET, PREFIX } from '../worldcover.ts';
 import { progress } from '../progress.ts';
 import { dir } from '../../config.ts';
 
@@ -26,30 +26,30 @@ export async function download(): Promise<void> {
 	async function fetchTile(key: string): Promise<boolean> {
 		const dest = path.join(srcdir, path.basename(key));
 		if (existsSync(dest)) return false; // an existing file is complete (atomic rename below)
-		const tmp = dest + '.part';
 		const src = `/vsicurl/${BUCKET}/${key}`;
 		for (let attempt = 1; ; attempt++) {
 			try {
-				await runQuiet('gdal_translate', [
-					'-q',
-					'-r',
-					'nearest',
-					'-outsize',
-					PERCENT,
-					PERCENT,
-					'-of',
-					'GTiff',
-					'-co',
-					'COMPRESS=DEFLATE',
-					'-co',
-					'TILED=YES',
-					src,
-					tmp,
-				]);
-				await fs.rename(tmp, dest); // atomic: only a complete file appears as dest
+				// atomic() writes to a temp file and renames on success, so dest only appears complete
+				await atomic(dest, (tmp) =>
+					runQuiet('gdal_translate', [
+						'-q',
+						'-r',
+						'nearest',
+						'-outsize',
+						PERCENT,
+						PERCENT,
+						'-of',
+						'GTiff',
+						'-co',
+						'COMPRESS=DEFLATE',
+						'-co',
+						'TILED=YES',
+						src,
+						tmp,
+					]),
+				);
 				return true;
 			} catch (err) {
-				await fs.rm(tmp, { force: true }); // never leave a partial file behind
 				if (attempt >= RETRIES)
 					throw new Error(`download ${key} failed: ${err instanceof Error ? err.message : err}`);
 				await sleep(attempt * 1000);

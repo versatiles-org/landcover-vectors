@@ -8,7 +8,7 @@
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
-import { runQuiet, pMap, commandExists } from '../worldcover.ts';
+import { runQuiet, pMap, commandExists, atomic } from '../worldcover.ts';
 import { progress } from '../progress.ts';
 import { dir, channels as channelDefs, maskPath, blurPath, BLUR_RADIUS, CPU_CORES } from '../../config.ts';
 
@@ -37,14 +37,16 @@ export async function blur(level: number): Promise<void> {
 		async (i) => {
 			const out = blurPath(level, i);
 			if (!existsSync(out)) {
-				await runQuiet('vips', [
-					'gaussblur',
-					maskPath(level, i),
-					`${out}[compression=deflate,predictor=horizontal]`,
-					String(BLUR_RADIUS),
-					'--precision',
-					PRECISION,
-				]);
+				await atomic(out, (tmp) =>
+					runQuiet('vips', [
+						'gaussblur',
+						maskPath(level, i),
+						`${tmp}[compression=deflate,predictor=horizontal]`,
+						String(BLUR_RADIUS),
+						'--precision',
+						PRECISION,
+					]),
+				);
 			}
 			bar.tick();
 		},

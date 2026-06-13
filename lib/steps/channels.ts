@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 
-import { runQuiet, pMap } from '../worldcover.ts';
+import { runQuiet, pMap, atomic } from '../worldcover.ts';
 import { progress } from '../progress.ts';
 import { dir, channels as channelDefs, warpedPath, maskPath } from '../../config.ts';
 
@@ -27,23 +27,25 @@ export async function channels(level: number): Promise<void> {
 		async ({ c, i }) => {
 			const out = maskPath(level, i);
 			if (!existsSync(out)) {
-				await runQuiet('gdal_calc.py', [
-					'-A',
-					src,
-					'--calc',
-					c.calc,
-					'--type',
-					'Byte',
-					'--hideNoData', // 0 means "not this class", not nodata — keep it a real value for the blur
-					'--co',
-					'COMPRESS=DEFLATE',
-					'--co',
-					'TILED=YES',
-					'--overwrite',
-					'--quiet',
-					'--outfile',
-					out,
-				]);
+				await atomic(out, (tmp) =>
+					runQuiet('gdal_calc.py', [
+						'-A',
+						src,
+						'--calc',
+						c.calc,
+						'--type',
+						'Byte',
+						'--hideNoData', // 0 means "not this class", not nodata — keep it a real value for the blur
+						'--co',
+						'COMPRESS=DEFLATE',
+						'--co',
+						'TILED=YES',
+						'--overwrite',
+						'--quiet',
+						'--outfile',
+						tmp,
+					]),
+				);
 			}
 			bar.tick();
 		},

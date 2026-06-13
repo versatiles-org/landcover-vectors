@@ -6,7 +6,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { run } from '../worldcover.ts';
+import { run, atomic } from '../worldcover.ts';
 import { datadir, file, MAXLEVEL, tilesPath, meta } from '../../config.ts';
 
 export async function pack(): Promise<void> {
@@ -18,20 +18,22 @@ export async function pack(): Promise<void> {
 	}
 
 	console.error('Merging %d per-level tilesets → %s', inputs.length, file.tiles);
-	await run('tile-join', [
-		'-f',
-		'--name',
-		meta.name,
-		'--attribution',
-		meta.attribution,
-		'--description',
-		meta.description,
-		'-o',
-		file.tiles,
-		...inputs,
-	]);
+	await atomic(file.tiles, (tmp) =>
+		run('tile-join', [
+			'-f',
+			'--name',
+			meta.name,
+			'--attribution',
+			meta.attribution,
+			'--description',
+			meta.description,
+			'-o',
+			tmp,
+			...inputs,
+		]),
+	);
 
 	const out = path.join(path.dirname(datadir), 'landcover-vectors.versatiles');
 	console.error('Packing → %s', out);
-	await run('versatiles', ['convert', '-c', 'brotli', file.tiles, out]);
+	await atomic(out, (tmp) => run('versatiles', ['convert', '-c', 'brotli', file.tiles, tmp]));
 }

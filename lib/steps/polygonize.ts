@@ -9,7 +9,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { run } from '../worldcover.ts';
+import { run, atomic } from '../worldcover.ts';
 import { dir, channels as channelDefs, codePath, geometryPath, simplifyForLevel } from '../../config.ts';
 
 export async function polygonize(level: number): Promise<void> {
@@ -73,6 +73,7 @@ export async function polygonize(level: number): Promise<void> {
 		SIMPLIFY,
 	]);
 	console.error('Reprojecting to EPSG:4326 → %s', out);
-	await fs.rm(out, { force: true });
-	await run('ogr2ogr', ['-t_srs', 'EPSG:4326', '-f', 'FlatGeobuf', '-nln', 'landcover', out, simplifiedFgb]);
+	await atomic(out, (tmp) =>
+		run('ogr2ogr', ['-t_srs', 'EPSG:4326', '-f', 'FlatGeobuf', '-nln', 'landcover', tmp, simplifiedFgb]),
+	);
 }

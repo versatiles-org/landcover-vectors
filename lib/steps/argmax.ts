@@ -9,7 +9,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { run } from '../worldcover.ts';
+import { run, atomic } from '../worldcover.ts';
 import { dir, MERC, channels as channelDefs, blurPath, codePath, BLUR_RADIUS } from '../../config.ts';
 
 export async function argmax(level: number): Promise<void> {
@@ -68,23 +68,25 @@ export async function argmax(level: number): Promise<void> {
 	}
 
 	console.error('Reclassifying index → code → %s', out);
-	await run('gdal', [
-		'raster',
-		'reclassify',
-		'-m',
-		mapping,
-		'--ot',
-		'UInt8',
-		'--co',
-		'COMPRESS=DEFLATE',
-		'--co',
-		'TILED=YES',
-		'--overwrite',
-		'-i',
-		toReclassify,
-		'-o',
-		out,
-	]);
-	console.error('Re-attaching EPSG:3857 georeferencing');
-	await run('gdal', ['raster', 'edit', '--crs', 'EPSG:3857', '--bbox', `${-MERC},${-MERC},${MERC},${MERC}`, out]);
+	await atomic(out, async (tmp) => {
+		await run('gdal', [
+			'raster',
+			'reclassify',
+			'-m',
+			mapping,
+			'--ot',
+			'UInt8',
+			'--co',
+			'COMPRESS=DEFLATE',
+			'--co',
+			'TILED=YES',
+			'--overwrite',
+			'-i',
+			toReclassify,
+			'-o',
+			tmp,
+		]);
+		console.error('Re-attaching EPSG:3857 georeferencing');
+		await run('gdal', ['raster', 'edit', '--crs', 'EPSG:3857', '--bbox', `${-MERC},${-MERC},${MERC},${MERC}`, tmp]);
+	});
 }
