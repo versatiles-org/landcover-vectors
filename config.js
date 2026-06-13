@@ -24,7 +24,7 @@ export const MAXLEVEL = 7;
 // The folders are numbered by step order (0_… download, 1_… reproject, …) so they sort
 // in pipeline order on disk.
 export const dir = {
-	source: path.join(datadir, '0_esa-worldcover-src'), // reduced-resolution raster mirror (download)
+	source: path.join(datadir, '0_download'), // reduced-resolution raster mirror (download)
 	reproject: path.join(datadir, '1_reproject'), // per-level EPSG:3857 world raster
 	channels: path.join(datadir, '2_channels'), // per-level, per-class membership masks
 	blur: path.join(datadir, '3_blur'), // per-level, per-class blurred masks
