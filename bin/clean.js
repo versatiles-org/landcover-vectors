@@ -14,4 +14,10 @@ for (const name of entries) {
 	console.error('removed %s', path.join(datadir, name));
 }
 
-console.error('Cleaned %s — kept %s (%d entr%s removed)', datadir, keep, entries.length, entries.length === 1 ? 'y' : 'ies');
+console.error(
+	'Cleaned %s — kept %s (%d entr%s removed)',
+	datadir,
+	keep,
+	entries.length,
+	entries.length === 1 ? 'y' : 'ies',
+);
