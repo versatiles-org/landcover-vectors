@@ -3,7 +3,7 @@
   "name": "versatiles-landcover",
   "version": "1.0.0",
   "description": "Generate landcover vector tiles from ESA Worldcover",
-  "author": "yetzt <node@yetzt.me>",
+  "author": "Michael Kreil <github@michael-kreil.de>, yetzt <node@yetzt.me>",
   "license": "Unlicense",
   "type": "module",
   "engines": {
