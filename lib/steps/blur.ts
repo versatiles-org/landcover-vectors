@@ -14,7 +14,7 @@ import { dir, channels as channelDefs, maskPath, blurPath, BLUR_RADIUS, CPU_CORE
 
 export async function blur(level: number): Promise<void> {
 	if (channelDefs.every((_, i) => existsSync(blurPath(level, i)))) return console.error('z%d blur: cached', level);
-	const CONCURRENCY = CPU_CORES / 2.5;
+	const CONCURRENCY = Math.floor(CPU_CORES / 2) || 1;
 	const PRECISION = 'approximate'; // vips gaussblur precision (fastest)
 	if (!(await commandExists('vips'))) throw new Error('need libvips (vips) on PATH');
 	for (let i = 0; i < channelDefs.length; i++) {
