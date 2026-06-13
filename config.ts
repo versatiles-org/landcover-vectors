@@ -1,10 +1,13 @@
 // shared configuration for the landcover-vectors pipeline
 
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const CPU_CORES = 4;
+
+// number of logical CPU cores available to this process (respects CPU affinity)
+export const CPU_CORES = os.availableParallelism();
 
 // base directory for everything the pipeline downloads and generates
 export const datadir = path.resolve(__dirname, 'data');
