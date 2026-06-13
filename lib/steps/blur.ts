@@ -41,7 +41,7 @@ export async function blur(level: number): Promise<void> {
 					runQuiet('vips', [
 						'gaussblur',
 						maskPath(level, i),
-						`${tmp}[compression=deflate,predictor=horizontal]`,
+						`${tmp}[compression=deflate,predictor=horizontal,bigtiff=true]`,
 						String(BLUR_RADIUS),
 						'--precision',
 						PRECISION,
