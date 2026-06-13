@@ -9,9 +9,13 @@ import path from 'node:path';
 export const BUCKET = 'https://esa-worldcover.s3.eu-central-1.amazonaws.com';
 export const PREFIX = 'v200/2021/map/';
 
-// let GDAL read the public bucket anonymously over /vsicurl
+// environment for every GDAL child process
 export const gdalEnv: NodeJS.ProcessEnv = {
 	...process.env,
+	// multithread GTiff block (de)compression on reads and writes, and any operation that
+	// honours GDAL_NUM_THREADS (warp, etc.) — applies to all gdal/ogr2ogr/gdal_*.py calls
+	GDAL_NUM_THREADS: 'ALL_CPUS',
+	// let GDAL read the public bucket anonymously over /vsicurl
 	AWS_NO_SIGN_REQUEST: 'YES',
 	GDAL_DISABLE_READDIR_ON_OPEN: 'EMPTY_DIR',
 	CPL_VSIL_CURL_ALLOWED_EXTENSIONS: '.tif',
