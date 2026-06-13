@@ -13,6 +13,7 @@
     "download": "node bin/download.js",
     "build": "node bin/build.js",
     "style": "node bin/style.js",
+    "clean": "node bin/clean.js",
     "upgrade": "npx npm-check-updates -u && npm install",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
