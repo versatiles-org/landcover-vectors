@@ -9,10 +9,10 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { run } from '../worldcover.js';
-import { dir, channels as channelDefs, codePath, geometryPath, simplifyForLevel } from '../../config.js';
+import { run } from '../worldcover.ts';
+import { dir, channels as channelDefs, codePath, geometryPath, simplifyForLevel } from '../../config.ts';
 
-export async function polygonize(level) {
+export async function polygonize(level: number): Promise<void> {
 	const out = geometryPath(level);
 	const code = codePath(level);
 	if (!existsSync(code)) throw new Error(`missing ${code} — run the argmax step first`);

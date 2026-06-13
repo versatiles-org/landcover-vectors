@@ -1,7 +1,6 @@
 // Shared network + GDAL helpers for importing ESA WorldCover 2021 (v200) from AWS
 // Open Data. Source: https://registry.opendata.aws/esa-worldcover-vito/ (s3://esa-worldcover)
-// Used by bin/download-worldcover.js (network) and bin/tile-worldcover.js (local).
-// Data paths live in config.js.
+// Data paths live in config.ts.
 
 import { spawn } from 'node:child_process';
 
@@ -9,7 +8,7 @@ export const BUCKET = 'https://esa-worldcover.s3.eu-central-1.amazonaws.com';
 export const PREFIX = 'v200/2021/map/';
 
 // let GDAL read the public bucket anonymously over /vsicurl
-export const gdalEnv = {
+export const gdalEnv: NodeJS.ProcessEnv = {
 	...process.env,
 	AWS_NO_SIGN_REQUEST: 'YES',
 	GDAL_DISABLE_READDIR_ON_OPEN: 'EMPTY_DIR',
@@ -19,8 +18,8 @@ export const gdalEnv = {
 };
 
 // run a child process, inheriting stdio, rejecting on non-zero exit
-export function run(cmd, args) {
-	return new Promise((resolve, reject) => {
+export function run(cmd: string, args: string[]): Promise<void> {
+	return new Promise<void>((resolve, reject) => {
 		console.error('$ %s %s', cmd, args.join(' '));
 		const child = spawn(cmd, args, { stdio: 'inherit', env: gdalEnv });
 		child.on('error', reject);
@@ -29,11 +28,11 @@ export function run(cmd, args) {
 }
 
 // run a child process quietly, capturing stderr for the error message
-export function runQuiet(cmd, args) {
-	return new Promise((resolve, reject) => {
+export function runQuiet(cmd: string, args: string[]): Promise<void> {
+	return new Promise<void>((resolve, reject) => {
 		const child = spawn(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'], env: gdalEnv });
 		let stderr = '';
-		child.stderr.on('data', (d) => (stderr += d));
+		child.stderr?.on('data', (d) => (stderr += d));
 		child.on('error', reject);
 		child.on('exit', (code, signal) =>
 			code === 0 ? resolve() : reject(new Error(stderr.trim() || exitMessage(cmd, code, signal))),
@@ -43,14 +42,14 @@ export function runQuiet(cmd, args) {
 
 // describe a non-zero child exit; a null code means it was terminated by a signal
 // (e.g. SIGKILL from the OOM killer)
-function exitMessage(cmd, code, signal) {
+function exitMessage(cmd: string, code: number | null, signal: NodeJS.Signals | null): string {
 	if (signal) return `${cmd} was killed by ${signal}${signal === 'SIGKILL' ? ' (out of memory?)' : ''}`;
 	return `${cmd} exited with code ${code}`;
 }
 
 // resolve true if `cmd` can be spawned (i.e. is on PATH), false otherwise
-export function commandExists(cmd) {
-	return new Promise((resolve) => {
+export function commandExists(cmd: string): Promise<boolean> {
+	return new Promise<boolean>((resolve) => {
 		const child = spawn(cmd, ['--version'], { stdio: 'ignore', env: gdalEnv });
 		child.on('error', () => resolve(false)); // ENOENT: not on PATH
 		child.on('exit', () => resolve(true));
@@ -58,25 +57,29 @@ export function commandExists(cmd) {
 }
 
 // verify every command is on PATH, reporting all that are missing at once
-export async function requireCommands(cmds) {
+export async function requireCommands(cmds: string[]): Promise<void> {
 	const present = await Promise.all(cmds.map(commandExists));
 	const missing = cmds.filter((_, i) => !present[i]);
 	if (missing.length) throw new Error(`required command(s) not found on PATH: ${missing.join(', ')}`);
 }
 
 // run worker over items with bounded concurrency
-export async function pMap(items, concurrency, worker) {
+export async function pMap<T>(
+	items: T[],
+	concurrency: number,
+	worker: (item: T) => Promise<void> | void,
+): Promise<void> {
 	let i = 0;
-	async function next() {
+	async function next(): Promise<void> {
 		while (i < items.length) await worker(items[i++]);
 	}
 	await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, next));
 }
 
 // list every map GeoTIFF key in the bucket (paginated ListObjectsV2)
-export async function listSourceKeys() {
-	const keys = [];
-	let token;
+export async function listSourceKeys(): Promise<string[]> {
+	const keys: string[] = [];
+	let token: string | null = null;
 	do {
 		const url = new URL(BUCKET + '/');
 		url.searchParams.set('list-type', '2');

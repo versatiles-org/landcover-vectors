@@ -8,11 +8,11 @@
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
-import { runQuiet, pMap, commandExists } from '../worldcover.js';
-import { progress } from '../progress.js';
-import { dir, channels as channelDefs, maskPath, blurPath, BLUR_RADIUS, CPU_CORES } from '../../config.js';
+import { runQuiet, pMap, commandExists } from '../worldcover.ts';
+import { progress } from '../progress.ts';
+import { dir, channels as channelDefs, maskPath, blurPath, BLUR_RADIUS, CPU_CORES } from '../../config.ts';
 
-export async function blur(level) {
+export async function blur(level: number): Promise<void> {
 	if (channelDefs.every((_, i) => existsSync(blurPath(level, i)))) return console.error('z%d blur: cached', level);
 	const CONCURRENCY = CPU_CORES;
 	const PRECISION = 'approximate'; // vips gaussblur precision (fastest)

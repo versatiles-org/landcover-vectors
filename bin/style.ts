@@ -1,5 +1,5 @@
 // Generate QGIS styles (.qml) that colour the landcover polygons by `kind`, using the
-// per-channel colours from config.js. Each kind is filled with its colour and the stroke
+// per-channel colours from config.ts. Each kind is filled with its colour and the stroke
 // is disabled (outline_style = no). Keyed on `kind`, which both outputs carry.
 //
 // Two files are written to the repo root, because QGIS styles a plain vector layer and a
@@ -9,15 +9,15 @@
 //   - landcover-vt.qml   vector-tiles renderer — for data/landcover.mbtiles opened as a
 //                        native “Vector Tiles” layer
 //
-// Run with: node bin/style.js (or `npm run style`).
+// Run with: node bin/style.ts (or `npm run style`).
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { channels, datadir } from '../config.js';
+import { channels, datadir, type Channel } from '../config.ts';
 
 // "#RRGGBB" or "#RRGGBBAA" → QGIS "r,g,b,a" (alpha defaults to fully opaque)
-function rgba(hex) {
+function rgba(hex: string): string {
 	const h = hex.replace('#', '');
 	const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
 	const a = h.length >= 8 ? parseInt(h.slice(6, 8), 16) : 255;
@@ -25,7 +25,7 @@ function rgba(hex) {
 }
 
 // a solid fill with no outline (stroke disabled), named `name`
-function fillSymbol(name, color) {
+function fillSymbol(name: string, color: string): string {
 	return `    <symbol type="fill" name="${name}" alpha="1" clip_to_extent="1" force_rhr="0">
       <layer class="SimpleFill" enabled="1" locked="0" pass="0">
         <prop k="color" v="${color}"/>
@@ -43,8 +43,8 @@ function fillSymbol(name, color) {
     </symbol>`;
 }
 
-// channels that end up in the output: those with a kind (the no-data channel is dropped)
-const kinded = channels.filter((c) => c.kind && c.color);
+// channels that end up in the output: those with a kind and a colour (no-data is dropped)
+const kinded = channels.filter((c): c is Channel & { kind: string; color: string } => Boolean(c.kind && c.color));
 
 // 1. categorized renderer (plain vector layer: the FGB)
 const categorized = `<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
@@ -66,7 +66,7 @@ ${kinded.map((c, i) => fillSymbol(String(i), rgba(c.color))).join('\n')}
 `;
 
 // QGIS "R,G,B,A,rgb:r,g,b,a" colour (0-255 ints plus 0-1 floats), the form QGIS writes
-function qgisColor(hex) {
+function qgisColor(hex: string): string {
 	const h = hex.replace('#', '');
 	const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
 	const a = h.length >= 8 ? parseInt(h.slice(6, 8), 16) : 255;
@@ -74,7 +74,7 @@ function qgisColor(hex) {
 }
 
 // a SimpleFill in QGIS' modern <Option type="Map"> form: fill = color, stroke disabled
-function mapFillSymbol(color) {
+function mapFillSymbol(color: string): string {
 	return `          <symbol alpha="1" is_animated="0" type="fill" clip_to_extent="1" force_rhr="0" name="0" frame_rate="10">
             <data_defined_properties>
               <Option type="Map">

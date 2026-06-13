@@ -8,10 +8,10 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { run } from '../worldcover.js';
-import { dir, datadir, geometryPath, tilesPath, meta } from '../../config.js';
+import { run } from '../worldcover.ts';
+import { dir, datadir, geometryPath, tilesPath, meta } from '../../config.ts';
 
-export async function tile(level) {
+export async function tile(level: number): Promise<void> {
 	const out = tilesPath(level);
 	const geom = geometryPath(level);
 	if (!existsSync(geom)) throw new Error(`missing ${geom} — run the polygonize step first`);

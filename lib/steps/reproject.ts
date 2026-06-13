@@ -11,10 +11,10 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { run } from '../worldcover.js';
-import { dir, MERC, MAXLEVEL, warpedPath, sizeForLevel } from '../../config.js';
+import { run } from '../worldcover.ts';
+import { dir, MERC, MAXLEVEL, warpedPath, sizeForLevel } from '../../config.ts';
 
-export async function reproject(level) {
+export async function reproject(level: number): Promise<void> {
 	const size = sizeForLevel(level);
 	const out = warpedPath(level);
 	if (existsSync(out)) return console.error('z%d reproject: cached', level);
@@ -44,7 +44,7 @@ export async function reproject(level) {
 	}
 
 	// top level: reproject the full source mirror
-	const tiles = (await fs.readdir(dir.source).catch(() => [])).filter((f) => f.endsWith('.tif'));
+	const tiles = (await fs.readdir(dir.source).catch(() => [] as string[])).filter((f) => f.endsWith('.tif'));
 	if (tiles.length === 0) throw new Error(`no source tiles in ${dir.source} — run the download step first`);
 
 	// mosaic via an input-file list (avoids command-line length limits and shell globbing)

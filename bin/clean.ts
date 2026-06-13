@@ -4,10 +4,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { datadir, dir } from '../config.js';
+import { datadir, dir } from '../config.ts';
 
 const keep = path.basename(dir.source);
-const entries = (await fs.readdir(datadir).catch(() => [])).filter((name) => name !== keep);
+const entries = (await fs.readdir(datadir).catch(() => [] as string[])).filter((name) => name !== keep);
 
 for (const name of entries) {
 	await fs.rm(path.join(datadir, name), { recursive: true, force: true });

@@ -9,10 +9,8 @@ export const CPU_CORES = 4;
 // base directory for everything the pipeline downloads and generates
 export const datadir = path.resolve(__dirname, 'data');
 
-// the world raster is rendered in EPSG:3857 (Web Mercator) at SIZE×SIZE pixels covering
-// the standard Mercator square (±MERC metres ≈ ±85.0511°). SIZE = 2^15 = 32768 is exactly
-// zoom-7 tile resolution (128 tiles × 256 px), so the grid aligns to tile boundaries and
-// the pixels are square.
+// the world raster is rendered in EPSG:3857 (Web Mercator) covering the standard Mercator
+// square (±MERC metres ≈ ±85.0511°).
 export const MERC = 20037508.342789244;
 
 // build zoom levels 0..MAXLEVEL. Each level is rendered from its own raster and simplified
@@ -36,13 +34,13 @@ export const dir = {
 // per-step, per-level result paths. Every step writes its result to one of these,
 // level-prefixed (e.g. reproject/6_worldcover.tif), never deletes it, and is skipped when
 // the file already exists — so an interrupted build resumes where it left off.
-const ch = (i) => `ch${String(i + 1).padStart(2, '0')}`;
-export const warpedPath = (z) => path.join(dir.reproject, `${z}_worldcover.tif`);
-export const maskPath = (z, i) => path.join(dir.channels, `${z}_${ch(i)}.tif`);
-export const blurPath = (z, i) => path.join(dir.blur, `${z}_${ch(i)}.tif`);
-export const codePath = (z) => path.join(dir.argmax, `${z}_landcover-code.tif`);
-export const geometryPath = (z) => path.join(dir.polygonize, `${z}_landcover.fgb`);
-export const tilesPath = (z) => path.join(dir.tile, `${z}_landcover.mbtiles`);
+const ch = (i: number) => `ch${String(i + 1).padStart(2, '0')}`;
+export const warpedPath = (z: number) => path.join(dir.reproject, `${z}_worldcover.tif`);
+export const maskPath = (z: number, i: number) => path.join(dir.channels, `${z}_${ch(i)}.tif`);
+export const blurPath = (z: number, i: number) => path.join(dir.blur, `${z}_${ch(i)}.tif`);
+export const codePath = (z: number) => path.join(dir.argmax, `${z}_landcover-code.tif`);
+export const geometryPath = (z: number) => path.join(dir.polygonize, `${z}_landcover.fgb`);
+export const tilesPath = (z: number) => path.join(dir.tile, `${z}_landcover.mbtiles`);
 
 // Gaussian blur radius (σ in pixels) applied to each mask before the argmax. The argmax
 // step also derives its sieve threshold from it.
@@ -50,29 +48,28 @@ export const BLUR_RADIUS = 4;
 
 // final merged output of the pack step (all per-level tilesets joined)
 export const file = {
-	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid z0..z6 (pack → versatiles)
+	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid (pack → versatiles)
 };
 
-// per-zoom-level parameters. The raster halves and the simplify tolerance doubles each
-// level below MAXLEVEL, so both stay constant in pixels across levels (as does the blur
-// radius). At MAXLEVEL they equal the base values (SIZE px, 2000 m).
-export function sizeForLevel(z) {
+// per-zoom-level parameters: the raster doubles and the simplify tolerance halves each level up.
+export function sizeForLevel(z: number): number {
 	return 4096 * Math.pow(2, z); // px
 }
-export function simplifyForLevel(z) {
-	return (40074000 / 512) / Math.pow(2, z); // metres (EPSG:3857)
+export function simplifyForLevel(z: number): number {
+	return 40074000 / 512 / Math.pow(2, z); // metres (EPSG:3857)
 }
 
-// The 10 channels of the blur/argmax stage, in order. Channel i (1-based) carries
-// code i*10; after blurring all ten masks, each pixel is assigned the code of the
-// channel with the highest value (argmax). `calc` is the gdal_calc.py expression over
-// band A of the reprojected ESA raster that builds the 0/255 membership mask, and
-// `kind` is the Shortbread landcover kind the code maps to in the final tiles.
-//
-// Several ESA classes merge (moss → bare, mangroves → wetland). The last channel is
-// "no data / no landcover" (ESA 0); its code 100 is dropped before tiling.
-// Legend: https://esa-worldcover.org/en/data-access
-export const channels = [
+// one channel of the blur/argmax stage. `calc` is the gdal_calc.py expression over band A of
+// the reprojected ESA raster that builds the 0/255 membership mask; `kind` is the Shortbread
+// landcover kind the code maps to in the final tiles (null = the dropped no-data channel);
+// `color` is the fill colour used by the generated QGIS styles.
+export type Channel = { code: number; kind: string | null; color?: string; calc: string };
+
+// The channels of the blur/argmax stage, in order. After blurring all masks, each pixel is
+// assigned the code of the channel with the highest value (argmax). Several ESA classes merge
+// (moss → bare, mangroves → wetland); the first channel is "no data / no landcover" (ESA 0),
+// dropped before tiling. Legend: https://esa-worldcover.org/en/data-access
+export const channels: Channel[] = [
 	{ code: 0, kind: null, calc: '255*((A==0)|(A==80))' }, // no data / no landcover (dropped before tiling)
 	{ code: 10, kind: 'forest', color: '#66AA44', calc: '255*(A==10)' }, // tree cover
 	{ code: 20, kind: 'scrub', color: '#E0E4E5', calc: '255*(A==20)' }, // shrubland

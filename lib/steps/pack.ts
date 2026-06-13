@@ -1,16 +1,16 @@
 // Step 8 — merge the per-level tilesets and pack them into a brotli versatiles container.
 //
-// tile-join concatenates the single-zoom mbtiles (z0..MAXLEVEL) into one z0..z6 pyramid
+// tile-join concatenates the single-zoom mbtiles (z0..MAXLEVEL) into one pyramid
 // (data/landcover.mbtiles), which versatiles then compresses into the repo-root container.
 
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { run } from '../worldcover.js';
-import { datadir, file, MAXLEVEL, tilesPath, meta } from '../../config.js';
+import { run } from '../worldcover.ts';
+import { datadir, file, MAXLEVEL, tilesPath, meta } from '../../config.ts';
 
-export async function pack() {
-	const inputs = [];
+export async function pack(): Promise<void> {
+	const inputs: string[] = [];
 	for (let z = 0; z <= MAXLEVEL; z++) {
 		const p = tilesPath(z);
 		if (!existsSync(p)) throw new Error(`missing ${p} — run the build (tile step) for every level first`);

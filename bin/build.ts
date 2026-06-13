@@ -4,11 +4,11 @@
 // source mirror, and each lower level is a 50% mode-downscale of the previous one (much
 // faster than re-warping the source every level). Resolution and simplify tolerance scale
 // with the level; the per-level tilesets are merged in the pack step. The one-time
-// source-mirror fetch is a separate script, bin/download.js (`npm run download`).
+// source-mirror fetch is a separate script, bin/download.ts (`npm run download`).
 
-import { reproject, channels, blur, argmax, polygonize, tile, pack } from '../lib/steps/index.js';
-import { requireCommands } from '../lib/worldcover.js';
-import { MAXLEVEL } from '../config.js';
+import { reproject, channels, blur, argmax, polygonize, tile, pack } from '../lib/steps/index.ts';
+import { requireCommands } from '../lib/worldcover.ts';
+import { MAXLEVEL } from '../config.ts';
 
 // fail fast (before the long build) if any external tool is missing: GDAL (reproject /
 // downscale / channels / argmax / polygonize), vips (blur), tippecanoe + tile-join (tile /

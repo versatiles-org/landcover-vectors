@@ -9,10 +9,10 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { run } from '../worldcover.js';
-import { dir, MERC, channels as channelDefs, blurPath, codePath, BLUR_RADIUS } from '../../config.js';
+import { run } from '../worldcover.ts';
+import { dir, MERC, channels as channelDefs, blurPath, codePath, BLUR_RADIUS } from '../../config.ts';
 
-export async function argmax(level) {
+export async function argmax(level: number): Promise<void> {
 	const out = codePath(level);
 	if (existsSync(out)) return console.error('z%d argmax: cached', level);
 	const inputs = channelDefs.map((_, i) => blurPath(level, i));

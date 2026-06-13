@@ -8,11 +8,11 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 
-import { runQuiet, pMap } from '../worldcover.js';
-import { progress } from '../progress.js';
-import { dir, channels as channelDefs, warpedPath, maskPath } from '../../config.js';
+import { runQuiet, pMap } from '../worldcover.ts';
+import { progress } from '../progress.ts';
+import { dir, channels as channelDefs, warpedPath, maskPath } from '../../config.ts';
 
-export async function channels(level) {
+export async function channels(level: number): Promise<void> {
 	if (channelDefs.every((_, i) => existsSync(maskPath(level, i)))) return console.error('z%d channels: cached', level);
 	const CONCURRENCY = Math.max(1, Math.min(4, os.availableParallelism() - 1));
 	const src = warpedPath(level);

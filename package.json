@@ -7,19 +7,22 @@
   "license": "Unlicense",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.6"
   },
   "scripts": {
-    "download": "node bin/download.js",
-    "build": "node bin/build.js",
-    "style": "node bin/style.js",
-    "clean": "node bin/clean.js",
+    "download": "node bin/download.ts",
+    "build": "node bin/build.ts",
+    "style": "node bin/style.ts",
+    "clean": "node bin/clean.ts",
+    "typecheck": "tsc --noEmit",
     "upgrade": "npx npm-check-updates -u && npm install",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "devDependencies": {
+    "@types/node": "^22.10.5",
     "npm-check-updates": "^22.2.3",
-    "prettier": "^3.8.4"
+    "prettier": "^3.8.4",
+    "typescript": "^5.7.3"
   }
 }

@@ -2,19 +2,19 @@
 //
 // Each of the ~2651 source GeoTIFFs is downsampled by FACTOR on the way in (reading its
 // matching internal overview, so only a fraction of the full 10 m data is transferred)
-// into data/0_esa-worldcover-src in its native EPSG:4326. Downloads run in parallel, are
-// retried, written atomically, and skipped if already present — robust and resumable.
+// into data/0_download in its native EPSG:4326. Downloads run in parallel, are retried,
+// written atomically, and skipped if already present — robust and resumable.
 
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { runQuiet, pMap, listSourceKeys, BUCKET, PREFIX } from '../worldcover.js';
-import { progress } from '../progress.js';
-import { dir } from '../../config.js';
+import { runQuiet, pMap, listSourceKeys, BUCKET, PREFIX } from '../worldcover.ts';
+import { progress } from '../progress.ts';
+import { dir } from '../../config.ts';
 
-export async function download() {
+export async function download(): Promise<void> {
 	const FACTOR = 4; // downsample each source tile by this factor on download
 	const PERCENT = `${100 / FACTOR}%`;
 	const CONCURRENCY = 8;
@@ -23,7 +23,7 @@ export async function download() {
 
 	// fetch one source tile to the local mirror at reduced resolution, skipping if
 	// already present; reads only the matching overview and writes atomically
-	async function fetchTile(key) {
+	async function fetchTile(key: string): Promise<boolean> {
 		const dest = path.join(srcdir, path.basename(key));
 		if (existsSync(dest)) return false; // an existing file is complete (atomic rename below)
 		const tmp = dest + '.part';
@@ -50,7 +50,8 @@ export async function download() {
 				return true;
 			} catch (err) {
 				await fs.rm(tmp, { force: true }); // never leave a partial file behind
-				if (attempt >= RETRIES) throw new Error(`download ${key} failed: ${err.message}`);
+				if (attempt >= RETRIES)
+					throw new Error(`download ${key} failed: ${err instanceof Error ? err.message : err}`);
 				await sleep(attempt * 1000);
 			}
 		}

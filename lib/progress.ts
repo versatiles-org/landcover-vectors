@@ -10,7 +10,7 @@
 
 const BAR_WIDTH = 24;
 
-function fmtTime(s) {
+function fmtTime(s: number): string {
 	if (!isFinite(s) || s < 0) return '--';
 	s = Math.round(s);
 	const h = Math.floor(s / 3600);
@@ -21,7 +21,9 @@ function fmtTime(s) {
 	return `${sec}s`;
 }
 
-export function progress(total, label = '') {
+export type Progress = { tick: (n?: number) => void; done: () => void };
+
+export function progress(total: number, label = ''): Progress {
 	const start = Date.now();
 	const tty = !!process.stderr.isTTY;
 	const lbl = label ? label + ' ' : '';
@@ -31,7 +33,7 @@ export function progress(total, label = '') {
 
 	draw(true);
 
-	function draw(force) {
+	function draw(force: boolean): void {
 		const now = Date.now();
 		const frac = total > 0 ? current / total : 1;
 		const pct = Math.floor(frac * 100);
