@@ -46,7 +46,7 @@ export const tilesPath = (z) => path.join(dir.tile, `${z}_landcover.mbtiles`);
 
 // Gaussian blur radius (σ in pixels) applied to each mask before the argmax. The argmax
 // step also derives its sieve threshold from it.
-export const BLUR_RADIUS = 3;
+export const BLUR_RADIUS = 4;
 
 // final merged output of the pack step (all per-level tilesets joined)
 export const file = {
@@ -57,10 +57,10 @@ export const file = {
 // level below MAXLEVEL, so both stay constant in pixels across levels (as does the blur
 // radius). At MAXLEVEL they equal the base values (SIZE px, 2000 m).
 export function sizeForLevel(z) {
-	return 1024 << z; // px
+	return 4096 * Math.pow(2, z); // px
 }
 export function simplifyForLevel(z) {
-	return 100000 / Math.pow(2, z); // metres (EPSG:3857)
+	return (40074000 / 512) / Math.pow(2, z); // metres (EPSG:3857)
 }
 
 // The 10 channels of the blur/argmax stage, in order. Channel i (1-based) carries
