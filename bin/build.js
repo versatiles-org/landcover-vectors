@@ -6,7 +6,7 @@
 // with the level; the per-level tilesets are merged in the pack step. The one-time
 // source-mirror fetch is a separate script, bin/download.js (`npm run download`).
 
-import { reproject, channels, blur, argmax, polygonize, tile, pack } from '../lib/steps.js';
+import { reproject, channels, blur, argmax, polygonize, tile, pack } from '../lib/steps/index.js';
 import { requireCommands } from '../lib/worldcover.js';
 import { MAXLEVEL } from '../config.js';
 
