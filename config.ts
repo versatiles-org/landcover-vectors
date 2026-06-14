@@ -62,11 +62,13 @@ export function blurRadiusForLevel(z: number): number {
 export function sieveThresholdForLevel(z: number): number {
 	// in pixel
 	const blurRadius = blurRadiusForLevel(z);
-	return 2 * Math.round(Math.PI * blurRadius * blurRadius);
+	return Math.round(Math.PI * blurRadius * blurRadius);
 }
 export function simplifyForLevel(z: number): number {
+	let simplify = (40074000 / 512) / Math.pow(2, z);
+	let minPixel = 4 * 40074000 / sizeForLevel(z);
 	// metres (EPSG:3857)
-	return (5 * 40074000) / sizeForLevel(z);
+	return Math.max(simplify, minPixel);
 }
 
 // one channel of the blur/argmax stage. `calc` is the gdal_calc.py expression over band A of
@@ -100,3 +102,18 @@ export const meta = {
 	description:
 		'Landcover vector tiles based on ESA Worldcover 2021, © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium',
 };
+
+
+let entries = [];
+for (let zoom = 0; zoom <= MAXLEVEL; zoom++) {
+	const simplify= simplifyForLevel(zoom);
+	entries.push({
+		zoom,
+		size: sizeForLevel(zoom),
+		blurRadius: blurRadiusForLevel(zoom),
+		sieveThreshold: sieveThresholdForLevel(zoom),
+		simplify,
+		simplifyPx: simplify / (40074000 / sizeForLevel(zoom)),
+	});
+}
+console.table(entries);
