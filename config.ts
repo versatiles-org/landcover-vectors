@@ -56,7 +56,7 @@ export const file = {
 
 // per-zoom-level parameters: the raster doubles and the simplify tolerance halves each level up.
 export function sizeForLevel(z: number): number {
-	return 4096 * Math.pow(2, z); // px
+	return 2048 * Math.pow(2, z); // px
 }
 export function simplifyForLevel(z: number): number {
 	return 40074000 / 512 / Math.pow(2, z); // metres (EPSG:3857)
