@@ -24,25 +24,34 @@ export async function reproject(level: number): Promise<void> {
 	if (level < MAXLEVEL) {
 		const src = warpedPath(level + 1);
 		if (!existsSync(src)) throw new Error(`missing ${src} — reproject level ${level + 1} first`);
-		console.error('Downscaling worldcover to z%d (%d×%d, mode) → %s', level, size, size, out);
-		await atomic(out, (tmp) =>
-			run('gdal_translate', [
-				'-r',
-				'mode',
-				'-outsize',
-				String(size),
-				String(size),
-				'-co',
-				'COMPRESS=DEFLATE',
-				'-co',
-				'TILED=YES',
-				'-co',
-				'BIGTIFF=YES',
-				src,
-				tmp,
-			]),
-		);
-		return;
+
+		const lastSize = sizeForLevel(level + 1);
+		if (lastSize == size) {
+			console.error('Copying worldcover → %s', level, size, size, out);
+			await atomic(out, async (tmp) => fs.copyFile(src, tmp));
+			return;
+		}
+		if (lastSize === 2 * size) {
+			console.error('Downscaling worldcover to z%d (%d×%d, mode) → %s', level, size, size, out);
+			await atomic(out, (tmp) =>
+				run('gdal_translate', [
+					'-r',
+					'mode',
+					'-outsize',
+					String(size),
+					String(size),
+					'-co',
+					'COMPRESS=DEFLATE',
+					'-co',
+					'TILED=YES',
+					'-co',
+					'BIGTIFF=YES',
+					src,
+					tmp,
+				]),
+			);
+			return;
+		}
 	}
 
 	// top level: reproject the full source mirror
