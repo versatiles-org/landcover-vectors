@@ -10,6 +10,7 @@
     "node": ">=22.6"
   },
   "scripts": {
+    "check": "npm run typecheck && npm run format:check",
     "download": "node bin/download.ts",
     "build": "node bin/build.ts",
     "style": "node bin/style.ts",
