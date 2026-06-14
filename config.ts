@@ -52,13 +52,21 @@ export const file = {
 
 // per-zoom-level parameters: the raster doubles and the simplify tolerance halves each level up.
 export function sizeForLevel(z: number): number {
-	return Math.min(65536, 4096 * Math.pow(2, z)); // px
+	// in pixel
+	return Math.min(65536, 4096 * Math.pow(2, z));
 }
 export function blurRadiusForLevel(z: number): number {
-	return sizeForLevel(z) / (256 * Math.pow(2, z)); // px
+	// in pixel
+	return sizeForLevel(z) / (512 * Math.pow(2, z));
+}
+export function sieveThresholdForLevel(z: number): number {
+	// in pixel
+	const blurRadius = blurRadiusForLevel(z);
+	return 2 * Math.round(Math.PI * blurRadius * blurRadius);
 }
 export function simplifyForLevel(z: number): number {
-	return 40074000 / (512 * Math.pow(2, z)); // metres (EPSG:3857)
+	// metres (EPSG:3857)
+	return (5 * 40074000) / sizeForLevel(z);
 }
 
 // one channel of the blur/argmax stage. `calc` is the gdal_calc.py expression over band A of

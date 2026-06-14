@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { run, atomic } from '../worldcover.ts';
-import { dir, MERC, channels as channelDefs, blurPath, codePath, blurRadiusForLevel } from '../../config.ts';
+import { dir, MERC, channels as channelDefs, blurPath, codePath, sieveThresholdForLevel } from '../../config.ts';
 
 export async function argmax(level: number): Promise<void> {
 	const out = codePath(level);
@@ -22,8 +22,7 @@ export async function argmax(level: number): Promise<void> {
 	// name the inputs A, B, C … in channel order; argmax's index follows input order
 	const named = inputs.flatMap((p, i) => ['-i', `${String.fromCharCode(65 + i)}=${p}`]);
 	const mapping = channelDefs.map((c, i) => `${i + 1}=${c.code}`).join(';'); // index → code
-	const blurRadius = blurRadiusForLevel(level);
-	const sieveThreshold = 4 * Math.round(Math.PI * blurRadius * blurRadius);
+	const sieveThreshold = sieveThresholdForLevel(level);
 	const indexTif = path.join(dir.argmax, `${level}_index.tif`);
 	const sievedTif = path.join(dir.argmax, `${level}_sieved.tif`);
 
