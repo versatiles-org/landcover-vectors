@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs';
 
 import { runQuiet, pMap, commandExists, atomic } from '../worldcover.ts';
 import { progress } from '../progress.ts';
-import { dir, channels as channelDefs, maskPath, blurPath, BLUR_RADIUS, CPU_CORES } from '../../config.ts';
+import { dir, channels as channelDefs, maskPath, blurPath, CPU_CORES, blurRadiusForLevel } from '../../config.ts';
 
 export async function blur(level: number): Promise<void> {
 	if (channelDefs.every((_, i) => existsSync(blurPath(level, i)))) return console.error('z%d blur: cached', level);
@@ -23,13 +23,9 @@ export async function blur(level: number): Promise<void> {
 	}
 	await fs.mkdir(dir.blur, { recursive: true });
 
-	console.error(
-		'Blurring %d masks for z%d (σ=%s px, %d workers)',
-		channelDefs.length,
-		level,
-		BLUR_RADIUS,
-		CONCURRENCY,
-	);
+	const blurRadius = blurRadiusForLevel(level);
+
+	console.error('Blurring %d masks for z%d (σ=%s px, %d workers)', channelDefs.length, level, blurRadius, CONCURRENCY);
 	const bar = progress(channelDefs.length, 'Blur');
 	await pMap(
 		channelDefs.map((_, i) => i),
@@ -42,7 +38,7 @@ export async function blur(level: number): Promise<void> {
 						'gaussblur',
 						maskPath(level, i),
 						`${tmp}[compression=deflate,predictor=horizontal,bigtiff=true]`,
-						String(BLUR_RADIUS),
+						String(blurRadius),
 						'--precision',
 						PRECISION,
 					]),

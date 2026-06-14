@@ -45,10 +45,6 @@ export const codePath = (z: number) => path.join(dir.argmax, `${z}_landcover-cod
 export const geometryPath = (z: number) => path.join(dir.polygonize, `${z}_landcover.fgb`);
 export const tilesPath = (z: number) => path.join(dir.tile, `${z}_landcover.mbtiles`);
 
-// Gaussian blur radius (σ in pixels) applied to each mask before the argmax. The argmax
-// step also derives its sieve threshold from it.
-export const BLUR_RADIUS = 4;
-
 // final merged output of the pack step (all per-level tilesets joined)
 export const file = {
 	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid (pack → versatiles)
@@ -56,10 +52,13 @@ export const file = {
 
 // per-zoom-level parameters: the raster doubles and the simplify tolerance halves each level up.
 export function sizeForLevel(z: number): number {
-	return 2048 * Math.pow(2, z); // px
+	return Math.min(65536, 4096 * Math.pow(2, z)); // px
+}
+export function blurRadiusForLevel(z: number): number {
+	return sizeForLevel(z) / (256 * Math.pow(2, z)); // px
 }
 export function simplifyForLevel(z: number): number {
-	return 40074000 / 512 / Math.pow(2, z); // metres (EPSG:3857)
+	return 40074000 / (512 * Math.pow(2, z)); // metres (EPSG:3857)
 }
 
 // one channel of the blur/argmax stage. `calc` is the gdal_calc.py expression over band A of
