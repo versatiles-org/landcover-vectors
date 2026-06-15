@@ -168,69 +168,61 @@ This compresses and packs the tiles into a versatiles container.
 
 ## Shortbread compatibility
 
-The tileset has a single layer, **`land_cover`**, with one string attribute **`kind`**. It is designed as a
-**complementary extension** to the [Shortbread](https://shortbread-tiles.org/) schema — not a replacement for
-any existing Shortbread layer.
+This project does **not** define its own layer. It produces a `.versatiles` container that adds polygons to
+Shortbread's **own** [`land`](https://shortbread-tiles.org/) and **`water_polygons`** layers, at the **low zoom
+levels where OpenStreetMap doesn't provide them yet**. You then **feature-merge** it with an OSM-based
+Shortbread container (the VersaTiles CLI merges tilesets at the feature level) to get one seamless tileset.
 
-Shortbread's landcover/water layers (`land`, `water_polygons`) are OSM-derived: **sparse** (only what people
-mapped) and **high-zoom** (`land` starts at z7, `water_polygons` at z4). `land_cover` is a different kind of
-data — a **complete, generalized landcover classification from global satellite imagery** (ESA WorldCover):
-wall-to-wall (every pixel is exactly one class) and available from **z0**. It fills the low/mid-zoom range
-where the OSM-based layers are structurally sparse or absent — the way Natural Earth underlies OSM in many
-basemaps. It is not a patch for those layers; it is a separate base tier from a different source (ESA, CC BY).
+Shortbread's `land`/`water_polygons` are OSM-derived: sparse (only what's mapped) and high-zoom (`land`
+introduces its kinds from z7 upward, `water_polygons` from z4). Below those zooms a world map has no landcover
+at all. This container fills exactly that gap with a **complete, generalized classification from global
+satellite imagery** ([ESA WorldCover](https://esa-worldcover.org/), CC BY) — wall-to-wall, from z0 — written
+into Shortbread's _own_ layer names and `kind` values, so **no schema extension and no new style rules are
+needed**: a stock Shortbread style simply starts drawing `land`/`water_polygons` at low zoom.
 
-**Composition.** Render `land_cover` as the landcover base, and let the OSM-based Shortbread layers override it
-with authoritative detail where they exist:
+**No overlap.** Each kind is emitted only _below_ the zoom where Shortbread introduces it (`fills` column
+below); from that zoom up, the authoritative OSM features take over. ESA's open ocean / no-data is left out,
+so those areas stay holes for Shortbread's `ocean` layer to fill.
 
-- `ocean` — the sea, all zooms (ESA leaves open ocean as no-data, so `land_cover` has holes there for `ocean` to fill)
-- `water_polygons` — inland water and glaciers, z4+
-- `land` — detailed landuse/natural polygons, z7+
+### ESA WorldCover → Shortbread mapping
 
-A typical style fades `land_cover` out (or lets the OSM layers paint on top) as you cross into those zooms.
+| ESA WorldCover class                    | → layer          | `kind`        | this container fills |
+| --------------------------------------- | ---------------- | ------------- | -------------------- |
+| Tree cover                              | `land`           | `forest`      | z0–6                 |
+| Cropland                                | `land`           | `farmland`    | z0–9                 |
+| Built-up                                | `land`           | `residential` | z0–9                 |
+| Bare / sparse vegetation, moss & lichen | `land`           | `sand`        | z0–9                 |
+| Shrubland                               | `land`           | `scrub`       | z0–10                |
+| Grassland                               | `land`           | `grassland`   | z0–10                |
+| Herbaceous wetland                      | `land`           | `marsh`       | z0–10                |
+| Mangroves                               | `land`           | `swamp`       | z0–10                |
+| Snow and ice                            | `water_polygons` | `glacier`     | z0–3                 |
+| Permanent water bodies                  | `water_polygons` | `water`       | z0–3                 |
+| No data / open ocean                    | —                | _(dropped)_   | —                    |
 
-### `kind` values
+Every `kind` here is an existing Shortbread value, so the output validates and styles as plain Shortbread. The
+cutoff per kind is one zoom below Shortbread's min-zoom for that value (e.g. Shortbread `forest` starts at z7,
+so this container supplies `forest` for z0–6).
 
-The values reuse Shortbread's `land` / `water_polygons` vocabulary wherever an equivalent exists, so a single
-style can paint both schemas by `kind` and the colours stay continuous across the zoom transition:
+Two mappings are deliberately **lossy generalizations** — ESA can't resolve the OSM detail, and at these zooms
+it doesn't matter visually:
 
-| `land_cover.kind` | ESA WorldCover class                    | Shortbread equivalent                                          |
-|-------------------|-----------------------------------------|----------------------------------------------------------------|
-| `forest`          | Tree cover                              | `land.kind=forest` (z7+)                                       |
-| `scrub`           | Shrubland                               | `land.kind=scrub` (z11+)                                       |
-| `grassland`       | Grassland                               | `land.kind=grassland` (z11+)                                   |
-| `farmland`        | Cropland                                | `land.kind=farmland` (z10+)                                    |
-| `glacier`         | Snow and ice                            | `water_polygons.kind=glacier` (z4+)                            |
-| `water`           | Permanent water bodies                  | `water_polygons.kind=water` (z4+)                              |
-| `urban`           | Built-up                                | _new_ — generalizes `land` residential/industrial/commercial/… |
-| `bare`            | Bare / sparse vegetation, moss & lichen | _new_ — generalizes `land` bare_rock/scree/shingle/sand        |
-| `wetland`         | Herbaceous wetland, mangroves           | _new_ — generalizes `land` swamp/bog/marsh/wet_meadow          |
+- **Built-up → `residential`** — ESA's single "built-up" class can't distinguish residential / industrial /
+  commercial; `residential` is the generic settlement fill.
+- **Bare / sparse vegetation (+ moss & lichen) → `sand`** — Shortbread `land` has no generic "bare" value;
+  `sand` matches the dominant case (deserts). Rocky barrens and Arctic tundra are approximated.
 
-Six of the nine values reuse existing Shortbread vocabulary (four from `land`, two from `water_polygons`);
-`urban`, `bare` and `wetland` are this extension's **generalized low-zoom additions** (single coarse classes
-standing in for many fine-grained OSM values). ESA's "no data / no landcover" (open ocean, unclassified) is
-dropped before tiling.
+`wetland` is split to keep fidelity: herbaceous wetland → `marsh`, mangroves → `swamp`.
 
-> **z4–z7 overlap.** Above z4 both `land_cover` and Shortbread `water_polygons` carry `water`/`glacier`. There a
-> style should prefer the crisp OSM `water_polygons`; `land_cover` only carries them so the low zooms (z0–3),
-> where Shortbread has no water source at all, stay complete.
+> **The complete→sparse handover.** Below a kind's cutoff this data is a complete wall-to-wall coverage; at and
+> above it, OSM is sparse. Expect the landcover to thin out at the handover zoom — that is inherent to swapping
+> a satellite classification for hand-mapped OSM, and a base land/ocean fill underneath covers the gaps.
 
-### Example (MapLibre / Mapbox GL style layer)
+### Using it
 
-```js
-{
-	"id": "land_cover-forest",
-	"type": "fill",
-	"source": "versatiles-landcover",
-	"source-layer": "land_cover",
-	"filter": ["==", "kind", "forest"],
-	"paint": {
-		"fill-color": "#66AA44",
-		"fill-antialias": false,
-		// fade out as the detailed OSM `land` layer takes over
-		"fill-opacity": { "stops": [[6, 1], [8, 0]] }
-	}
-}
-```
+Merge this container with your OSM-based Shortbread tiles using the VersaTiles CLI (feature-level merge); the
+combined tileset then has `land`/`water_polygons` populated continuously from z0. No style changes are
+required — a standard Shortbread style already has rules for `forest`, `farmland`, `water`, `glacier`, etc.
 
 ## License
 
