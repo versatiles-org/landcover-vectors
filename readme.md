@@ -2,7 +2,8 @@
 
 A set of vector tiles based on [ESA Worldcover](https://esa-worldcover.org/en/data-access).
 
-There are to complement OSM tiles on lower zoom levels.
+They complement OSM-based [Shortbread](https://shortbread-tiles.org/) tiles at low and mid zoom levels — see
+[Shortbread compatibility](#shortbread-compatibility) below.
 
 ## Example
 
@@ -165,50 +166,68 @@ npm run pack
 
 This compresses and packs the tiles into a versatiles container.
 
-## Style
+## Shortbread compatibility
 
-There is one layer called `landcover-vectors` with a property `kind`. The `kind` values reuse the proposed
-Shortbread [`landcover` layer](https://github.com/shortbread-tiles/shortbread-docs/issues/144) vocabulary, so a
-style transitions seamlessly from these low-zoom tiles (z0–7) to OSM-based Shortbread tiles (z7+):
+The tileset has a single layer, **`land_cover`**, with one string attribute **`kind`**. It is designed as a
+**complementary extension** to the [Shortbread](https://shortbread-tiles.org/) schema — not a replacement for
+any existing Shortbread layer.
 
-- `bare` Bare / sparse vegetation, moss and lichen
-- `farmland` Cropland
-- `forest` Tree cover
-- `glacier` Snow and ice
-- `grass` Grassland
-- `scrub` Shrubland
-- `urban` Built-up
-- `water` Permanent water bodies
-- `wetland` Herbaceous wetland, mangroves
+Shortbread's landcover/water layers (`land`, `water_polygons`) are OSM-derived: **sparse** (only what people
+mapped) and **high-zoom** (`land` starts at z7, `water_polygons` at z4). `land_cover` is a different kind of
+data — a **complete, generalized landcover classification from global satellite imagery** (ESA WorldCover):
+wall-to-wall (every pixel is exactly one class) and available from **z0**. It fills the low/mid-zoom range
+where the OSM-based layers are structurally sparse or absent — the way Natural Earth underlies OSM in many
+basemaps. It is not a patch for those layers; it is a separate base tier from a different source (ESA, CC BY).
 
-These are derived from the ESA WorldCover classes as follows (several ESA classes are merged):
+**Composition.** Render `land_cover` as the landcover base, and let the OSM-based Shortbread layers override it
+with authoritative detail where they exist:
 
-| ESA WorldCover class                      | `kind`     |
-| ----------------------------------------- | ---------- |
-| Tree cover                                | `forest`   |
-| Shrubland                                 | `scrub`    |
-| Grassland                                 | `grass`    |
-| Cropland                                  | `farmland` |
-| Built-up                                  | `urban`    |
-| Bare / sparse vegetation, Moss and lichen | `bare`     |
-| Snow and ice                              | `glacier`  |
-| Permanent water bodies                    | `water`    |
-| Herbaceous wetland, Mangroves             | `wetland`  |
+- `ocean` — the sea, all zooms (ESA leaves open ocean as no-data, so `land_cover` has holes there for `ocean` to fill)
+- `water_polygons` — inland water and glaciers, z4+
+- `land` — detailed landuse/natural polygons, z7+
 
-### Example
+A typical style fades `land_cover` out (or lets the OSM layers paint on top) as you cross into those zooms.
+
+### `kind` values
+
+The values reuse Shortbread's `land` / `water_polygons` vocabulary wherever an equivalent exists, so a single
+style can paint both schemas by `kind` and the colours stay continuous across the zoom transition:
+
+| `land_cover.kind` | ESA WorldCover class                    | Shortbread equivalent                                          |
+|-------------------|-----------------------------------------|----------------------------------------------------------------|
+| `forest`          | Tree cover                              | `land.kind=forest` (z7+)                                       |
+| `scrub`           | Shrubland                               | `land.kind=scrub` (z11+)                                       |
+| `grassland`       | Grassland                               | `land.kind=grassland` (z11+)                                   |
+| `farmland`        | Cropland                                | `land.kind=farmland` (z10+)                                    |
+| `glacier`         | Snow and ice                            | `water_polygons.kind=glacier` (z4+)                            |
+| `water`           | Permanent water bodies                  | `water_polygons.kind=water` (z4+)                              |
+| `urban`           | Built-up                                | _new_ — generalizes `land` residential/industrial/commercial/… |
+| `bare`            | Bare / sparse vegetation, moss & lichen | _new_ — generalizes `land` bare_rock/scree/shingle/sand        |
+| `wetland`         | Herbaceous wetland, mangroves           | _new_ — generalizes `land` swamp/bog/marsh/wet_meadow          |
+
+Six of the nine values reuse existing Shortbread vocabulary (four from `land`, two from `water_polygons`);
+`urban`, `bare` and `wetland` are this extension's **generalized low-zoom additions** (single coarse classes
+standing in for many fine-grained OSM values). ESA's "no data / no landcover" (open ocean, unclassified) is
+dropped before tiling.
+
+> **z4–z7 overlap.** Above z4 both `land_cover` and Shortbread `water_polygons` carry `water`/`glacier`. There a
+> style should prefer the crisp OSM `water_polygons`; `land_cover` only carries them so the low zooms (z0–3),
+> where Shortbread has no water source at all, stay complete.
+
+### Example (MapLibre / Mapbox GL style layer)
 
 ```js
 {
-	"id": "landcover-forest",
+	"id": "land_cover-forest",
 	"type": "fill",
-	"source-layer": "landcover-vectors",
 	"source": "versatiles-landcover",
-	"filter": [ "all", ["==", "kind", "forest"] ],
+	"source-layer": "land_cover",
+	"filter": ["==", "kind", "forest"],
 	"paint": {
-		"fill-color": "#d6e6c3",
-		"fill-opacity": { "stops": [[0, 0.2], [10, 0.2], [11, 0]] },
-		"fill-antialias": true,
-		"fill-outline-color": "#ffffff00"
+		"fill-color": "#66AA44",
+		"fill-antialias": false,
+		// fade out as the detailed OSM `land` layer takes over
+		"fill-opacity": { "stops": [[6, 1], [8, 0]] }
 	}
 }
 ```
