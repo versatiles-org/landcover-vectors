@@ -57,7 +57,7 @@ export function sizeForLevel(z: number): number {
 }
 export function blurRadiusForLevel(z: number): number {
 	// in pixel
-	return sizeForLevel(z) / (512 * Math.pow(2, z));
+	return Math.max(2, sizeForLevel(z) / (512 * Math.pow(2, z)));
 }
 export function sieveThresholdForLevel(z: number): number {
 	// in pixel
@@ -106,7 +106,7 @@ export const meta = {
 
 let entries = [];
 for (let zoom = 0; zoom <= MAXLEVEL; zoom++) {
-	const simplify= simplifyForLevel(zoom);
+	const simplify = simplifyForLevel(zoom);
 	entries.push({
 		zoom,
 		size: sizeForLevel(zoom),
