@@ -64,6 +64,9 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			'Byte',
 			'-of',
 			'GTiff',
+			'-multi', // multithreaded warp
+			'-wo',
+			'NUM_THREADS=ALL_CPUS',
 			...co,
 			'-overwrite',
 			ctx.srcVrt,

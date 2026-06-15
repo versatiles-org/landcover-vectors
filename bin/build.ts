@@ -24,6 +24,7 @@ const BLOCK_CONCURRENCY = Math.max(1, Math.floor(CPU_CORES / 2));
 await requireCommands([
 	'gdal',
 	'gdalbuildvrt',
+	'gdaladdo',
 	'gdalwarp',
 	'gdal_calc.py',
 	'ogr2ogr',
@@ -33,17 +34,73 @@ await requireCommands([
 	'versatiles',
 ]);
 
-// mosaic the source mirror into a single virtual raster the blocks warp from
-const tiles = (await fs.readdir(dir.source).catch(() => [] as string[])).filter((f) => f.endsWith('.tif'));
-if (tiles.length === 0) throw new Error(`no source tiles in ${dir.source} — run "npm run download" first`);
+// Mosaic the source mirror into a single virtual raster, with a global overview pyramid.
+// gdalwarp only uses overviews built on the dataset it opens (the VRT) — per-tile sidecars
+// are ignored through a VRT — so the pyramid lives next to the VRT (`_mirror.vrt.ovr`). It
+// lets the low-zoom block warps read a coarse pyramid level instead of the whole full-res
+// mirror (≈100× faster); high-zoom warps still read the original tiles for full detail. The
+// VRT + pyramid live in the mirror dir so they persist across builds and `npm run clean`;
+// they are rebuilt only when missing or when a source tile is newer than the VRT.
+async function ensureMirrorVrt(): Promise<{ vrt: string; tileCount: number }> {
+	const tiles = (await fs.readdir(dir.source).catch(() => [] as string[])).filter((f) => f.endsWith('.tif'));
+	if (tiles.length === 0) throw new Error(`no source tiles in ${dir.source} — run "npm run download" first`);
+
+	const vrt = path.join(dir.source, '_mirror.vrt');
+	const ovr = vrt + '.ovr';
+	const vrtStat = await fs.stat(vrt).catch(() => null);
+	const ovrExists = await fs.stat(ovr).then(
+		() => true,
+		() => false,
+	);
+
+	let stale = !vrtStat || !ovrExists;
+	if (vrtStat && !stale) {
+		for (const t of tiles) {
+			const s = await fs.stat(path.join(dir.source, t));
+			if (s.mtimeMs > vrtStat.mtimeMs) {
+				stale = true;
+				break;
+			}
+		}
+	}
+
+	if (stale) {
+		const listFile = path.join(dir.tmp, '_src.txt');
+		await fs.writeFile(listFile, tiles.map((t) => path.join(dir.source, t)).join('\n') + '\n');
+		await run('gdalbuildvrt', ['-overwrite', '-input_file_list', listFile, vrt]);
+		await fs.rm(ovr, { force: true });
+		console.error('Building mirror overview pyramid (one-time; makes every low-zoom warp ≈100× faster) …');
+		// mode = categorical-correct decimation; levels span full-res → whole-world at z0
+		await run('gdaladdo', [
+			'-r',
+			'mode',
+			'--config',
+			'COMPRESS_OVERVIEW',
+			'DEFLATE',
+			vrt,
+			'2',
+			'4',
+			'8',
+			'16',
+			'32',
+			'64',
+			'128',
+			'256',
+			'512',
+			'1024',
+			'2048',
+		]);
+	} else {
+		console.error('Reusing mirror VRT + overview pyramid in %s', dir.source);
+	}
+	return { vrt, tileCount: tiles.length };
+}
+
 await fs.mkdir(dir.tmp, { recursive: true });
-const srcVrt = path.join(dir.tmp, '_src.vrt');
-const listFile = path.join(dir.tmp, '_src.txt');
-await fs.writeFile(listFile, tiles.map((t) => path.join(dir.source, t)).join('\n') + '\n');
-await run('gdalbuildvrt', ['-overwrite', '-input_file_list', listFile, srcVrt]);
+const { vrt: srcVrt, tileCount } = await ensureMirrorVrt();
 
 const coverage = await buildCoverage();
-console.error('Source mirror: %d tiles, %d occupied 3° cells', tiles.length, coverage.cells);
+console.error('Source mirror: %d tiles, %d occupied 3° cells', tileCount, coverage.cells);
 
 const zMbtiles: string[] = [];
 for (let z = 0; z <= MAXLEVEL; z++) {

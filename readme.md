@@ -12,7 +12,7 @@ They complement OSM-based [Shortbread](https://shortbread-tiles.org/) tiles at l
 ## Requirements
 
 - `node` (or `bun`)
-- [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdalwarp`, `gdal_calc.py`, `ogr2ogr` and the `gdal raster` / `gdal vector` subcommands `calc`, `edit`, `sieve`, `polygonize` and `simplify-coverage` on `PATH`
+- [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdaladdo`, `gdalwarp`, `gdal_calc.py`, `ogr2ogr` and the `gdal raster` / `gdal vector` subcommands `calc`, `edit`, `sieve`, `polygonize` and `simplify-coverage` on `PATH`
 - Python 3 with `numpy` (used by `gdal_calc.py` for the per-class masks; both ship with the GDAL install)
 - [`libvips`](https://www.libvips.org/) (`vips`) — used for the Gaussian blur
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`)
@@ -61,8 +61,16 @@ skipped if already present — so the step is robust against network errors and 
 ### Per-block processing
 
 `lib/block.ts` turns one block at one zoom into `land`/`water_polygons` polygon fragments. The source tiles are
-mosaicked into a single virtual raster (`gdalbuildvrt`) once; each block then runs the same chain on its small
-window (`gdalwarp -te <block ± margin> -ts <px> -r mode`, so uncovered pixels are no-data):
+mosaicked into a single virtual raster (`gdalbuildvrt`) once, with a global **overview pyramid** (`gdaladdo -r mode`,
+stored as `_mirror.vrt.ovr` in the mirror dir). The pyramid is a one-time build but makes the low-zoom warps
+≈100× faster: a block at z0 is the whole world in 1024 px, so without overviews `gdalwarp -r mode` would read
+_every_ full-resolution source pixel to pick the dominant class — with the pyramid it reads a coarse level
+instead, while high-zoom blocks still read the original tiles for full detail. (gdalwarp only uses overviews
+built on the VRT it opens, not per-tile sidecars, hence the pyramid on the VRT.) The pyramid persists across
+builds and `npm run clean`, and is rebuilt only when a source tile is newer than it.
+
+Each block then runs the same chain on its small window (`gdalwarp -te <block ± margin> -ts <px> -r mode -multi`,
+so uncovered pixels are no-data):
 
 1. **Channels** — for each landcover class _active at this zoom_ build a 0/255 membership mask (`gdal_calc.py`);
    ESA 0 plus every class **not** active at this zoom folds into the no-data channel.
