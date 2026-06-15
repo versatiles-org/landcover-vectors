@@ -9,7 +9,7 @@ import { runQuiet } from './worldcover.ts';
 import type { Coverage } from './coverage.ts';
 import { channels, blockWindow, BLUR_RADIUS, SIEVE_THRESHOLD, simplifyForLevel, type Rect } from '../config.ts';
 
-export type BlockCtx = { srcVrt: string; coverage: Coverage; tmpdir: string };
+export type BlockCtx = { src: string; coverage: Coverage; tmpdir: string };
 export type BlockFragments = { land: string | null; water: string | null };
 
 // gdal_calc expression: 255 where band A is one of the given ESA codes, else 0
@@ -44,7 +44,8 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 	const hasWater = active.some((c) => c.layer === 'water_polygons');
 
 	try {
-		// 1. warp the source mirror → the window raster (mode); uncovered pixels stay 0 (= no-data)
+		// 1. read this block's window from the EPSG:3857 source (mode-resampled via its overviews;
+		//    uncovered pixels stay 0 = no-data)
 		const window = tmp('window.tif');
 		const { window3857: w, windowPx: px } = win;
 		await runQuiet('gdalwarp', [
@@ -69,7 +70,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			'NUM_THREADS=ALL_CPUS',
 			...co,
 			'-overwrite',
-			ctx.srcVrt,
+			ctx.src,
 			window,
 		]);
 

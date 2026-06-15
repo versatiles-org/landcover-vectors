@@ -24,13 +24,13 @@ The pipeline turns the global landcover raster into smooth per-class polygons an
 `land` and `water_polygons` layers. There are just two scripts — a one-time source download and the build:
 
 ```sh
-npm run download   # once: mirror ESA WorldCover into data/0_download
+npm run download   # once: build the EPSG:3857 source raster from the remote tiles
 npm run build      # everything else → landcover.versatiles
 ```
 
-`build` runs: **source mosaic → coverage index → for each zoom 0–10 ( per-block processing → per-zoom tiling )
-→ merge & pack**. Everything reads and writes under `data/`; the final container is `landcover.versatiles` in
-the repo root. All the parameters below live in `config.ts`.
+`build` runs: **coverage index → for each zoom 0–10 ( per-block processing → per-zoom tiling ) → merge & pack**.
+Everything reads and writes under `data/`; the final container is `landcover.versatiles` in the repo root. All
+the parameters below live in `config.ts`.
 
 ### Why blocks
 
@@ -40,7 +40,7 @@ Instead each zoom is processed in **blocks** of `BLOCK`×`BLOCK` = 8×8 tiles (`
 so every raster/vector operation works on a ≤ ~8226² px window — bounded memory, feasible at every zoom. The
 blocks are stitched back into a seamless layer by a single per-zoom tippecanoe run.
 
-### Download source data
+### Build the source raster
 
 ```sh
 node bin/download.ts
@@ -48,29 +48,30 @@ node bin/download.ts
 npm run download
 ```
 
-Downloads a reduced-resolution local mirror of [ESA WorldCover 2021 (v200)](https://registry.opendata.aws/esa-worldcover-vito/)
-from AWS Open Data (`s3://esa-worldcover`) into `data/0_download`. Each of the 2651 source GeoTIFFs is
-downsampled by `FACTOR` = 2 on the way in (reading its matching internal overview, so only a fraction of the
-full 10 m data is transferred), keeping its native EPSG:4326. ~20 m/px is plenty of detail for the zoom levels
-built here while keeping the mirror small. Downloads run in parallel, are retried, written atomically, and
-skipped if already present — so the step is robust against network errors and resumable.
+Reads the [ESA WorldCover 2021 (v200)](https://registry.opendata.aws/esa-worldcover-vito/) tiles **directly from
+AWS Open Data** (`s3://esa-worldcover`) over `/vsicurl` — no local per-tile mirror. The ~2651 remote GeoTIFFs are
+mosaicked into one virtual raster (`gdalbuildvrt`), and a single `gdalwarp` reprojects them into **one EPSG:3857
+GeoTIFF** covering the whole Mercator square at the deepest zoom's resolution (`FULL_PX` = `TILE_PX`·2^`MAXLEVEL`
+= 1 048 576 px per side, ≈ 38 m/px), written to `data/0_download/worldcover-3857.tif`; `gdaladdo` then adds an
+overview pyramid down to z0.
 
-> The old download step used the Terrascope WMTS service, which is no longer available — hence the move to the AWS
-> Open Data mirror.
+Because every ESA tile carries internal overviews, the VRT exposes virtual overviews, so the warp reads a coarse
+level instead of the full 10 m data — the transfer is a fraction of the ~124 GB full dataset. Resampling is
+`-r mode` (dominant class — the only correct choice for categorical data). The GeoTIFF is tiled (512×512 blocks),
+fast-DEFLATE compressed (`ZLEVEL=1`), BigTIFF, and **sparse** — all-no-data ocean blocks aren't stored. The
+remote tile list is saved alongside (`_source-tiles.txt`) for the build's skip-empty step, and the raster is
+written atomically, so an interrupted run leaves no half-built source.
+
+> The old download step kept a reduced-resolution local mirror of all 2651 tiles; this builds the reprojected
+> source in one pass instead.
 
 ### Per-block processing
 
-`lib/block.ts` turns one block at one zoom into `land`/`water_polygons` polygon fragments. The source tiles are
-mosaicked into a single virtual raster (`gdalbuildvrt`) once, with a global **overview pyramid** (`gdaladdo -r mode`,
-stored as `_mirror.vrt.ovr` in the mirror dir). The pyramid is a one-time build but makes the low-zoom warps
-≈100× faster: a block at z0 is the whole world in 1024 px, so without overviews `gdalwarp -r mode` would read
-_every_ full-resolution source pixel to pick the dominant class — with the pyramid it reads a coarse level
-instead, while high-zoom blocks still read the original tiles for full detail. (gdalwarp only uses overviews
-built on the VRT it opens, not per-tile sidecars, hence the pyramid on the VRT.) The pyramid persists across
-builds and `npm run clean`, and is rebuilt only when a source tile is newer than it.
-
-Each block then runs the same chain on its small window (`gdalwarp -te <block ± margin> -ts <px> -r mode -multi`,
-so uncovered pixels are no-data):
+`lib/block.ts` turns one block at one zoom into `land`/`water_polygons` polygon fragments. Each block reads its
+window from the single EPSG:3857 source raster (built by the download step) and runs the same chain on it. The
+read (`gdalwarp -te <block ± margin> -ts <px> -r mode -multi`) hits the source's overview pyramid, so a low-zoom
+block reads a coarse pyramid level rather than the full-resolution data (≈100× less to read), while high-zoom
+blocks read full detail; uncovered pixels are no-data:
 
 1. **Channels** — for each landcover class _active at this zoom_ build a 0/255 membership mask (`gdal_calc.py`);
    ESA 0 plus every class **not** active at this zoom folds into the no-data channel.

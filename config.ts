@@ -18,12 +18,13 @@ export const CPU_CORES = os.availableParallelism();
 export const datadir = path.resolve(__dirname, 'data');
 
 export const dir = {
-	source: path.join(datadir, '0_download'), // reduced-resolution ESA WorldCover mirror (download)
+	source: path.join(datadir, '0_download'), // holds the reprojected source raster + its tile list (download)
 	tmp: path.join(datadir, 'tmp'), // per-block / per-zoom scratch (not cached between runs)
 };
 
-// final outputs
 export const file = {
+	source: path.join(datadir, '0_download', 'worldcover-3857.tif'), // single EPSG:3857 source + overviews (download)
+	sourceList: path.join(datadir, '0_download', '_source-tiles.txt'), // remote tile list, read for skip-empty (download)
 	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid (pack)
 	container: path.resolve(__dirname, 'landcover.versatiles'), // brotli versatiles (pack)
 };
@@ -39,6 +40,11 @@ export const MAXLEVEL = 10;
 export const TILE_PX = 1024; // raw raster pixels per output tile
 export const BLOCK = 8; // tiles per block side
 export const BLUR_RADIUS = 2; // Gaussian σ in pixels (constant across levels)
+
+// full-world raster size at the deepest zoom (TILE_PX × 2^MAXLEVEL). The single EPSG:3857
+// source GeoTIFF is built at this resolution and carries an overview pyramid down to z0, so a
+// block at any zoom reads the matching pyramid level.
+export const FULL_PX = TILE_PX * Math.pow(2, MAXLEVEL);
 
 // sieve threshold (px): drop regions smaller than a circle of the blur radius
 export const SIEVE_THRESHOLD = Math.round(Math.PI * BLUR_RADIUS * BLUR_RADIUS); // 13
