@@ -65,8 +65,8 @@ export function sieveThresholdForLevel(z: number): number {
 	return Math.round(Math.PI * blurRadius * blurRadius);
 }
 export function simplifyForLevel(z: number): number {
-	let simplify = (40074000 / 512) / Math.pow(2, z);
-	let minPixel = 4 * 40074000 / sizeForLevel(z);
+	let simplify = 40074000 / 512 / Math.pow(2, z);
+	let minPixel = (4 * 40074000) / sizeForLevel(z);
 	// metres (EPSG:3857)
 	return Math.max(simplify, minPixel);
 }
@@ -78,31 +78,35 @@ export function simplifyForLevel(z: number): number {
 export type Channel = { code: number; kind: string | null; color?: string; calc: string };
 
 // The channels of the blur/argmax stage, in order. After blurring all masks, each pixel is
-// assigned the code of the channel with the highest value (argmax). Several ESA classes merge
-// (moss → bare, mangroves → wetland); the first channel is "no data / no landcover" (ESA 0),
-// dropped before tiling. Legend: https://esa-worldcover.org/en/data-access
+// assigned the code of the channel with the highest value (argmax). `code` mirrors the ESA
+// legend number (10…90); several ESA classes merge (moss → bare, mangroves → wetland). The
+// first channel is "no data / no landcover" (ESA 0), dropped before tiling. The `kind` values
+// reuse the Shortbread `land` / `water_polygons` vocabulary where it exists (forest, scrub,
+// grassland, farmland, glacier, water) so styles compose with Shortbread; the generalized
+// low-zoom values (urban, bare, wetland) are this extension's additions.
+// Legend: https://esa-worldcover.org/en/data-access
 export const channels: Channel[] = [
-	{ code: 0, kind: null, calc: '255*((A==0)|(A==80))' }, // no data / no landcover (dropped before tiling)
+	{ code: 0, kind: null, calc: '255*(A==0)' }, // no data / no landcover (dropped before tiling)
 	{ code: 10, kind: 'forest', color: '#66AA44', calc: '255*(A==10)' }, // tree cover
 	{ code: 20, kind: 'scrub', color: '#E0E4E5', calc: '255*(A==20)' }, // shrubland
-	{ code: 30, kind: 'grass', color: '#D8E8C8', calc: '255*(A==30)' }, // grassland
+	{ code: 30, kind: 'grassland', color: '#D8E8C8', calc: '255*(A==30)' }, // grassland
 	{ code: 40, kind: 'farmland', color: '#F0E7D1', calc: '255*(A==40)' }, // cropland
 	{ code: 50, kind: 'urban', color: '#EAE6E133', calc: '255*(A==50)' }, // built-up
 	{ code: 60, kind: 'bare', color: '#FAFAED', calc: '255*((A==60)|(A==100))' }, // bare/sparse vegetation + moss and lichen
-	{ code: 70, kind: 'snow', color: '#FFFFFF', calc: '255*(A==70)' }, // snow and ice
-	{ code: 80, kind: 'wetland', color: '#D3E6DB', calc: '255*((A==90)|(A==95))' }, // herbaceous wetland + mangroves
+	{ code: 70, kind: 'glacier', color: '#FFFFFF', calc: '255*(A==70)' }, // snow and ice
+	{ code: 80, kind: 'water', color: '#B3D9E6', calc: '255*(A==80)' }, // permanent water bodies
+	{ code: 90, kind: 'wetland', color: '#D3E6DB', calc: '255*((A==90)|(A==95))' }, // herbaceous wetland + mangroves
 ];
 
 // metadata embedded in the generated tileset
 export const meta = {
-	layer: 'landcover-vectors',
+	layer: 'land_cover',
 	name: 'Versatiles Landcover',
 	attribution:
 		'<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> <a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a>',
 	description:
 		'Landcover vector tiles based on ESA Worldcover 2021, © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium',
 };
-
 
 let entries = [];
 for (let zoom = 0; zoom <= MAXLEVEL; zoom++) {
