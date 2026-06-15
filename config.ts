@@ -33,7 +33,7 @@ export const MERC = 20037508.342789244;
 const WORLD = 2 * MERC; // full extent (= circumference) in metres
 
 // build zoom levels 0..MAXLEVEL (driven by the highest per-kind cutoff below)
-export const MAXLEVEL = 4;
+export const MAXLEVEL = 10;
 
 // block-processing geometry
 export const TILE_PX = 1024; // raw raster pixels per output tile
