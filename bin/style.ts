@@ -1,13 +1,9 @@
-// Generate QGIS styles (.qml) that colour the landcover polygons by `kind`, using the
-// per-channel colours from config.ts. Each kind is filled with its colour and the stroke
-// is disabled (outline_style = no). Keyed on `kind`, which both outputs carry.
+// Generate a QGIS vector-tiles style (.qml) for the generated tileset, colouring each
+// Shortbread `kind` with its per-channel colour from config.ts (solid fill, no stroke).
 //
-// Two files are written to the repo root, because QGIS styles a plain vector layer and a
-// vector-tile layer with different renderers:
-//   - landcover.qml      categorized renderer — for data/landcover.fgb (and the mbtiles
-//                        when opened as an OGR/“MVT” vector layer)
-//   - landcover-vt.qml   vector-tiles renderer — for data/landcover.mbtiles opened as a
-//                        native “Vector Tiles” layer
+// The output tileset has two sub-layers — `land` and `water_polygons` — so each channel
+// emits one rule scoped to its layer and filtered on `kind`. Open data/landcover.mbtiles
+// (or the .versatiles) in QGIS as a native "Vector Tiles" layer and apply landcover.qml.
 //
 // Run with: node bin/style.ts (or `npm run style`).
 
@@ -16,56 +12,7 @@ import path from 'node:path';
 
 import { channels, datadir, type Channel } from '../config.ts';
 
-// "#RRGGBB" or "#RRGGBBAA" → QGIS "r,g,b,a" (alpha defaults to fully opaque)
-function rgba(hex: string): string {
-	const h = hex.replace('#', '');
-	const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
-	const a = h.length >= 8 ? parseInt(h.slice(6, 8), 16) : 255;
-	return `${r},${g},${b},${a}`;
-}
-
-// a solid fill with no outline (stroke disabled), named `name`
-function fillSymbol(name: string, color: string): string {
-	return `    <symbol type="fill" name="${name}" alpha="1" clip_to_extent="1" force_rhr="0">
-      <layer class="SimpleFill" enabled="1" locked="0" pass="0">
-        <prop k="color" v="${color}"/>
-        <prop k="style" v="solid"/>
-        <prop k="outline_style" v="no"/>
-        <prop k="outline_color" v="0,0,0,0"/>
-        <prop k="outline_width" v="0"/>
-        <prop k="outline_width_unit" v="MM"/>
-        <prop k="border_width_map_unit_scale" v="3x:0,0,0,0,0,0"/>
-        <prop k="joinstyle" v="bevel"/>
-        <prop k="offset" v="0,0"/>
-        <prop k="offset_unit" v="MM"/>
-        <prop k="offset_map_unit_scale" v="3x:0,0,0,0,0,0"/>
-      </layer>
-    </symbol>`;
-}
-
-// channels that end up in the output: those with a kind and a colour (no-data is dropped)
-const kinded = channels.filter((c): c is Channel & { kind: string; color: string } => Boolean(c.kind && c.color));
-
-// 1. categorized renderer (plain vector layer: the FGB)
-const categorized = `<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
-<qgis version="3.34" styleCategories="Symbology">
-  <renderer-v2 type="categorizedSymbol" attr="kind" forceraster="0" enableorderby="0" symbollevels="0" referencescale="-1">
-    <categories>
-${kinded.map((c, i) => `      <category render="true" value="${c.kind}" symbol="${i}" label="${c.kind}" type="QString"/>`).join('\n')}
-    </categories>
-    <symbols>
-${kinded.map((c, i) => fillSymbol(String(i), rgba(c.color))).join('\n')}
-    </symbols>
-    <rotation/>
-    <sizescale/>
-  </renderer-v2>
-  <blendMode>0</blendMode>
-  <featureBlendMode>0</featureBlendMode>
-  <layerGeometryType>2</layerGeometryType>
-</qgis>
-`;
-
-// QGIS "R,G,B,A,rgb:r,g,b,a" colour (0-255 ints plus 0-1 floats), the form QGIS writes
+// "#RRGGBB" or "#RRGGBBAA" → QGIS "R,G,B,A,rgb:r,g,b,a" (0-255 ints plus 0-1 floats)
 function qgisColor(hex: string): string {
 	const h = hex.replace('#', '');
 	const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
@@ -108,8 +55,12 @@ function mapFillSymbol(color: string): string {
           </symbol>`;
 }
 
-// 2. vector-tiles renderer (native mbtiles “Vector Tiles” layer): one fill style per kind,
-// filtered on the `kind` attribute. Schema matches what QGIS 3.40 writes for such a layer.
+// channels that end up in the output: those with a target layer, kind and colour (no-data is dropped)
+type Styled = Channel & { layer: 'land' | 'water_polygons'; kind: string; color: string };
+const kinded = channels.filter((c): c is Styled => Boolean(c.layer && c.kind && c.color));
+
+// vector-tiles renderer (native mbtiles/versatiles "Vector Tiles" layer): one fill style per
+// kind, scoped to its sub-layer and filtered on `kind`. Schema matches what QGIS 3.40 writes.
 const vectorTiles = `<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
 <qgis minScale="1e+08" hasScaleBasedVisibilityFlag="0" styleCategories="AllStyleCategories" maxScale="0" version="3.40.3-Bratislava" autoRefreshTime="0" autoRefreshMode="Disabled">
   <flags>
@@ -127,7 +78,7 @@ ${kinded
 	.map(
 		(
 			c,
-		) => `      <style geometry="2" min-zoom="-1" max-zoom="-1" layer="" enabled="1" name="${c.kind}" expression="&quot;kind&quot; = '${c.kind}'">
+		) => `      <style geometry="2" min-zoom="-1" max-zoom="-1" layer="${c.layer}" enabled="1" name="${c.kind}" expression="&quot;kind&quot; = '${c.kind}'">
         <symbols>
 ${mapFillSymbol(qgisColor(c.color))}
         </symbols>
@@ -145,9 +96,7 @@ ${mapFillSymbol(qgisColor(c.color))}
 `;
 
 const root = path.dirname(datadir);
-const fgbStyle = path.join(root, 'landcover.qml');
-const vtStyle = path.join(root, 'landcover-vt.qml');
-await fs.writeFile(fgbStyle, categorized);
+const vtStyle = path.join(root, 'landcover.qml');
 await fs.writeFile(vtStyle, vectorTiles);
 
-console.error('Wrote %s (vector / FGB) and %s (vector tiles / mbtiles) — %d kinds', fgbStyle, vtStyle, kinded.length);
+console.error('Wrote %s (vector tiles) — %d kinds across land + water_polygons', vtStyle, kinded.length);

@@ -1,23 +1,30 @@
 // Run the whole landcover build pipeline.
 //
-// Builds the zoom levels from MAXLEVEL down to 0: the top level is reprojected from the
-// source mirror, and each lower level is a 50% mode-downscale of the previous one (much
-// faster than re-warping the source every level). Resolution and simplify tolerance scale
-// with the level; the per-level tilesets are merged in the pack step. The one-time
-// source-mirror fetch is a separate script, bin/download.ts (`npm run download`).
+// Builds zoom levels 0..MAXLEVEL. Each zoom is split into BLOCK×BLOCK-tile blocks; every
+// non-empty block is turned into Shortbread land/water_polygons geometry independently
+// (lib/block.ts, bounded memory), then the zoom's blocks are tiled in one tippecanoe run
+// (lib/assemble.ts). Finally the per-zoom tilesets are merged and packed to versatiles.
+// The one-time source-mirror fetch is a separate script, bin/download.ts (`npm run download`).
 
-import { reproject, channels, blur, argmax, polygonize, tile, pack } from '../lib/steps/index.ts';
-import { requireCommands } from '../lib/worldcover.ts';
-import { MAXLEVEL } from '../config.ts';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
-// fail fast (before the long build) if any external tool is missing: GDAL (reproject /
-// downscale / channels / argmax / polygonize), vips (blur), tippecanoe + tile-join (tile /
-// merge), versatiles (pack)
+import { run, requireCommands, pMap } from '../lib/worldcover.ts';
+import { buildCoverage } from '../lib/coverage.ts';
+import { processBlock, type BlockFragments } from '../lib/block.ts';
+import { tileZoom, pack } from '../lib/assemble.ts';
+import { dir, MAXLEVEL, CPU_CORES, blocksPerAxis } from '../config.ts';
+
+// run this many blocks at once; each block already fans GTiff (de)compression across cores
+// via GDAL_NUM_THREADS, so keep block-level parallelism below the core count to avoid
+// pathological oversubscription
+const BLOCK_CONCURRENCY = Math.max(1, Math.floor(CPU_CORES / 2));
+
+// fail fast (before the long build) if any external tool is missing
 await requireCommands([
 	'gdal',
 	'gdalbuildvrt',
 	'gdalwarp',
-	'gdal_translate',
 	'gdal_calc.py',
 	'ogr2ogr',
 	'vips',
@@ -26,16 +33,37 @@ await requireCommands([
 	'versatiles',
 ]);
 
-// top level reprojects from source; each lower level downscales the previous one
-for (let level = MAXLEVEL; level >= 0; level--) {
-	console.error('\n══════ level %d / %d ══════', level, MAXLEVEL);
-	await reproject(level);
-	await channels(level);
-	await blur(level);
-	await argmax(level);
-	await polygonize(level);
-	await tile(level);
+// mosaic the source mirror into a single virtual raster the blocks warp from
+const tiles = (await fs.readdir(dir.source).catch(() => [] as string[])).filter((f) => f.endsWith('.tif'));
+if (tiles.length === 0) throw new Error(`no source tiles in ${dir.source} — run "npm run download" first`);
+await fs.mkdir(dir.tmp, { recursive: true });
+const srcVrt = path.join(dir.tmp, '_src.vrt');
+const listFile = path.join(dir.tmp, '_src.txt');
+await fs.writeFile(listFile, tiles.map((t) => path.join(dir.source, t)).join('\n') + '\n');
+await run('gdalbuildvrt', ['-overwrite', '-input_file_list', listFile, srcVrt]);
+
+const coverage = await buildCoverage();
+console.error('Source mirror: %d tiles, %d occupied 3° cells', tiles.length, coverage.cells);
+
+const zMbtiles: string[] = [];
+for (let z = 0; z <= MAXLEVEL; z++) {
+	const n = blocksPerAxis(z);
+	const blocks: [number, number][] = [];
+	for (let by = 0; by < n; by++) for (let bx = 0; bx < n; bx++) blocks.push([bx, by]);
+
+	console.error('\n══════ zoom %d / %d — %d×%d blocks ══════', z, MAXLEVEL, n, n);
+	const fragments: BlockFragments[] = [];
+	let done = 0;
+	await pMap(blocks, BLOCK_CONCURRENCY, async ([bx, by]) => {
+		const f = await processBlock(z, bx, by, { srcVrt, coverage, tmpdir: dir.tmp });
+		if (f.land || f.water) fragments.push(f);
+		if (++done % 100 === 0 || done === blocks.length)
+			console.error('  blocks %d/%d (%d non-empty)', done, blocks.length, fragments.length);
+	});
+
+	const mb = await tileZoom(z, fragments);
+	if (mb) zMbtiles.push(mb);
 }
 
-await pack();
+await pack(zMbtiles);
 console.error('\n✓ done');

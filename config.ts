@@ -1,4 +1,9 @@
 // shared configuration for the landcover-vectors pipeline
+//
+// The pipeline builds, per zoom level, a set of vector tiles that populate Shortbread's
+// `land` and `water_polygons` layers at the low zooms where OSM doesn't yet provide them.
+// Each zoom is processed in BLOCK×BLOCK-tile blocks (with a pixel margin for blur/sieve) so
+// memory stays bounded; see lib/block.ts and the README "Shortbread compatibility" section.
 
 import os from 'node:os';
 import path from 'node:path';
@@ -12,112 +17,134 @@ export const CPU_CORES = os.availableParallelism();
 // base directory for everything the pipeline downloads and generates
 export const datadir = path.resolve(__dirname, 'data');
 
-// the world raster is rendered in EPSG:3857 (Web Mercator) covering the standard Mercator
-// square (±MERC metres ≈ ±85.0511°).
-export const MERC = 20037508.342789244;
-
-// build zoom levels 0..MAXLEVEL. Each level is rendered from its own raster and simplified
-// at its own tolerance (see sizeForLevel / simplifyForLevel below), then the per-level
-// tilesets are merged in the pack step.
-export const MAXLEVEL = 7;
-
-// one folder per step under the data folder; each holds that step's per-level results.
-// The folders are numbered by step order (0_… download, 1_… reproject, …) so they sort
-// in pipeline order on disk.
 export const dir = {
-	source: path.join(datadir, '0_download'), // reduced-resolution raster mirror (download)
-	reproject: path.join(datadir, '1_reproject'), // per-level EPSG:3857 world raster
-	channels: path.join(datadir, '2_channels'), // per-level, per-class membership masks
-	blur: path.join(datadir, '3_blur'), // per-level, per-class blurred masks
-	argmax: path.join(datadir, '4_argmax'), // per-level code raster
-	polygonize: path.join(datadir, '5_polygonize'), // per-level polygon geometry
-	tile: path.join(datadir, '6_tile'), // per-level single-zoom tilesets
+	source: path.join(datadir, '0_download'), // reduced-resolution ESA WorldCover mirror (download)
+	tmp: path.join(datadir, 'tmp'), // per-block / per-zoom scratch (not cached between runs)
 };
 
-// per-step, per-level result paths. Every step writes its result to one of these,
-// level-prefixed (e.g. reproject/6_worldcover.tif), never deletes it, and is skipped when
-// the file already exists — so an interrupted build resumes where it left off.
-const ch = (i: number) => `ch${String(i + 1).padStart(2, '0')}`;
-export const warpedPath = (z: number) => path.join(dir.reproject, `${z}_worldcover.tif`);
-export const maskPath = (z: number, i: number) => path.join(dir.channels, `${z}_${ch(i)}.tif`);
-export const blurPath = (z: number, i: number) => path.join(dir.blur, `${z}_${ch(i)}.tif`);
-export const codePath = (z: number) => path.join(dir.argmax, `${z}_landcover-code.tif`);
-export const geometryPath = (z: number) => path.join(dir.polygonize, `${z}_landcover.fgb`);
-export const tilesPath = (z: number) => path.join(dir.tile, `${z}_landcover.mbtiles`);
-
-// final merged output of the pack step (all per-level tilesets joined)
+// final outputs
 export const file = {
-	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid (pack → versatiles)
+	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid (pack)
+	container: path.resolve(__dirname, 'landcover.versatiles'), // brotli versatiles (pack)
 };
 
-// per-zoom-level parameters: the raster doubles and the simplify tolerance halves each level up.
-export function sizeForLevel(z: number): number {
-	// in pixel
-	return Math.min(65536, 4096 * Math.pow(2, z));
-}
-export function blurRadiusForLevel(z: number): number {
-	// in pixel
-	return Math.max(2, sizeForLevel(z) / (512 * Math.pow(2, z)));
-}
-export function sieveThresholdForLevel(z: number): number {
-	// in pixel
-	const blurRadius = blurRadiusForLevel(z);
-	return Math.round(Math.PI * blurRadius * blurRadius);
-}
+// EPSG:3857 (Web Mercator) world half-extent in metres (±MERC ≈ ±85.0511°)
+export const MERC = 20037508.342789244;
+const WORLD = 2 * MERC; // full extent (= circumference) in metres
+
+// build zoom levels 0..MAXLEVEL (driven by the highest per-kind cutoff below)
+export const MAXLEVEL = 4;
+
+// block-processing geometry
+export const TILE_PX = 1024; // raw raster pixels per output tile
+export const BLOCK = 8; // tiles per block side
+export const BLUR_RADIUS = 2; // Gaussian σ in pixels (constant across levels)
+
+// sieve threshold (px): drop regions smaller than a circle of the blur radius
+export const SIEVE_THRESHOLD = Math.round(Math.PI * BLUR_RADIUS * BLUR_RADIUS); // 13
+// processing margin (px) around a block so blur+sieve at the inner edge match neighbours
+export const MARGIN_PX = Math.ceil(3 * BLUR_RADIUS + 3 * Math.sqrt(SIEVE_THRESHOLD)); // 17
+
+// coverage-simplification tolerance (metres, EPSG:3857): 1-px accuracy at a 128-px tile
 export function simplifyForLevel(z: number): number {
-	let simplify = 40074000 / 512 / Math.pow(2, z);
-	let minPixel = (4 * 40074000) / sizeForLevel(z);
-	// metres (EPSG:3857)
-	return Math.max(simplify, minPixel);
+	return WORLD / (128 * Math.pow(2, z));
 }
 
-// one channel of the blur/argmax stage. `calc` is the gdal_calc.py expression over band A of
-// the reprojected ESA raster that builds the 0/255 membership mask; `kind` is the Shortbread
-// landcover kind the code maps to in the final tiles (null = the dropped no-data channel);
-// `color` is the fill colour used by the generated QGIS styles.
-export type Channel = { code: number; kind: string | null; color?: string; calc: string };
+// number of BLOCK×BLOCK blocks per axis at zoom z
+export function blocksPerAxis(z: number): number {
+	return Math.ceil(Math.pow(2, z) / BLOCK);
+}
 
-// The channels of the blur/argmax stage, in order. After blurring all masks, each pixel is
-// assigned the code of the channel with the highest value (argmax). `code` mirrors the ESA
-// legend number (10…90); several ESA classes merge (moss → bare, mangroves → wetland). The
-// first channel is "no data / no landcover" (ESA 0), dropped before tiling. The `kind` values
-// reuse the Shortbread `land` / `water_polygons` vocabulary where it exists (forest, scrub,
-// grassland, farmland, glacier, water) so styles compose with Shortbread; the generalized
-// low-zoom values (urban, bare, wetland) are this extension's additions.
-// Legend: https://esa-worldcover.org/en/data-access
+// inverse Web Mercator: northing (metres) → latitude (degrees)
+function merc2lat(y: number): number {
+	return (Math.atan(Math.sinh((y / MERC) * Math.PI)) * 180) / Math.PI;
+}
+
+export type Rect = { minx: number; miny: number; maxx: number; maxy: number };
+export type BlockWindow = {
+	inner3857: Rect; // exact BLOCK×BLOCK tile rectangle (the clip / seam boundary)
+	window3857: Rect; // inner + MARGIN_PX, clamped to the world square (the warp extent)
+	windowPx: { width: number; height: number };
+	innerLonLat: { west: number; south: number; east: number; north: number }; // for skip-empty
+};
+
+// extents and pixel size for block (bx,by) at zoom z. Edge blocks are clamped to the grid
+// / world square. All exact tile-aligned 3857 metres, so neighbouring blocks share an
+// identical inner edge (no seam gaps after clip + simplify --preserve-boundary).
+export function blockWindow(z: number, bx: number, by: number): BlockWindow {
+	const tiles = Math.pow(2, z);
+	const tileSpan = WORLD / tiles; // metres per tile
+	const pxSize = tileSpan / TILE_PX; // metres per raster pixel
+
+	const x0 = bx * BLOCK;
+	const y0 = by * BLOCK;
+	const x1 = Math.min(x0 + BLOCK, tiles);
+	const y1 = Math.min(y0 + BLOCK, tiles);
+
+	// 3857: x increases east from -MERC; tile row 0 is the top (+MERC), increasing south
+	const inner3857: Rect = {
+		minx: -MERC + x0 * tileSpan,
+		maxx: -MERC + x1 * tileSpan,
+		maxy: MERC - y0 * tileSpan,
+		miny: MERC - y1 * tileSpan,
+	};
+
+	const m = MARGIN_PX * pxSize;
+	const window3857: Rect = {
+		minx: Math.max(-MERC, inner3857.minx - m),
+		miny: Math.max(-MERC, inner3857.miny - m),
+		maxx: Math.min(MERC, inner3857.maxx + m),
+		maxy: Math.min(MERC, inner3857.maxy + m),
+	};
+	const windowPx = {
+		width: Math.round((window3857.maxx - window3857.minx) / pxSize),
+		height: Math.round((window3857.maxy - window3857.miny) / pxSize),
+	};
+
+	const innerLonLat = {
+		west: (inner3857.minx / MERC) * 180,
+		east: (inner3857.maxx / MERC) * 180,
+		south: merc2lat(inner3857.miny),
+		north: merc2lat(inner3857.maxy),
+	};
+
+	return { inner3857, window3857, windowPx, innerLonLat };
+}
+
+// One channel of the blur/argmax stage. `esa` are the ESA WorldCover class codes that map to
+// it; `layer`/`kind` are the Shortbread target (null = the dropped no-data class); `maxZoom`
+// is the highest zoom this pipeline emits the kind (one below Shortbread's min-zoom for that
+// value, so OSM owns it above); `color` is the fill used by the generated QGIS styles.
+// At a given zoom z, channels with maxZoom < z are folded into the no-data class (lib/block.ts).
+export type Channel = {
+	esa: number[];
+	layer: 'land' | 'water_polygons' | null;
+	kind: string | null;
+	maxZoom: number;
+	color?: string;
+};
+
+// ESA WorldCover → Shortbread mapping. Order is the argmax channel order; the no-data class is
+// first. Legend: https://esa-worldcover.org/en/data-access
 export const channels: Channel[] = [
-	{ code: 0, kind: null, calc: '255*(A==0)' }, // no data / no landcover (dropped before tiling)
-	{ code: 10, kind: 'forest', color: '#66AA44', calc: '255*(A==10)' }, // tree cover
-	{ code: 20, kind: 'scrub', color: '#E0E4E5', calc: '255*(A==20)' }, // shrubland
-	{ code: 30, kind: 'grassland', color: '#D8E8C8', calc: '255*(A==30)' }, // grassland
-	{ code: 40, kind: 'farmland', color: '#F0E7D1', calc: '255*(A==40)' }, // cropland
-	{ code: 50, kind: 'urban', color: '#EAE6E133', calc: '255*(A==50)' }, // built-up
-	{ code: 60, kind: 'bare', color: '#FAFAED', calc: '255*((A==60)|(A==100))' }, // bare/sparse vegetation + moss and lichen
-	{ code: 70, kind: 'glacier', color: '#FFFFFF', calc: '255*(A==70)' }, // snow and ice
-	{ code: 80, kind: 'water', color: '#B3D9E6', calc: '255*(A==80)' }, // permanent water bodies
-	{ code: 90, kind: 'wetland', color: '#D3E6DB', calc: '255*((A==90)|(A==95))' }, // herbaceous wetland + mangroves
+	{ esa: [0], layer: null, kind: null, maxZoom: -1 }, // no data / open ocean (dropped)
+	{ esa: [10], layer: 'land', kind: 'forest', maxZoom: 6, color: '#66AA44' }, // tree cover
+	{ esa: [40], layer: 'land', kind: 'farmland', maxZoom: 9, color: '#F0E7D1' }, // cropland
+	{ esa: [50], layer: 'land', kind: 'residential', maxZoom: 9, color: '#EAE6E1' }, // built-up
+	{ esa: [60, 100], layer: 'land', kind: 'sand', maxZoom: 9, color: '#FAFAED' }, // bare/sparse + moss & lichen
+	{ esa: [20], layer: 'land', kind: 'scrub', maxZoom: 10, color: '#E0E4E5' }, // shrubland
+	{ esa: [30], layer: 'land', kind: 'grassland', maxZoom: 10, color: '#D8E8C8' }, // grassland
+	{ esa: [90], layer: 'land', kind: 'marsh', maxZoom: 10, color: '#D3E6DB' }, // herbaceous wetland
+	{ esa: [95], layer: 'land', kind: 'swamp', maxZoom: 10, color: '#C6DCC6' }, // mangroves
+	{ esa: [70], layer: 'water_polygons', kind: 'glacier', maxZoom: 3, color: '#FFFFFF' }, // snow & ice
+	{ esa: [80], layer: 'water_polygons', kind: 'water', maxZoom: 3, color: '#B3D9E6' }, // permanent water
 ];
 
-// metadata embedded in the generated tileset
+// metadata embedded in the generated tilesets
 export const meta = {
-	layer: 'land_cover',
 	name: 'Versatiles Landcover',
 	attribution:
 		'<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> <a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a>',
 	description:
 		'Landcover vector tiles based on ESA Worldcover 2021, © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium',
 };
-
-let entries = [];
-for (let zoom = 0; zoom <= MAXLEVEL; zoom++) {
-	const simplify = simplifyForLevel(zoom);
-	entries.push({
-		zoom,
-		size: sizeForLevel(zoom),
-		blurRadius: blurRadiusForLevel(zoom),
-		sieveThreshold: sieveThresholdForLevel(zoom),
-		simplify,
-		simplifyPx: simplify / (40074000 / sizeForLevel(zoom)),
-	});
-}
-console.table(entries);

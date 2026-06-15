@@ -1,21 +1,22 @@
-// Step 1 — download a reduced-resolution local mirror of ESA WorldCover 2021 (v200).
+// Download a reduced-resolution local mirror of ESA WorldCover 2021 (v200).
 //
 // Each of the ~2651 source GeoTIFFs is downsampled by FACTOR on the way in (reading its
 // matching internal overview, so only a fraction of the full 10 m data is transferred)
 // into data/0_download in its native EPSG:4326. Downloads run in parallel, are retried,
-// written atomically, and skipped if already present — robust and resumable.
+// written atomically, and skipped if already present — robust and resumable. A one-time
+// step, kept separate from the build (bin/build.ts): download once, build from it often.
 
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { runQuiet, pMap, atomic, listSourceKeys, BUCKET, PREFIX } from '../worldcover.ts';
-import { progress } from '../progress.ts';
-import { dir } from '../../config.ts';
+import { runQuiet, pMap, atomic, listSourceKeys, BUCKET, PREFIX } from './worldcover.ts';
+import { progress } from './progress.ts';
+import { dir } from '../config.ts';
 
 export async function download(): Promise<void> {
-	const FACTOR = 4; // downsample each source tile by this factor on download
+	const FACTOR = 2; // downsample each source tile by this factor on download (~20 m/px)
 	const PERCENT = `${100 / FACTOR}%`;
 	const CONCURRENCY = 8;
 	const RETRIES = 3;

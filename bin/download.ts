@@ -3,7 +3,7 @@
 // A one-time, resumable network step, kept separate from the build pipeline
 // (bin/build.ts): download the mirror once, then build from it as often as you like.
 
-import { download } from '../lib/steps/index.ts';
+import { download } from '../lib/download.ts';
 import { requireCommands } from '../lib/worldcover.ts';
 
 await requireCommands(['gdal_translate']);
