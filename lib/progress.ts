@@ -21,12 +21,12 @@ function fmtTime(s: number): string {
 	return `${sec}s`;
 }
 
-export type Progress = { tick: (n?: number) => void; done: () => void };
+export type Progress = { tick: (n?: number) => void; setLabel: (s: string) => void; done: () => void };
 
 export function progress(total: number, label = ''): Progress {
 	const start = Date.now();
 	const tty = !!process.stderr.isTTY;
-	const lbl = label ? label + ' ' : '';
+	let lbl = label ? label + ' ' : '';
 	let current = 0;
 	let lastMs = 0;
 	let lastPct = -1;
@@ -63,6 +63,9 @@ export function progress(total: number, label = ''): Progress {
 		tick(n = 1) {
 			current += n;
 			draw(false);
+		},
+		setLabel(s: string) {
+			lbl = s ? s + ' ' : '';
 		},
 		done() {
 			current = total;

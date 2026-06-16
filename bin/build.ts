@@ -11,6 +11,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { requireCommands, pMap } from '../lib/worldcover.ts';
+import { progress } from '../lib/progress.ts';
 import { buildCoverage } from '../lib/coverage.ts';
 import { processBlock, type BlockFragments } from '../lib/block.ts';
 import { tileZoom, pack } from '../lib/assemble.ts';
@@ -48,33 +49,37 @@ await fs.mkdir(dir.tiles, { recursive: true });
 const coverage = await buildCoverage();
 console.error('Source: %s — %d occupied 3° cells', file.source, coverage.cells);
 
+// one progress bar (with ETA) across every block of every zoom; cached zooms/blocks tick through
+const totalBlocks = Array.from({ length: MAXLEVEL + 1 }, (_, z) => blocksPerAxis(z) ** 2).reduce((a, b) => a + b, 0);
+const bar = progress(totalBlocks, 'blocks');
+
 const zMbtiles: string[] = [];
 for (let z = 0; z <= MAXLEVEL; z++) {
+	const n = blocksPerAxis(z);
+	bar.setLabel(`zoom ${z}/${MAXLEVEL}`);
+
 	// resume: a cached per-zoom tileset means the whole level is done — skip its blocks entirely
 	const zMb = path.join(dir.tiles, `z${z}.mbtiles`);
 	if (existsSync(zMb)) {
-		console.error('\n══════ zoom %d / %d — cached ══════', z, MAXLEVEL);
 		zMbtiles.push(zMb);
+		bar.tick(n * n);
 		continue;
 	}
 
-	const n = blocksPerAxis(z);
 	const blocks: [number, number][] = [];
 	for (let by = 0; by < n; by++) for (let bx = 0; bx < n; bx++) blocks.push([bx, by]);
 
-	console.error('\n══════ zoom %d / %d — %d×%d blocks ══════', z, MAXLEVEL, n, n);
 	const fragments: BlockFragments[] = [];
-	let done = 0;
 	await pMap(blocks, BLOCK_CONCURRENCY, async ([bx, by]) => {
 		const f = await processBlock(z, bx, by, { src: file.source, coverage, tmpdir: dir.tmp, resultsdir: dir.results });
 		if (f.land || f.water) fragments.push(f);
-		if (++done % 100 === 0 || done === blocks.length)
-			console.error('  blocks %d/%d (%d non-empty)', done, blocks.length, fragments.length);
+		bar.tick();
 	});
 
 	const mb = await tileZoom(z, fragments);
 	if (mb) zMbtiles.push(mb);
 }
+bar.done();
 
 await pack(zMbtiles);
-console.error('\n✓ done');
+console.error('✓ done');

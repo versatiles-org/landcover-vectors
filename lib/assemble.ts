@@ -8,7 +8,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { run, atomic } from './worldcover.ts';
+import { run, runQuiet, atomic } from './worldcover.ts';
 import type { BlockFragments } from './block.ts';
 import { dir, file, meta } from '../config.ts';
 
@@ -28,7 +28,7 @@ async function mergeLayer(files: string[], layerName: string, out: string): Prom
 	const vrt = out + '.vrt';
 	await fs.writeFile(vrt, vrtUnion(files, layerName));
 	await fs.rm(out, { force: true });
-	await run('ogr2ogr', ['-f', 'FlatGeobuf', '-nln', layerName, out, vrt]);
+	await runQuiet('ogr2ogr', ['-f', 'FlatGeobuf', '-nln', layerName, out, vrt]);
 	await fs.rm(vrt, { force: true });
 	return true;
 }
@@ -69,7 +69,7 @@ export async function tileZoom(z: number, fragments: BlockFragments[]): Promise<
 		];
 		if (hasLand) args.push('-L', `land:${landFgb}`);
 		if (hasWater) args.push('-L', `water_polygons:${waterFgb}`);
-		return run('tippecanoe', args);
+		return runQuiet('tippecanoe', args);
 	});
 	return out;
 }
