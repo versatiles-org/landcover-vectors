@@ -6,9 +6,13 @@
 //   bar.done();
 //
 // On a TTY it draws an in-place bar (~10 fps); when stderr is redirected it prints
-// one line per whole percent instead of spamming carriage returns.
+// one line per whole percent instead of spamming carriage returns. The speed/ETA are based
+// on a sliding window of the most recent completions (throughput over that window), not the
+// lifetime average — so when per-item cost changes sharply (e.g. walking up zoom levels) the
+// estimate tracks the current pace within a few items instead of lagging behind history.
 
 const BAR_WIDTH = 24;
+const WINDOW = 64; // number of recent ticks the rate/ETA are averaged over
 
 function fmtTime(s: number): string {
 	if (!isFinite(s) || s < 0) return '--';
@@ -30,6 +34,10 @@ export function progress(total: number, label = ''): Progress {
 	let current = 0;
 	let lastMs = 0;
 	let lastPct = -1;
+	// ring of recent {time, cumulative count} samples; the rate is measured across this window.
+	// Storing the cumulative count means a single tick(n) with n>1 (e.g. a cached zoom) is absorbed
+	// without special-casing.
+	const samples: { t: number; c: number }[] = [{ t: start, c: 0 }];
 
 	draw(true);
 
@@ -45,8 +53,13 @@ export function progress(total: number, label = ''): Progress {
 		lastMs = now;
 		lastPct = pct;
 
+		// rate = throughput across the sliding window (oldest → newest sample); fall back to the
+		// lifetime average while the window holds < 2 samples
+		const oldest = samples[0];
+		const newest = samples[samples.length - 1];
+		const windowSpan = (newest.t - oldest.t) / 1000;
 		const elapsed = (now - start) / 1000;
-		const rate = elapsed > 0 ? current / elapsed : 0;
+		const rate = windowSpan > 0 ? (newest.c - oldest.c) / windowSpan : elapsed > 0 ? current / elapsed : 0;
 		const eta = rate > 0 && current < total ? (total - current) / rate : Infinity;
 		const stats = `${String(pct).padStart(3)}% ${current}/${total} (${rate.toFixed(1)}/s, ETA ${fmtTime(eta)})`;
 
@@ -62,6 +75,8 @@ export function progress(total: number, label = ''): Progress {
 	return {
 		tick(n = 1) {
 			current += n;
+			samples.push({ t: Date.now(), c: current });
+			if (samples.length > WINDOW) samples.shift();
 			draw(false);
 		},
 		setLabel(s: string) {
