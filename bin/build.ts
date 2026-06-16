@@ -20,7 +20,17 @@ import { dir, file, MAXLEVEL, CPU_CORES, blocksPerAxis } from '../config.ts';
 const BLOCK_CONCURRENCY = Math.max(1, Math.floor(CPU_CORES / 2));
 
 // fail fast (before the long build) if any external tool is missing
-await requireCommands(['gdal', 'gdalwarp', 'gdal_calc.py', 'ogr2ogr', 'vips', 'tippecanoe', 'tile-join', 'versatiles']);
+await requireCommands([
+	'gdal',
+	'gdalwarp',
+	'gdal_translate',
+	'gdal_calc.py',
+	'ogr2ogr',
+	'vips',
+	'tippecanoe',
+	'tile-join',
+	'versatiles',
+]);
 
 // the single reprojected source raster (with overview pyramid) is built by `npm run download`;
 // blocks read their window from it — coarse levels at low zoom, full detail at high zoom

@@ -82,15 +82,19 @@ blocks read full detail; uncovered pixels are no-data:
    strips.
 4. **Sieve** — `gdal raster sieve` drops specks smaller than a circle of the blur radius (`SIEVE_THRESHOLD` =
    round(π·r²) = 13 px).
-5. **Polygonize & tag** — `gdal raster polygonize` → one polygon per region; an SQLite `CASE` tags each with its
+5. **Crop** — `gdal_translate -projwin` cuts the classified raster to the block's exact inner 8×8-tile rectangle
+   in EPSG:3857, discarding the margin. (Cropping the _raster_ rather than clipping the _vectors_ keeps the edge
+   pixel-exact and avoids the boundary slivers a vector clip can turn into GeometryCollections.)
+6. **Polygonize & tag** — `gdal raster polygonize` → one polygon per region; an SQLite `CASE` tags each with its
    Shortbread `layer` + `kind`; the no-data class is dropped.
-6. **Clip & simplify** — clip to the block's exact inner 8×8-tile rectangle in EPSG:3857, then coverage-simplify
-   (`gdal vector simplify-coverage --preserve-boundary`, tolerance `(2·MERC)/(128·2^z)` ≈ 1 px at a 128 px tile).
-7. **Split** — reproject to EPSG:4326 and split into the block's `land` and `water_polygons` fragments.
+7. **Simplify** — coverage-simplify (`gdal vector simplify-coverage --preserve-boundary`, tolerance
+   `(2·MERC)/(128·2^z)` ≈ 1 px at a 128 px tile) — topology-preserving, so shared borders stay aligned.
+8. **Split** — reproject to EPSG:4326 and split into the block's `land` and `water_polygons` fragments
+   (`-nlt PROMOTE_TO_MULTI`).
 
 The **margin** (`MARGIN_PX` = ceil(3·`BLUR_RADIUS` + 3·√`SIEVE_THRESHOLD`) = 17 px) around each block means the
 blur and sieve at the inner edge see the same neighbourhood they would in a global pass, so a class never
-changes across a block seam. The blocks are clipped at **pixel-aligned, tile-exact** EPSG:3857 coordinates and
+changes across a block seam. The blocks are cropped at **pixel-aligned, tile-exact** EPSG:3857 coordinates and
 simplified with `--preserve-boundary`, so adjacent blocks share an identical straight edge — no gaps or slivers.
 
 Which classes are active is per zoom: each `kind` is emitted only up to its cutoff (the `maxZoom` column in

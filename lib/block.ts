@@ -157,14 +157,35 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			sieved,
 		]);
 
-		// 6. polygonize (field `code` = channel index) → tag kind+layer, drop the no-data class (code 1)
+		// 6. crop the classified raster to the block's exact inner BLOCK×BLOCK rectangle in EPSG:3857.
+		// Block pixel grids are aligned (same pixel size; the inner offset is a whole number of margin
+		// pixels), so a raster crop tiles perfectly with neighbours — and polygonizing the crop avoids
+		// the GeometryCollection slivers a vector clip can produce along the boundary.
+		const r: Rect = win.inner3857;
+		const cropped = tmp('cropped.tif');
+		await runQuiet('gdal_translate', [
+			'-q',
+			'-projwin',
+			`${r.minx}`,
+			`${r.maxy}`,
+			`${r.maxx}`,
+			`${r.miny}`,
+			'-co',
+			'COMPRESS=DEFLATE',
+			'-co',
+			'TILED=YES',
+			sieved,
+			cropped,
+		]);
+
+		// 7. polygonize (field `code` = channel index) → tag kind+layer, drop the no-data class (code 1)
 		const poly = tmp('poly.fgb');
 		await fs.rm(poly, { force: true });
 		await runQuiet('gdal', [
 			'raster',
 			'polygonize',
 			'-i',
-			sieved,
+			cropped,
 			'-o',
 			poly,
 			'-f',
@@ -183,25 +204,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		await fs.rm(tagged, { force: true });
 		await runQuiet('ogr2ogr', ['-f', 'FlatGeobuf', '-nln', 'data', '-dialect', 'SQLite', '-sql', sql, tagged, poly]);
 
-		// 7. clip to the exact inner BLOCK×BLOCK rectangle in EPSG:3857 (pixel-aligned → exact seam)
-		const r: Rect = win.inner3857;
-		const clipped = tmp('clipped.fgb');
-		await fs.rm(clipped, { force: true });
-		await runQuiet('ogr2ogr', [
-			'-f',
-			'FlatGeobuf',
-			'-nln',
-			'data',
-			'-clipsrc',
-			`${r.minx}`,
-			`${r.miny}`,
-			`${r.maxx}`,
-			`${r.maxy}`,
-			clipped,
-			tagged,
-		]);
-
-		// 8. coverage-simplify (per block → bounded memory); preserve the clipped edge so neighbours match
+		// 8. coverage-simplify (per block → bounded memory); preserve the cropped edge so neighbours match
 		const simplified = tmp('simplified.fgb');
 		await fs.rm(simplified, { force: true });
 		await runQuiet('gdal', [
@@ -212,7 +215,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			'--output-layer',
 			'data',
 			'-i',
-			clipped,
+			tagged,
 			'-o',
 			simplified,
 			`${simplifyForLevel(z)}`,
@@ -226,6 +229,8 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 				'EPSG:4326',
 				'-f',
 				'FlatGeobuf',
+				'-nlt',
+				'PROMOTE_TO_MULTI',
 				'-nln',
 				'land',
 				'-where',
@@ -241,6 +246,8 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 				'EPSG:4326',
 				'-f',
 				'FlatGeobuf',
+				'-nlt',
+				'PROMOTE_TO_MULTI',
 				'-nln',
 				'water_polygons',
 				'-where',
