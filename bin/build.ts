@@ -15,7 +15,7 @@ import { progress } from '../lib/progress.ts';
 import { buildCoverage } from '../lib/coverage.ts';
 import { processBlock, type BlockFragments } from '../lib/block.ts';
 import { tileZoom, pack } from '../lib/assemble.ts';
-import { dir, file, MAXLEVEL, CPU_CORES, blocksPerAxis } from '../config.ts';
+import { dir, file, MAXLEVEL, CPU_CORES, blocksPerAxis, blockWindow } from '../config.ts';
 
 // run this many blocks at once; each block already fans GTiff (de)compression across cores
 // via GDAL_NUM_THREADS, so keep block-level parallelism below the core count to avoid
@@ -49,25 +49,33 @@ await fs.mkdir(dir.tiles, { recursive: true });
 const coverage = await buildCoverage();
 console.error('Source: %s — %d occupied 3° cells', file.source, coverage.cells);
 
-// one progress bar (with ETA) across every block of every zoom; cached zooms/blocks tick through
-const totalBlocks = Array.from({ length: MAXLEVEL + 1 }, (_, z) => blocksPerAxis(z) ** 2).reduce((a, b) => a + b, 0);
+// determine up front, per zoom, the blocks that actually have source data (skip-empty), so the
+// progress total reflects real work rather than the mostly-empty ocean blocks
+const zoomBlocks: [number, number][][] = [];
+for (let z = 0; z <= MAXLEVEL; z++) {
+	const n = blocksPerAxis(z);
+	const list: [number, number][] = [];
+	for (let by = 0; by < n; by++)
+		for (let bx = 0; bx < n; bx++) if (!coverage.isEmpty(blockWindow(z, bx, by).innerLonLat)) list.push([bx, by]);
+	zoomBlocks.push(list);
+}
+
+// one progress bar (with ETA) across every non-empty block; cached zooms tick through at once
+const totalBlocks = zoomBlocks.reduce((s, l) => s + l.length, 0);
 const bar = progress(totalBlocks, 'blocks');
 
 const zMbtiles: string[] = [];
 for (let z = 0; z <= MAXLEVEL; z++) {
-	const n = blocksPerAxis(z);
+	const blocks = zoomBlocks[z];
 	bar.setLabel(`zoom ${z}/${MAXLEVEL}`);
 
 	// resume: a cached per-zoom tileset means the whole level is done — skip its blocks entirely
 	const zMb = path.join(dir.tiles, `z${z}.mbtiles`);
 	if (existsSync(zMb)) {
 		zMbtiles.push(zMb);
-		bar.tick(n * n);
+		bar.tick(blocks.length);
 		continue;
 	}
-
-	const blocks: [number, number][] = [];
-	for (let by = 0; by < n; by++) for (let bx = 0; bx < n; bx++) blocks.push([bx, by]);
 
 	const fragments: BlockFragments[] = [];
 	await pMap(blocks, BLOCK_CONCURRENCY, async ([bx, by]) => {
