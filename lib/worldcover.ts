@@ -23,15 +23,20 @@ export const gdalEnv: NodeJS.ProcessEnv = {
 	GDAL_HTTP_RETRY_DELAY: '2',
 };
 
-// A command argument: a single token, or a group of tokens (e.g. a flag and its value) kept
-// together at the call site for readability. Groups are flattened one level before spawning,
-// so `run('gdal', ['raster', 'sieve'], ['--size-threshold', '13'], '-i', src, '-o', dst)` and
-// the equivalent flat array both work.
-export type Arg = string | string[];
+// A command argument: a single token (string or number), or a group of tokens (e.g. a flag and
+// its value) kept together at the call site for readability. Numbers are stringified and groups
+// are flattened one level before spawning, so `run('gdal', ['raster', 'sieve'],
+// ['--size-threshold', 13], '-i', src, '-o', dst)` and the equivalent flat string array both work.
+export type Arg = string | number | (string | number)[];
+
+// flatten one level of grouping and stringify every token into a plain argv array
+function toArgv(args: Arg[]): string[] {
+	return args.flat().map(String);
+}
 
 // run a child process, inheriting stdio, rejecting on non-zero exit
 export function run(cmd: string, ...args: Arg[]): Promise<void> {
-	const argv = args.flat();
+	const argv = toArgv(args);
 	return new Promise<void>((resolve, reject) => {
 		console.error('$ %s %s', cmd, argv.join(' '));
 		const child = spawn(cmd, argv, { stdio: 'inherit', env: gdalEnv });
@@ -42,7 +47,7 @@ export function run(cmd: string, ...args: Arg[]): Promise<void> {
 
 // run a child process quietly, capturing stderr for the error message
 export function runQuiet(cmd: string, ...args: Arg[]): Promise<void> {
-	const argv = args.flat();
+	const argv = toArgv(args);
 	return new Promise<void>((resolve, reject) => {
 		const child = spawn(cmd, argv, { stdio: ['ignore', 'ignore', 'pipe'], env: gdalEnv });
 		let stderr = '';

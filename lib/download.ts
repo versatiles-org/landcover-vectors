@@ -38,14 +38,14 @@ export async function download(): Promise<void> {
 		await run(
 			'gdalwarp',
 			['-t_srs', 'EPSG:3857'],
-			['-te', `${-MERC}`, `${-MERC}`, `${MERC}`, `${MERC}`], // full Mercator square
-			['-ts', `${FULL_PX}`, `${FULL_PX}`],
+			['-te', -MERC, -MERC, MERC, MERC], // full Mercator square
+			['-ts', FULL_PX, FULL_PX],
 			['-r', 'mode'], // dominant class — the only correct resampling for categorical data
 			['-ot', 'Byte'],
-			['-dstnodata', '0'], // ESA 0 = no data; lets sparse skip all-ocean blocks
+			['-dstnodata', 0], // ESA 0 = no data; lets sparse skip all-ocean blocks
 			'-multi',
 			['-wo', 'NUM_THREADS=ALL_CPUS'],
-			['-wm', '1024'],
+			['-wm', 1024],
 			['-of', 'GTiff'],
 			['-co', 'TILED=YES'],
 			['-co', 'BLOCKXSIZE=512'],
@@ -67,7 +67,7 @@ export async function download(): Promise<void> {
 			['--config', 'COMPRESS_OVERVIEW', 'DEFLATE'],
 			['--config', 'GDAL_NUM_THREADS', 'ALL_CPUS'],
 			tmp,
-			['2', '4', '8', '16', '32', '64', '128', '256', '512', '1024'],
+			[2, 4, 8, 16, 32, 64, 128, 256, 512, 1024],
 		);
 	});
 

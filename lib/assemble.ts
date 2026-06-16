@@ -50,8 +50,8 @@ export async function tileZoom(z: number, fragments: BlockFragments[]): Promise<
 		const args: Arg[] = [
 			['-o', tmp],
 			'--force',
-			['-Z', `${z}`],
-			['-z', `${z}`],
+			['-Z', z],
+			['-z', z],
 			['--attribute-type', 'kind:string'],
 			['--include', 'kind'], // keep only `kind` in the tiles
 			'--coalesce-smallest-as-needed', // keep coverage complete instead of dropping features

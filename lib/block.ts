@@ -57,8 +57,8 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		await runQuiet(
 			'gdalwarp',
 			['-t_srs', 'EPSG:3857'],
-			['-te', `${w.minx}`, `${w.miny}`, `${w.maxx}`, `${w.maxy}`],
-			['-ts', `${px.width}`, `${px.height}`],
+			['-te', w.minx, w.miny, w.maxx, w.maxy],
+			['-ts', px.width, px.height],
 			['-r', 'mode'],
 			['-ot', 'Byte'],
 			['-of', 'GTiff'],
@@ -92,7 +92,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 				'gaussblur',
 				m,
 				`${b}[compression=deflate,predictor=horizontal,bigtiff=true]`,
-				`${BLUR_RADIUS}`,
+				BLUR_RADIUS,
 				['--precision', 'approximate'],
 			);
 			blurred.push(b);
@@ -127,7 +127,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		await runQuiet(
 			'gdal',
 			['raster', 'sieve'],
-			['--size-threshold', `${SIEVE_THRESHOLD}`],
+			['--size-threshold', SIEVE_THRESHOLD],
 			['--co', 'COMPRESS=DEFLATE'],
 			['--co', 'TILED=YES'],
 			'--overwrite',
@@ -144,7 +144,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		await runQuiet(
 			'gdal_translate',
 			'-q',
-			['-projwin', `${r.minx}`, `${r.maxy}`, `${r.maxx}`, `${r.miny}`],
+			['-projwin', r.minx, r.maxy, r.maxx, r.miny],
 			['-co', 'COMPRESS=DEFLATE'],
 			['-co', 'TILED=YES'],
 			sieved,
@@ -191,7 +191,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			['--output-layer', 'data'],
 			['-i', tagged],
 			['-o', simplified],
-			`${simplifyForLevel(z)}`,
+			simplifyForLevel(z),
 		);
 
 		// 9. reproject to EPSG:4326 and split by target layer; each fragment is written to a temp
