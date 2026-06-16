@@ -55,7 +55,7 @@ export const MARGIN_PX = Math.ceil(3 * BLUR_RADIUS + 3 * Math.sqrt(SIEVE_THRESHO
 
 // coverage-simplification tolerance (metres, EPSG:3857): 1-px accuracy at a 128-px tile
 export function simplifyForLevel(z: number): number {
-	return WORLD / (128 * Math.pow(2, z));
+	return WORLD / (256 * Math.pow(2, z));
 }
 
 // number of BLOCK×BLOCK blocks per axis at zoom z
