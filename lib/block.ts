@@ -5,6 +5,7 @@
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 
 import { runQuiet, atomic, presentValues } from './worldcover.ts';
 import type { Coverage } from './coverage.ts';
@@ -18,8 +19,30 @@ import {
 	type Channel,
 } from '../config.ts';
 
-export type BlockCtx = { src: string; coverage: Coverage; tmpdir: string; resultsdir: string };
+export type BlockCtx = {
+	src: string;
+	coverage: Coverage;
+	tmpdir: string;
+	resultsdir: string;
+	logFile?: string; // optional TSV log: one row per block (how it was processed, timing, sizes, histogram)
+};
 export type BlockFragments = { land: string | null; water: string | null };
+
+// how a block was processed (recorded in the log)
+type Branch = 'skip-empty' | 'cached' | 'empty' | 'uniform' | 'full';
+
+// per-block TSV log columns; bin/build.ts writes this header once per run, finish() appends a row per block
+export const LOG_HEADER = [
+	'timestamp',
+	'id',
+	'branch',
+	'ms',
+	'land_bytes',
+	'water_bytes',
+	'present',
+	'channels',
+	'kind',
+].join('\t');
 
 // gdal_calc expression: 255 where band A is one of the given ESA codes, else 0
 const mask = (esa: number[]) => `255*(${esa.map((c) => `(A==${c})`).join('|')})`;
@@ -31,22 +54,55 @@ const co = ['-co', 'COMPRESS=DEFLATE', '-co', 'TILED=YES', '-co', 'BIGTIFF=YES']
 // to ctx.resultsdir and cached: a block whose fragments already exist there is skipped, so a
 // build resumes where it left off. Intermediate scratch in ctx.tmpdir is cleaned up.
 export async function processBlock(z: number, bx: number, by: number, ctx: BlockCtx): Promise<BlockFragments> {
+	const t0 = performance.now();
+	const id = `z${z}_${bx}_${by}`;
 	const win = blockWindow(z, bx, by);
-	if (ctx.coverage.isEmpty(win.innerLonLat)) return { land: null, water: null }; // skip-empty
+
+	// append one TSV row describing how this block was processed, then return its fragments
+	const finish = async (
+		branch: Branch,
+		frags: BlockFragments,
+		opts: { present?: number[]; channels?: number; kind?: string | null } = {},
+	) => {
+		if (ctx.logFile) {
+			const sizeOf = (f: string | null) =>
+				f
+					? fs.stat(f).then(
+							(s) => s.size,
+							() => null,
+						)
+					: Promise.resolve(null);
+			const [landBytes, waterBytes] = await Promise.all([sizeOf(frags.land), sizeOf(frags.water)]);
+			const row = [
+				new Date().toISOString(),
+				id,
+				branch,
+				Math.round(performance.now() - t0),
+				landBytes ?? '',
+				waterBytes ?? '',
+				opts.present?.join(',') ?? '',
+				opts.channels ?? '',
+				opts.kind ?? '',
+			].join('\t');
+			await fs.appendFile(ctx.logFile, row + '\n');
+		}
+		return frags;
+	};
+
+	if (ctx.coverage.isEmpty(win.innerLonLat)) return finish('skip-empty', { land: null, water: null });
 
 	// channels active at this zoom; everything else (incl. ESA 0) folds into the no-data class.
 	const active = channels.filter((c) => c.layer !== null && c.maxZoom >= z);
 	const nodataEsa = channels.filter((c) => c.layer === null || c.maxZoom < z).flatMap((c) => c.esa);
 
-	const id = `z${z}_${bx}_${by}`;
 	const hasLand = active.some((c) => c.layer === 'land');
 	const hasWater = active.some((c) => c.layer === 'water_polygons');
 	const landFrag = path.join(ctx.resultsdir, `${id}_land.fgb`);
 	const waterFrag = path.join(ctx.resultsdir, `${id}_water.fgb`);
-	const result: BlockFragments = { land: hasLand ? landFrag : null, water: hasWater ? waterFrag : null };
+	const frags: BlockFragments = { land: hasLand ? landFrag : null, water: hasWater ? waterFrag : null };
 
 	// resume: if this block's fragments are already on disk, skip the work
-	if ((!hasLand || existsSync(landFrag)) && (!hasWater || existsSync(waterFrag))) return result;
+	if ((!hasLand || existsSync(landFrag)) && (!hasWater || existsSync(waterFrag))) return finish('cached', frags);
 
 	const p = (suffix: string) => path.join(ctx.tmpdir, `${id}_${suffix}`);
 	const scratch: string[] = [];
@@ -122,11 +178,11 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 
 		if (activePresent.length === 0) {
 			await emit(null); // A: nothing but no-data
-			return result;
+			return finish('empty', frags, { present: [...present] });
 		}
 		if (present.size === 1) {
 			await emit(activePresent[0]); // B: one kind fills the block
-			return result;
+			return finish('uniform', frags, { present: [...present], kind: activePresent[0].kind });
 		}
 
 		// channel order for argmax/code mapping: index 1 = no-data, 2.. = activePresent[j]
@@ -270,9 +326,8 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			);
 		if (hasLand) await atomic(landFrag, (out) => split(out, 'land', codesFor('land')));
 		if (hasWater) await atomic(waterFrag, (out) => split(out, 'water_polygons', codesFor('water_polygons')));
+		return finish('full', frags, { present: [...present], channels: activePresent.length });
 	} finally {
 		await Promise.all(scratch.map((f) => fs.rm(f, { force: true })));
 	}
-
-	return result;
 }

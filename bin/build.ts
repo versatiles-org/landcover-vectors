@@ -13,7 +13,7 @@ import path from 'node:path';
 import { requireCommands, pMap } from '../lib/worldcover.ts';
 import { progress } from '../lib/progress.ts';
 import { buildCoverage } from '../lib/coverage.ts';
-import { processBlock, type BlockFragments } from '../lib/block.ts';
+import { processBlock, LOG_HEADER, type BlockFragments } from '../lib/block.ts';
 import { tileZoom, pack } from '../lib/assemble.ts';
 import { dir, file, MAXLEVEL, CPU_CORES, blocksPerAxis, blockWindow } from '../config.ts';
 
@@ -45,6 +45,8 @@ if (!haveSource) throw new Error(`missing ${file.source} — run "npm run downlo
 await fs.mkdir(dir.tmp, { recursive: true });
 await fs.mkdir(dir.results, { recursive: true });
 await fs.mkdir(dir.tiles, { recursive: true });
+await fs.appendFile(file.log, LOG_HEADER + '\n'); // header row marks the start of this run; rows appended per block
+console.error('Per-block log: %s', file.log);
 
 const coverage = await buildCoverage();
 console.error('Source: %s — %d occupied 3° cells', file.source, coverage.cells);
@@ -79,7 +81,13 @@ for (let z = 0; z <= MAXLEVEL; z++) {
 
 	const fragments: BlockFragments[] = [];
 	await pMap(blocks, BLOCK_CONCURRENCY, async ([bx, by]) => {
-		const f = await processBlock(z, bx, by, { src: file.source, coverage, tmpdir: dir.tmp, resultsdir: dir.results });
+		const f = await processBlock(z, bx, by, {
+			src: file.source,
+			coverage,
+			tmpdir: dir.tmp,
+			resultsdir: dir.results,
+			logFile: file.log,
+		});
 		if (f.land || f.water) fragments.push(f);
 		bar.tick();
 	});

@@ -27,6 +27,7 @@ export const dir = {
 export const file = {
 	source: path.join(datadir, '0_download', 'worldcover-3857.tif'), // single EPSG:3857 source + overviews (download)
 	sourceList: path.join(datadir, '0_download', '_source-tiles.txt'), // remote tile list, read for skip-empty (download)
+	log: path.join(datadir, 'blocks.log'), // per-block processing log (TSV), one row per block (build)
 	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid (pack)
 	container: path.resolve(__dirname, 'landcover.versatiles'), // brotli versatiles (pack)
 };
