@@ -8,7 +8,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { run, runQuiet, atomic } from './worldcover.ts';
+import { run, runQuiet, atomic, type Arg } from './worldcover.ts';
 import type { BlockFragments } from './block.ts';
 import { dir, file, meta } from '../config.ts';
 
@@ -28,7 +28,7 @@ async function mergeLayer(files: string[], layerName: string, out: string): Prom
 	const vrt = out + '.vrt';
 	await fs.writeFile(vrt, vrtUnion(files, layerName));
 	await fs.rm(out, { force: true });
-	await runQuiet('ogr2ogr', ['-f', 'FlatGeobuf', '-nln', layerName, out, vrt]);
+	await runQuiet('ogr2ogr', ['-f', 'FlatGeobuf'], ['-nln', layerName], out, vrt);
 	await fs.rm(vrt, { force: true });
 	return true;
 }
@@ -47,29 +47,21 @@ export async function tileZoom(z: number, fragments: BlockFragments[]): Promise<
 	// cached per-zoom tileset; written atomically (temp → rename) so its presence means "done"
 	const out = path.join(dir.tiles, `z${z}.mbtiles`);
 	await atomic(out, (tmp) => {
-		const args = [
-			'-o',
-			tmp,
+		const args: Arg[] = [
+			['-o', tmp],
 			'--force',
-			'-Z',
-			`${z}`,
-			'-z',
-			`${z}`,
-			'--attribute-type',
-			'kind:string',
-			'--include',
-			'kind', // keep only `kind` in the tiles
+			['-Z', `${z}`],
+			['-z', `${z}`],
+			['--attribute-type', 'kind:string'],
+			['--include', 'kind'], // keep only `kind` in the tiles
 			'--coalesce-smallest-as-needed', // keep coverage complete instead of dropping features
-			'--name',
-			meta.name,
-			'--attribution',
-			meta.attribution,
-			'--description',
-			meta.description,
+			['--name', meta.name],
+			['--attribution', meta.attribution],
+			['--description', meta.description],
 		];
-		if (hasLand) args.push('-L', `land:${landFgb}`);
-		if (hasWater) args.push('-L', `water_polygons:${waterFgb}`);
-		return runQuiet('tippecanoe', args);
+		if (hasLand) args.push(['-L', `land:${landFgb}`]);
+		if (hasWater) args.push(['-L', `water_polygons:${waterFgb}`]);
+		return runQuiet('tippecanoe', ...args);
 	});
 	return out;
 }
@@ -77,18 +69,15 @@ export async function tileZoom(z: number, fragments: BlockFragments[]): Promise<
 // merge the per-zoom tilesets (disjoint zooms) and pack into a brotli versatiles container
 export async function pack(zMbtiles: string[]): Promise<void> {
 	await fs.rm(file.tiles, { force: true });
-	await run('tile-join', [
+	await run(
+		'tile-join',
 		'-f',
-		'--name',
-		meta.name,
-		'--attribution',
-		meta.attribution,
-		'--description',
-		meta.description,
-		'-o',
-		file.tiles,
-		...zMbtiles,
-	]);
+		['--name', meta.name],
+		['--attribution', meta.attribution],
+		['--description', meta.description],
+		['-o', file.tiles],
+		zMbtiles,
+	);
 	await fs.rm(file.container, { force: true });
-	await run('versatiles', ['convert', '-c', 'brotli', file.tiles, file.container]);
+	await run('versatiles', 'convert', ['-c', 'brotli'], file.tiles, file.container);
 }

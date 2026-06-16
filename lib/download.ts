@@ -30,79 +30,45 @@ export async function download(): Promise<void> {
 	const vrt = path.join(dir.tmp, '_remote.vrt');
 	const listFile = path.join(dir.tmp, '_remote.txt');
 	await fs.writeFile(listFile, keys.map((k) => `/vsicurl/${BUCKET}/${k}`).join('\n') + '\n');
-	await run('gdalbuildvrt', ['-overwrite', '-input_file_list', listFile, vrt]);
+	await run('gdalbuildvrt', '-overwrite', ['-input_file_list', listFile], vrt);
 
 	// warp into one EPSG:3857 GeoTIFF (whole Mercator square, deepest-zoom resolution) + overviews
 	console.error('Warping → %s (%d×%d px, EPSG:3857) …', file.source, FULL_PX, FULL_PX);
 	await atomic(file.source, async (tmp) => {
-		await run('gdalwarp', [
-			'-t_srs',
-			'EPSG:3857',
-			'-te',
-			`${-MERC}`,
-			`${-MERC}`,
-			`${MERC}`,
-			`${MERC}`, // full Mercator square
-			'-ts',
-			`${FULL_PX}`,
-			`${FULL_PX}`,
-			'-r',
-			'mode', // dominant class — the only correct resampling for categorical data
-			'-ot',
-			'Byte',
-			'-dstnodata',
-			'0', // ESA 0 = no data; lets sparse skip all-ocean blocks
+		await run(
+			'gdalwarp',
+			['-t_srs', 'EPSG:3857'],
+			['-te', `${-MERC}`, `${-MERC}`, `${MERC}`, `${MERC}`], // full Mercator square
+			['-ts', `${FULL_PX}`, `${FULL_PX}`],
+			['-r', 'mode'], // dominant class — the only correct resampling for categorical data
+			['-ot', 'Byte'],
+			['-dstnodata', '0'], // ESA 0 = no data; lets sparse skip all-ocean blocks
 			'-multi',
-			'-wo',
-			'NUM_THREADS=ALL_CPUS',
-			'-wm',
-			'1024',
-			'-of',
-			'GTiff',
-			'-co',
-			'TILED=YES',
-			'-co',
-			'BLOCKXSIZE=512',
-			'-co',
-			'BLOCKYSIZE=512',
-			'-co',
-			'COMPRESS=DEFLATE',
-			'-co',
-			'ZLEVEL=1',
-			'-co',
-			'PREDICTOR=1', // fast deflate
-			'-co',
-			'BIGTIFF=YES',
-			'-co',
-			'SPARSE_OK=TRUE',
-			'-co',
-			'NUM_THREADS=ALL_CPUS',
+			['-wo', 'NUM_THREADS=ALL_CPUS'],
+			['-wm', '1024'],
+			['-of', 'GTiff'],
+			['-co', 'TILED=YES'],
+			['-co', 'BLOCKXSIZE=512'],
+			['-co', 'BLOCKYSIZE=512'],
+			['-co', 'COMPRESS=DEFLATE'],
+			['-co', 'ZLEVEL=1'],
+			['-co', 'PREDICTOR=1'], // fast deflate
+			['-co', 'BIGTIFF=YES'],
+			['-co', 'SPARSE_OK=TRUE'],
+			['-co', 'NUM_THREADS=ALL_CPUS'],
 			'-overwrite',
 			vrt,
 			tmp,
-		]);
+		);
 		console.error('Building overview pyramid (mode) …');
-		await run('gdaladdo', [
-			'-r',
-			'mode',
-			'--config',
-			'COMPRESS_OVERVIEW',
-			'DEFLATE',
-			'--config',
-			'GDAL_NUM_THREADS',
-			'ALL_CPUS',
+		await run(
+			'gdaladdo',
+			['-r', 'mode'],
+			['--config', 'COMPRESS_OVERVIEW', 'DEFLATE'],
+			['--config', 'GDAL_NUM_THREADS', 'ALL_CPUS'],
 			tmp,
-			'2',
-			'4',
-			'8',
-			'16',
-			'32',
-			'64',
-			'128',
-			'256',
-			'512',
-			'1024',
-		]);
+			['2', '4', '8', '16', '32', '64', '128', '256', '512', '1024'],
+		);
 	});
 
 	await fs.rm(vrt, { force: true });
