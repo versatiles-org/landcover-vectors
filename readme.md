@@ -101,6 +101,11 @@ Which classes are active is per zoom: each `kind` is emitted only up to its cuto
 `config.ts`, one below Shortbread's min-zoom for that value — see the mapping table below). Above its cutoff a
 class folds into no-data, so the block produces nothing there and OSM takes over.
 
+Each block's fragments are written (atomically, via a temp file renamed on success) to `data/1_results`, and a
+block whose fragments are already there is **skipped** — so an interrupted build resumes where it left off.
+The cache is keyed only on zoom + block position, so after changing parameters in `config.ts` clear it (or run
+`npm run clean`) to force a rebuild.
+
 ### Skip-empty
 
 ESA only ships 3° tiles where land exists (open ocean has no tile). `lib/coverage.ts` builds the set of occupied

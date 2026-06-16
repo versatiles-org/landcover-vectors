@@ -3,13 +3,14 @@
 // so memory stays bounded. See the README and the plan for the rationale of each step.
 
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { runQuiet } from './worldcover.ts';
+import { runQuiet, atomic } from './worldcover.ts';
 import type { Coverage } from './coverage.ts';
 import { channels, blockWindow, BLUR_RADIUS, SIEVE_THRESHOLD, simplifyForLevel, type Rect } from '../config.ts';
 
-export type BlockCtx = { src: string; coverage: Coverage; tmpdir: string };
+export type BlockCtx = { src: string; coverage: Coverage; tmpdir: string; resultsdir: string };
 export type BlockFragments = { land: string | null; water: string | null };
 
 // gdal_calc expression: 255 where band A is one of the given ESA codes, else 0
@@ -18,8 +19,9 @@ const mask = (esa: number[]) => `255*(${esa.map((c) => `(A==${c})`).join('|')})`
 const co = ['-co', 'COMPRESS=DEFLATE', '-co', 'TILED=YES', '-co', 'BIGTIFF=YES'];
 
 // process block (bx,by) at zoom z → its land/water FlatGeobuf fragments (or nulls if the
-// block is empty / a layer has no active kinds at this zoom). Scratch is cleaned up; the
-// returned fragments live until the per-zoom tiling consumes them.
+// block is empty / a layer has no active kinds at this zoom). Fragments are written atomically
+// to ctx.resultsdir and cached: a block whose fragments already exist there is skipped, so a
+// build resumes where it left off. Intermediate scratch in ctx.tmpdir is cleaned up.
 export async function processBlock(z: number, bx: number, by: number, ctx: BlockCtx): Promise<BlockFragments> {
 	const win = blockWindow(z, bx, by);
 	if (ctx.coverage.isEmpty(win.innerLonLat)) return { land: null, water: null }; // skip-empty
@@ -30,6 +32,15 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 	const maskEsa = [nodataEsa, ...active.map((c) => c.esa)]; // index 1 = no-data, 2.. = active
 
 	const id = `z${z}_${bx}_${by}`;
+	const hasLand = active.some((c) => c.layer === 'land');
+	const hasWater = active.some((c) => c.layer === 'water_polygons');
+	const landFrag = path.join(ctx.resultsdir, `${id}_land.fgb`);
+	const waterFrag = path.join(ctx.resultsdir, `${id}_water.fgb`);
+	const result: BlockFragments = { land: hasLand ? landFrag : null, water: hasWater ? waterFrag : null };
+
+	// resume: if this block's fragments are already on disk, skip the work
+	if ((!hasLand || existsSync(landFrag)) && (!hasWater || existsSync(waterFrag))) return result;
+
 	const p = (suffix: string) => path.join(ctx.tmpdir, `${id}_${suffix}`);
 	const scratch: string[] = [];
 	const tmp = (suffix: string) => {
@@ -37,11 +48,6 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		scratch.push(f);
 		return f;
 	};
-
-	const landFrag = p('land.fgb');
-	const waterFrag = p('water.fgb');
-	const hasLand = active.some((c) => c.layer === 'land');
-	const hasWater = active.some((c) => c.layer === 'water_polygons');
 
 	try {
 		// 1. read this block's window from the EPSG:3857 source (mode-resampled via its overviews;
@@ -221,44 +227,45 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			`${simplifyForLevel(z)}`,
 		]);
 
-		// 9. reproject to EPSG:4326 and split by target layer
-		if (hasLand) {
-			await fs.rm(landFrag, { force: true });
-			await runQuiet('ogr2ogr', [
-				'-t_srs',
-				'EPSG:4326',
-				'-f',
-				'FlatGeobuf',
-				'-nlt',
-				'PROMOTE_TO_MULTI',
-				'-nln',
-				'land',
-				'-where',
-				"layer='land'",
-				landFrag,
-				simplified,
-			]);
-		}
-		if (hasWater) {
-			await fs.rm(waterFrag, { force: true });
-			await runQuiet('ogr2ogr', [
-				'-t_srs',
-				'EPSG:4326',
-				'-f',
-				'FlatGeobuf',
-				'-nlt',
-				'PROMOTE_TO_MULTI',
-				'-nln',
-				'water_polygons',
-				'-where',
-				"layer='water_polygons'",
-				waterFrag,
-				simplified,
-			]);
-		}
+		// 9. reproject to EPSG:4326 and split by target layer; each fragment is written to a temp
+		// file and renamed on success (so a finished fragment on disk means the block is done)
+		if (hasLand)
+			await atomic(landFrag, (out) =>
+				runQuiet('ogr2ogr', [
+					'-t_srs',
+					'EPSG:4326',
+					'-f',
+					'FlatGeobuf',
+					'-nlt',
+					'PROMOTE_TO_MULTI',
+					'-nln',
+					'land',
+					'-where',
+					"layer='land'",
+					out,
+					simplified,
+				]),
+			);
+		if (hasWater)
+			await atomic(waterFrag, (out) =>
+				runQuiet('ogr2ogr', [
+					'-t_srs',
+					'EPSG:4326',
+					'-f',
+					'FlatGeobuf',
+					'-nlt',
+					'PROMOTE_TO_MULTI',
+					'-nln',
+					'water_polygons',
+					'-where',
+					"layer='water_polygons'",
+					out,
+					simplified,
+				]),
+			);
 	} finally {
 		await Promise.all(scratch.map((f) => fs.rm(f, { force: true })));
 	}
 
-	return { land: hasLand ? landFrag : null, water: hasWater ? waterFrag : null };
+	return result;
 }

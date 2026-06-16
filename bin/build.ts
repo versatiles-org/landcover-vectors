@@ -40,6 +40,7 @@ const haveSource = await fs.stat(file.source).then(
 );
 if (!haveSource) throw new Error(`missing ${file.source} — run "npm run download" first`);
 await fs.mkdir(dir.tmp, { recursive: true });
+await fs.mkdir(dir.results, { recursive: true });
 
 const coverage = await buildCoverage();
 console.error('Source: %s — %d occupied 3° cells', file.source, coverage.cells);
@@ -54,7 +55,7 @@ for (let z = 0; z <= MAXLEVEL; z++) {
 	const fragments: BlockFragments[] = [];
 	let done = 0;
 	await pMap(blocks, BLOCK_CONCURRENCY, async ([bx, by]) => {
-		const f = await processBlock(z, bx, by, { src: file.source, coverage, tmpdir: dir.tmp });
+		const f = await processBlock(z, bx, by, { src: file.source, coverage, tmpdir: dir.tmp, resultsdir: dir.results });
 		if (f.land || f.water) fragments.push(f);
 		if (++done % 100 === 0 || done === blocks.length)
 			console.error('  blocks %d/%d (%d non-empty)', done, blocks.length, fragments.length);
