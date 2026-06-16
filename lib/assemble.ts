@@ -8,7 +8,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { run } from './worldcover.ts';
+import { run, atomic } from './worldcover.ts';
 import type { BlockFragments } from './block.ts';
 import { dir, file, meta } from '../config.ts';
 
@@ -44,30 +44,33 @@ export async function tileZoom(z: number, fragments: BlockFragments[]): Promise<
 	const hasLand = await mergeLayer(land, 'land', landFgb);
 	const hasWater = await mergeLayer(water, 'water_polygons', waterFgb);
 
-	const out = path.join(dir.tmp, `z${z}.mbtiles`);
-	const args = [
-		'-o',
-		out,
-		'--force',
-		'-Z',
-		`${z}`,
-		'-z',
-		`${z}`,
-		'--attribute-type',
-		'kind:string',
-		'--include',
-		'kind', // keep only `kind` in the tiles
-		'--coalesce-smallest-as-needed', // keep coverage complete instead of dropping features
-		'--name',
-		meta.name,
-		'--attribution',
-		meta.attribution,
-		'--description',
-		meta.description,
-	];
-	if (hasLand) args.push('-L', `land:${landFgb}`);
-	if (hasWater) args.push('-L', `water_polygons:${waterFgb}`);
-	await run('tippecanoe', args);
+	// cached per-zoom tileset; written atomically (temp → rename) so its presence means "done"
+	const out = path.join(dir.tiles, `z${z}.mbtiles`);
+	await atomic(out, (tmp) => {
+		const args = [
+			'-o',
+			tmp,
+			'--force',
+			'-Z',
+			`${z}`,
+			'-z',
+			`${z}`,
+			'--attribute-type',
+			'kind:string',
+			'--include',
+			'kind', // keep only `kind` in the tiles
+			'--coalesce-smallest-as-needed', // keep coverage complete instead of dropping features
+			'--name',
+			meta.name,
+			'--attribution',
+			meta.attribution,
+			'--description',
+			meta.description,
+		];
+		if (hasLand) args.push('-L', `land:${landFgb}`);
+		if (hasWater) args.push('-L', `water_polygons:${waterFgb}`);
+		return run('tippecanoe', args);
+	});
 	return out;
 }
 

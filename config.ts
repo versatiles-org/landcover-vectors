@@ -20,6 +20,7 @@ export const datadir = path.resolve(__dirname, 'data');
 export const dir = {
 	source: path.join(datadir, '0_download'), // holds the reprojected source raster + its tile list (download)
 	results: path.join(datadir, '1_results'), // per-block land/water fragments (cached → builds resume)
+	tiles: path.join(datadir, '2_tiles'), // per-zoom mbtiles (cached → builds resume)
 	tmp: path.join(datadir, 'tmp'), // per-block / per-zoom scratch (not cached between runs)
 };
 

@@ -101,15 +101,16 @@ Which classes are active is per zoom: each `kind` is emitted only up to its cuto
 `config.ts`, one below Shortbread's min-zoom for that value — see the mapping table below). Above its cutoff a
 class folds into no-data, so the block produces nothing there and OSM takes over.
 
-Each block's fragments are written (atomically, via a temp file renamed on success) to `data/1_results`, and a
-block whose fragments are already there is **skipped** — so an interrupted build resumes where it left off.
-The cache is keyed only on zoom + block position, so after changing parameters in `config.ts` clear it (or run
-`npm run clean`) to force a rebuild.
+Both the per-block fragments (`data/1_results`) and the per-zoom tilesets (`data/2_tiles`) are **cached**: each
+is written atomically (temp file renamed on success), and on re-run a block whose fragments already exist is
+skipped — and a zoom whose `z{z}.mbtiles` already exists is skipped wholesale, without even iterating its blocks.
+So an interrupted build resumes where it left off. The cache is keyed only on zoom + block position, so after
+changing parameters in `config.ts` clear it (or run `npm run clean`) to force a rebuild.
 
 ### Skip-empty
 
 ESA only ships 3° tiles where land exists (open ocean has no tile). `lib/coverage.ts` builds the set of occupied
-3° cells from the mirror's filenames; a block whose bounding box intersects no occupied cell has no source data
+3° cells from the recorded source tile list (`_source-tiles.txt`); a block whose bounding box intersects no occupied cell has no source data
 and is skipped entirely (it would only have produced dropped no-data). At high zoom most blocks are ocean, so
 this removes the bulk of the work. The test is conservative — it never skips a block that overlaps land — so it
 can't create wrong holes.
@@ -117,10 +118,11 @@ can't create wrong holes.
 ### Per-zoom tiling
 
 `lib/assemble.ts` unions all of a zoom's block fragments per layer (OGR VRT union → one FlatGeobuf), then runs
-**one** `tippecanoe -Z z -z z -L land:… -L water_polygons:…` → `z.mbtiles`. Doing the whole zoom in one pass
-lets tippecanoe's per-tile buffers fill across block seams (no hairlines), and `--coalesce-smallest-as-needed`
-keeps the coverage complete — when a low-zoom tile (e.g. the whole world at z0) would exceed the MVT size limit,
-the smallest polygons merge into their neighbours rather than being dropped. Only `kind` is kept in the tiles.
+**one** `tippecanoe -Z z -z z -L land:… -L water_polygons:…` → `data/2_tiles/z{z}.mbtiles`. Doing the whole zoom
+in one pass lets tippecanoe's per-tile buffers fill across block seams (no hairlines), and
+`--coalesce-smallest-as-needed` keeps the coverage complete — when a low-zoom tile (e.g. the whole world at z0)
+would exceed the MVT size limit, the smallest polygons merge into their neighbours rather than being dropped.
+Only `kind` is kept in the tiles.
 
 ### Merge & pack
 

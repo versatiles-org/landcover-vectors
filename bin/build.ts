@@ -7,6 +7,8 @@
 // The single EPSG:3857 source raster is built once by bin/download.ts (`npm run download`).
 
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 
 import { requireCommands, pMap } from '../lib/worldcover.ts';
 import { buildCoverage } from '../lib/coverage.ts';
@@ -41,12 +43,21 @@ const haveSource = await fs.stat(file.source).then(
 if (!haveSource) throw new Error(`missing ${file.source} — run "npm run download" first`);
 await fs.mkdir(dir.tmp, { recursive: true });
 await fs.mkdir(dir.results, { recursive: true });
+await fs.mkdir(dir.tiles, { recursive: true });
 
 const coverage = await buildCoverage();
 console.error('Source: %s — %d occupied 3° cells', file.source, coverage.cells);
 
 const zMbtiles: string[] = [];
 for (let z = 0; z <= MAXLEVEL; z++) {
+	// resume: a cached per-zoom tileset means the whole level is done — skip its blocks entirely
+	const zMb = path.join(dir.tiles, `z${z}.mbtiles`);
+	if (existsSync(zMb)) {
+		console.error('\n══════ zoom %d / %d — cached ══════', z, MAXLEVEL);
+		zMbtiles.push(zMb);
+		continue;
+	}
+
 	const n = blocksPerAxis(z);
 	const blocks: [number, number][] = [];
 	for (let by = 0; by < n; by++) for (let bx = 0; bx < n; bx++) blocks.push([bx, by]);
