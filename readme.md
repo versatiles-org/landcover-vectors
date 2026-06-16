@@ -106,6 +106,19 @@ Which classes are active is per zoom: each `kind` is emitted only up to its cuto
 `config.ts`, one below Shortbread's min-zoom for that value — see the mapping table below). Above its cutoff a
 class folds into no-data, so the block produces nothing there and OSM takes over.
 
+**Low-diversity fast paths.** Right after the warp, one histogram read of the window (`gdalinfo -hist`) tells
+which ESA values are actually present. Most blocks at high zoom sit inside a large uniform region (Sahara,
+boreal forest, a mostly-ocean coastal cell), so:
+
+- **Channel pruning** — masks + blur are built only for the kinds present; an absent kind's mask is all-zero,
+  blurs to all-zero and can never win the argmax, so skipping it is exact (byte-identical output), not an
+  approximation.
+- **Uniform short-circuit** — if the whole window is a single value (or maps to no active kind), the entire
+  blur → argmax → sieve → polygonize → simplify chain is skipped and the block is emitted directly as the inner
+  rectangle (`win.innerLonLat`) tagged with that `kind`, or as empty fragments. The histogram must cover the
+  whole window incl. the margin, so a value that only appears in the margin (and bleeds into the inner edge via
+  the blur) is never wrongly pruned.
+
 Both the per-block fragments (`data/1_results`) and the per-zoom tilesets (`data/2_tiles`) are **cached**: each
 is written atomically (temp file renamed on success), and on re-run a block whose fragments already exist is
 skipped — and a zoom whose `z{z}.mbtiles` already exists is skipped wholesale, without even iterating its blocks.

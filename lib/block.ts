@@ -6,9 +6,17 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { runQuiet, atomic } from './worldcover.ts';
+import { runQuiet, atomic, presentValues } from './worldcover.ts';
 import type { Coverage } from './coverage.ts';
-import { channels, blockWindow, BLUR_RADIUS, SIEVE_THRESHOLD, simplifyForLevel, type Rect } from '../config.ts';
+import {
+	channels,
+	blockWindow,
+	BLUR_RADIUS,
+	SIEVE_THRESHOLD,
+	simplifyForLevel,
+	type Rect,
+	type Channel,
+} from '../config.ts';
 
 export type BlockCtx = { src: string; coverage: Coverage; tmpdir: string; resultsdir: string };
 export type BlockFragments = { land: string | null; water: string | null };
@@ -29,7 +37,6 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 	// channels active at this zoom; everything else (incl. ESA 0) folds into the no-data class.
 	const active = channels.filter((c) => c.layer !== null && c.maxZoom >= z);
 	const nodataEsa = channels.filter((c) => c.layer === null || c.maxZoom < z).flatMap((c) => c.esa);
-	const maskEsa = [nodataEsa, ...active.map((c) => c.esa)]; // index 1 = no-data, 2.. = active
 
 	const id = `z${z}_${bx}_${by}`;
 	const hasLand = active.some((c) => c.layer === 'land');
@@ -69,6 +76,61 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			ctx.src,
 			window,
 		);
+		scratch.push(window + '.aux.xml'); // gdalinfo -hist (below) leaves a PAM sidecar — clean it up too
+
+		// Histogram-gate the work: which active kinds actually occur in this window (incl. margin,
+		// so blur bleed near the inner edge is accounted for)? Two short-circuits avoid the
+		// blur→argmax→sieve→polygonize→simplify chain for low-diversity blocks (common at high zoom):
+		//   A) no active kind present → the block is all no-data → empty fragments
+		//   B) a single value fills the whole window → emit the inner rectangle as one polygon
+		// Otherwise we build masks only for the present kinds. Pruning is exact: an absent channel's
+		// mask is all-zero, blurs to all-zero, and can never win the argmax.
+		const present = await presentValues(window);
+		const activePresent = active.filter((c) => c.esa.some((v) => present.has(v)));
+
+		// write fragments directly from the inner rectangle (EPSG:4326 = win.innerLonLat): the
+		// rectangle tagged `kind` for a uniform block's layer, an empty layer for everything else
+		const emit = async (uniform: Channel | null): Promise<void> => {
+			const { west, south, east, north } = win.innerLonLat;
+			const ring = [
+				[west, south],
+				[east, south],
+				[east, north],
+				[west, north],
+				[west, south],
+			];
+			const writeLayer = async (frag: string, layerName: 'land' | 'water_polygons') => {
+				const features =
+					uniform && uniform.layer === layerName
+						? [
+								{
+									type: 'Feature',
+									properties: { kind: uniform.kind },
+									geometry: { type: 'Polygon', coordinates: [ring] },
+								},
+							]
+						: [];
+				const gj = tmp(`${layerName}.geojson`);
+				await fs.writeFile(gj, JSON.stringify({ type: 'FeatureCollection', features }));
+				await atomic(frag, (out) =>
+					runQuiet('ogr2ogr', ['-f', 'FlatGeobuf'], ['-nlt', 'MULTIPOLYGON'], ['-nln', layerName], out, gj),
+				);
+			};
+			if (hasLand) await writeLayer(landFrag, 'land');
+			if (hasWater) await writeLayer(waterFrag, 'water_polygons');
+		};
+
+		if (activePresent.length === 0) {
+			await emit(null); // A: nothing but no-data
+			return result;
+		}
+		if (present.size === 1) {
+			await emit(activePresent[0]); // B: one kind fills the block
+			return result;
+		}
+
+		// channel order for argmax/code mapping: index 1 = no-data, 2.. = activePresent[j]
+		const maskEsa = [nodataEsa, ...activePresent.map((c) => c.esa)];
 
 		// 2-3. per-channel mask (gdal_calc) → blur (vips); blur strips geo, re-attached at argmax
 		const blurred: string[] = [];
@@ -187,9 +249,9 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		// 9. now drop the no-data class, tag each polygon's Shortbread `kind`, reproject to EPSG:4326
 		// and split per layer; each fragment is written to a temp file and renamed on success (so a
 		// finished fragment on disk means the block is done)
-		const kindWhen = active.map((c, j) => `WHEN ${j + 2} THEN '${c.kind}'`).join(' ');
+		const kindWhen = activePresent.map((c, j) => `WHEN ${j + 2} THEN '${c.kind}'`).join(' ');
 		const codesFor = (layer: 'land' | 'water_polygons') =>
-			active.flatMap((c, j) => (c.layer === layer ? [j + 2] : []));
+			activePresent.flatMap((c, j) => (c.layer === layer ? [j + 2] : []));
 		const split = (out: string, layerName: string, codes: number[]) =>
 			runQuiet(
 				'ogr2ogr',
@@ -198,7 +260,11 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 				['-nlt', 'PROMOTE_TO_MULTI'],
 				['-nln', layerName],
 				['-dialect', 'SQLite'],
-				['-sql', `SELECT *, CASE code ${kindWhen} END AS kind FROM data WHERE code IN (${codes.join(',')})`],
+				// `-1` keeps the IN clause valid (→ empty fragment) when this layer has no present codes
+				[
+					'-sql',
+					`SELECT *, CASE code ${kindWhen} END AS kind FROM data WHERE code IN (${codes.join(',') || '-1'})`,
+				],
 				out,
 				simplified,
 			);

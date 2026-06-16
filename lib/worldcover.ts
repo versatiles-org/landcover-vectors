@@ -59,6 +59,33 @@ export function runQuiet(cmd: string, ...args: Arg[]): Promise<void> {
 	});
 }
 
+// run a child process quietly, resolving with its captured stdout (stderr feeds error messages)
+export function runCapture(cmd: string, ...args: Arg[]): Promise<string> {
+	const argv = toArgv(args);
+	return new Promise<string>((resolve, reject) => {
+		const child = spawn(cmd, argv, { stdio: ['ignore', 'pipe', 'pipe'], env: gdalEnv });
+		let stdout = '';
+		let stderr = '';
+		child.stdout?.on('data', (d) => (stdout += d));
+		child.stderr?.on('data', (d) => (stderr += d));
+		child.on('error', reject);
+		child.on('exit', (code, signal) =>
+			code === 0 ? resolve(stdout) : reject(new Error(stderr.trim() || exitMessage(cmd, code, signal))),
+		);
+	});
+}
+
+// the set of distinct band values present in a single-band Byte raster, via gdalinfo's histogram
+// (256 buckets spanning -0.5..255.5, so bucket i counts pixels of value i). Reads the whole raster
+// once. NB: gdalinfo -hist writes a `<tif>.aux.xml` PAM sidecar next to the file.
+export async function presentValues(tif: string): Promise<Set<number>> {
+	const info = JSON.parse(await runCapture('gdalinfo', ['-json', '-hist'], tif));
+	const buckets: number[] = info.bands?.[0]?.histogram?.buckets ?? [];
+	const present = new Set<number>();
+	for (let v = 0; v < buckets.length; v++) if (buckets[v] > 0) present.add(v);
+	return present;
+}
+
 // describe a non-zero child exit; a null code means it was terminated by a signal
 // (e.g. SIGKILL from the OOM killer)
 function exitMessage(cmd: string, code: number | null, signal: NodeJS.Signals | null): string {
