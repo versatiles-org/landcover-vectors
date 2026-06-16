@@ -85,11 +85,16 @@ blocks read full detail; uncovered pixels are no-data:
 5. **Crop** — `gdal_translate -projwin` cuts the classified raster to the block's exact inner 8×8-tile rectangle
    in EPSG:3857, discarding the margin. (Cropping the _raster_ rather than clipping the _vectors_ keeps the edge
    pixel-exact and avoids the boundary slivers a vector clip can turn into GeometryCollections.)
-6. **Polygonize & tag** — `gdal raster polygonize` → one polygon per region; an SQLite `CASE` tags each with its
-   Shortbread `layer` + `kind`; the no-data class is dropped.
+6. **Polygonize** — `gdal raster polygonize` → one polygon per region (field `code` = channel index), a
+   **gap-free coverage of the whole block, including the no-data class**.
 7. **Simplify** — coverage-simplify (`gdal vector simplify-coverage --preserve-boundary`, tolerance
    `(2·MERC)/(128·2^z)` ≈ 1 px at a 128 px tile) — topology-preserving, so shared borders stay aligned.
-8. **Split** — reproject to EPSG:4326 and split into the block's `land` and `water_polygons` fragments
+   ⚠️ **simplify-coverage only simplifies the _interior_ edges shared between adjacent polygons**;
+   `--preserve-boundary` freezes the _exterior_. So the input must be a **100 %-filled coverage with no holes** —
+   the no-data polygons included. If no-data were dropped first, every coastline would be exterior boundary and
+   keep its raw pixel staircase. (That is why polygonize keeps no-data and the drop happens in step 8, not here.)
+8. **Tag & split** — drop the no-data class, tag each polygon's Shortbread `kind` (SQLite `CASE` on `code`),
+   reproject to EPSG:4326, and split into the block's `land` and `water_polygons` fragments
    (`-nlt PROMOTE_TO_MULTI`).
 
 The **margin** (`MARGIN_PX` = ceil(3·`BLUR_RADIUS` + 3·√`SIEVE_THRESHOLD`) = 17 px) around each block means the

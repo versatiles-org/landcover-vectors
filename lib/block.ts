@@ -151,7 +151,8 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			cropped,
 		);
 
-		// 7. polygonize (field `code` = channel index) → tag kind+layer, drop the no-data class (code 1)
+		// 7. polygonize (field `code` = channel index) → a gap-free coverage of the whole block,
+		// INCLUDING the no-data class (code 1). It must stay 100% filled for the next step.
 		const poly = tmp('poly.fgb');
 		await fs.rm(poly, { force: true });
 		await runQuiet(
@@ -161,26 +162,15 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			['-o', poly],
 			['-f', 'FlatGeobuf'],
 			['--attribute-name', 'code'],
-			['--output-layer', 'poly'],
+			['--output-layer', 'data'],
 			'--overwrite',
 		);
-		const kindWhen = active.map((c, j) => `WHEN ${j + 2} THEN '${c.kind}'`).join(' ');
-		const layerWhen = active.map((c, j) => `WHEN ${j + 2} THEN '${c.layer}'`).join(' ');
-		const codes = active.map((_, j) => j + 2).join(',');
-		const sql = `SELECT *, CASE code ${kindWhen} END AS kind, CASE code ${layerWhen} END AS layer FROM poly WHERE code IN (${codes})`;
-		const tagged = tmp('tagged.fgb');
-		await fs.rm(tagged, { force: true });
-		await runQuiet(
-			'ogr2ogr',
-			['-f', 'FlatGeobuf'],
-			['-nln', 'data'],
-			['-dialect', 'SQLite'],
-			['-sql', sql],
-			tagged,
-			poly,
-		);
 
-		// 8. coverage-simplify (per block → bounded memory); preserve the cropped edge so neighbours match
+		// 8. coverage-simplify. simplify-coverage only simplifies the *interior* edges shared between
+		// adjacent polygons; --preserve-boundary keeps the *exterior* boundary fixed. So the input
+		// MUST be a 100%-filled coverage with NO holes — the no-data polygons included — otherwise
+		// every coastline is an exterior boundary and keeps its raw pixel staircase. We therefore
+		// simplify the full polygonized coverage here and drop the no-data class only afterwards (9).
 		const simplified = tmp('simplified.fgb');
 		await fs.rm(simplified, { force: true });
 		await runQuiet(
@@ -189,39 +179,31 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			'--overwrite',
 			'--preserve-boundary',
 			['--output-layer', 'data'],
-			['-i', tagged],
+			['-i', poly],
 			['-o', simplified],
 			simplifyForLevel(z),
 		);
 
-		// 9. reproject to EPSG:4326 and split by target layer; each fragment is written to a temp
-		// file and renamed on success (so a finished fragment on disk means the block is done)
-		if (hasLand)
-			await atomic(landFrag, (out) =>
-				runQuiet(
-					'ogr2ogr',
-					['-t_srs', 'EPSG:4326'],
-					['-f', 'FlatGeobuf'],
-					['-nlt', 'PROMOTE_TO_MULTI'],
-					['-nln', 'land'],
-					['-where', "layer='land'"],
-					out,
-					simplified,
-				),
+		// 9. now drop the no-data class, tag each polygon's Shortbread `kind`, reproject to EPSG:4326
+		// and split per layer; each fragment is written to a temp file and renamed on success (so a
+		// finished fragment on disk means the block is done)
+		const kindWhen = active.map((c, j) => `WHEN ${j + 2} THEN '${c.kind}'`).join(' ');
+		const codesFor = (layer: 'land' | 'water_polygons') =>
+			active.flatMap((c, j) => (c.layer === layer ? [j + 2] : []));
+		const split = (out: string, layerName: string, codes: number[]) =>
+			runQuiet(
+				'ogr2ogr',
+				['-t_srs', 'EPSG:4326'],
+				['-f', 'FlatGeobuf'],
+				['-nlt', 'PROMOTE_TO_MULTI'],
+				['-nln', layerName],
+				['-dialect', 'SQLite'],
+				['-sql', `SELECT *, CASE code ${kindWhen} END AS kind FROM data WHERE code IN (${codes.join(',')})`],
+				out,
+				simplified,
 			);
-		if (hasWater)
-			await atomic(waterFrag, (out) =>
-				runQuiet(
-					'ogr2ogr',
-					['-t_srs', 'EPSG:4326'],
-					['-f', 'FlatGeobuf'],
-					['-nlt', 'PROMOTE_TO_MULTI'],
-					['-nln', 'water_polygons'],
-					['-where', "layer='water_polygons'"],
-					out,
-					simplified,
-				),
-			);
+		if (hasLand) await atomic(landFrag, (out) => split(out, 'land', codesFor('land')));
+		if (hasWater) await atomic(waterFrag, (out) => split(out, 'water_polygons', codesFor('water_polygons')));
 	} finally {
 		await Promise.all(scratch.map((f) => fs.rm(f, { force: true })));
 	}
