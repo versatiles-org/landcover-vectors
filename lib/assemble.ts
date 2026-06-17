@@ -66,6 +66,9 @@ export async function tileZoom(z: number, fragments: BlockFragments[]): Promise<
 		if (hasWater) args.push(['-L', `water_polygons:${waterFgb}`]);
 		return runQuiet('tippecanoe', ...args);
 	});
+
+	// the merged fgb were only needed to feed tippecanoe — drop them now to free disk between zooms
+	await Promise.all([fs.rm(landFgb, { force: true }), fs.rm(waterFgb, { force: true })]);
 	return out;
 }
 
