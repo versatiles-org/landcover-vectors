@@ -42,6 +42,7 @@ const haveSource = await fs.stat(file.source).then(
 	() => false,
 );
 if (!haveSource) throw new Error(`missing ${file.source} — run "npm run download" first`);
+await fs.rm(dir.tmp, { recursive: true, force: true }); // tmp is scratch only — start from a clean slate
 await fs.mkdir(dir.tmp, { recursive: true });
 await fs.mkdir(dir.results, { recursive: true });
 await fs.mkdir(dir.tiles, { recursive: true });
@@ -98,4 +99,5 @@ for (let z = 0; z <= MAXLEVEL; z++) {
 bar.done();
 
 await pack(zMbtiles);
+await fs.rm(dir.tmp, { recursive: true, force: true }); // scratch no longer needed
 console.error('✓ done');
