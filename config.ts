@@ -29,7 +29,7 @@ export const file = {
 	sourceList: path.join(datadir, '0_download', '_source-tiles.txt'), // remote tile list, read for skip-empty (download)
 	log: path.join(datadir, 'blocks.log'), // per-block processing log (TSV), one row per block (build)
 	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid (pack)
-	container: path.resolve(__dirname, 'landcover.versatiles'), // brotli versatiles (pack)
+	container: path.join(datadir, 'landcover.versatiles'), // brotli versatiles (pack)
 };
 
 // EPSG:3857 (Web Mercator) world half-extent in metres (±MERC ≈ ±85.0511°)
