@@ -42,7 +42,7 @@ export const MAXLEVEL = 10;
 // block-processing geometry
 export const TILE_PX = 1024; // raw raster pixels per output tile
 export const BLOCK = 8; // tiles per block side
-export const BLUR_RADIUS = 2; // Gaussian σ in pixels (constant across levels)
+export const BLUR_RADIUS = 3; // Gaussian σ in pixels (constant across levels)
 
 // full-world raster size at the deepest zoom (TILE_PX × 2^MAXLEVEL). The single EPSG:3857
 // source GeoTIFF is built at this resolution and carries an overview pyramid down to z0, so a
