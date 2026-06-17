@@ -169,7 +169,15 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 				const gj = tmp(`${layerName}.geojson`);
 				await fs.writeFile(gj, JSON.stringify({ type: 'FeatureCollection', features }));
 				await atomic(frag, (out) =>
-					runQuiet('ogr2ogr', ['-f', 'FlatGeobuf'], ['-nlt', 'MULTIPOLYGON'], ['-nln', layerName], out, gj),
+					runQuiet(
+						'ogr2ogr',
+						['-f', 'FlatGeobuf'],
+						['-lco', 'SPATIAL_INDEX=NO'],
+						['-nlt', 'MULTIPOLYGON'],
+						['-nln', layerName],
+						out,
+						gj,
+					),
 				);
 			};
 			if (hasLand) await writeLayer(landFrag, 'land');
@@ -279,6 +287,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			['-i', cropped],
 			['-o', poly],
 			['-f', 'FlatGeobuf'],
+			['--lco', 'SPATIAL_INDEX=NO'], // read sequentially by simplify-coverage; no index needed
 			['--attribute-name', 'code'],
 			['--output-layer', 'data'],
 			'--overwrite',
@@ -296,6 +305,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			['vector', 'simplify-coverage'],
 			'--overwrite',
 			'--preserve-boundary',
+			['--lco', 'SPATIAL_INDEX=NO'], // read sequentially by the split step; no index needed
 			['--output-layer', 'data'],
 			['-i', poly],
 			['-o', simplified],
@@ -313,6 +323,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 				'ogr2ogr',
 				['-t_srs', 'EPSG:4326'],
 				['-f', 'FlatGeobuf'],
+				['-lco', 'SPATIAL_INDEX=NO'],
 				['-nlt', 'PROMOTE_TO_MULTI'],
 				['-nln', layerName],
 				['-dialect', 'SQLite'],

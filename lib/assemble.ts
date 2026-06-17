@@ -28,7 +28,10 @@ async function mergeLayer(files: string[], layerName: string, out: string): Prom
 	const vrt = out + '.vrt';
 	await fs.writeFile(vrt, vrtUnion(files, layerName));
 	await fs.rm(out, { force: true });
-	await runQuiet('ogr2ogr', ['-f', 'FlatGeobuf'], ['-nln', layerName], out, vrt);
+	// SPATIAL_INDEX=NO: this merged fgb is only read sequentially by tippecanoe, so skip building the
+	// Hilbert R-tree — it would buffer+sort every feature to a temp file (often /tmp), which on a large
+	// zoom exhausts temp space ("Unexpected I/O failure: writing feature"). No index → single-pass write.
+	await runQuiet('ogr2ogr', ['-f', 'FlatGeobuf'], ['-lco', 'SPATIAL_INDEX=NO'], ['-nln', layerName], out, vrt);
 	await fs.rm(vrt, { force: true });
 	return true;
 }
