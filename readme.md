@@ -32,6 +32,11 @@ npm run build      # everything else → landcover.versatiles
 Everything reads and writes under `data/`; the final container is `landcover.versatiles` in the repo root. All
 the parameters below live in `config.ts`.
 
+> **Resources.** A full z0–10 build needs roughly **150 GB** of disk under `data/` (the ~23 GB EPSG:3857 source
+> plus the per-block / per-zoom caches) and on the order of **300 core-hours** of CPU. It's heavily
+> parallelised, written to be resumable, and the caches let you stop and continue, but plan for a long run on a
+> many-core machine with ample free disk.
+
 ### Why blocks
 
 A naïve pipeline renders one global EPSG:3857 raster per zoom level. At the resolution we want that reaches
