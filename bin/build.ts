@@ -20,7 +20,7 @@ import { dir, file, MAXLEVEL, CPU_CORES, blocksPerAxis, blockWindow } from '../c
 // run this many blocks at once; each block already fans GTiff (de)compression across cores
 // via GDAL_NUM_THREADS, so keep block-level parallelism below the core count to avoid
 // pathological oversubscription
-const BLOCK_CONCURRENCY = Math.max(1, Math.floor(CPU_CORES / 2));
+const BLOCK_CONCURRENCY = Math.max(1, Math.floor(CPU_CORES / 1.5));
 
 // fail fast (before the long build) if any external tool is missing
 await requireCommands([
