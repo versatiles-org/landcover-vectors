@@ -140,7 +140,8 @@ export const channels: Channel[] = [
 	{ esa: [10], layer: 'land', kind: 'forest', maxZoom: 6, color: '#66AA44' }, // tree cover
 	{ esa: [40], layer: 'land', kind: 'farmland', maxZoom: 9, color: '#F0E7D1' }, // cropland
 	{ esa: [50], layer: 'land', kind: 'residential', maxZoom: 9, color: '#EAE6E1' }, // built-up
-	{ esa: [60, 100], layer: 'land', kind: 'sand', maxZoom: 9, color: '#FAFAED' }, // bare/sparse + moss & lichen
+	{ esa: [60], layer: 'land', kind: 'bare_rock', maxZoom: 9, color: '#D9D5CE' }, // bare / sparse vegetation
+	{ esa: [100], layer: 'land', kind: 'heath', maxZoom: 9, color: '#CFD3B0' }, // moss & lichen (tundra)
 	{ esa: [20], layer: 'land', kind: 'scrub', maxZoom: 10, color: '#E0E4E5' }, // shrubland
 	{ esa: [30], layer: 'land', kind: 'grassland', maxZoom: 10, color: '#D8E8C8' }, // grassland
 	{ esa: [90], layer: 'land', kind: 'marsh', maxZoom: 10, color: '#D3E6DB' }, // herbaceous wetland
