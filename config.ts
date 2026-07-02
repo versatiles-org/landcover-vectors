@@ -30,7 +30,12 @@ export const file = {
 	log: path.join(datadir, 'blocks.log'), // per-block processing log (TSV), one row per block (build)
 	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid (pack)
 	container: path.join(datadir, 'landcover.versatiles'), // brotli versatiles (pack)
+	osm: path.join(datadir, 'osm.versatiles'), // OSM Shortbread base, downloaded on demand (merge)
+	merged: path.join(datadir, 'combined.versatiles'), // OSM + landcover feature-merge (merge)
 };
+
+// upstream OSM-based Shortbread container the landcover is feature-merged into (bin/merge.ts)
+export const OSM_URL = 'https://download.versatiles.org/osm.versatiles';
 
 // EPSG:3857 (Web Mercator) world half-extent in metres (±MERC ≈ ±85.0511°)
 export const MERC = 20037508.342789244;

@@ -13,6 +13,7 @@
     "check": "npm run typecheck && npm run format:check",
     "download": "node bin/download.ts",
     "build": "node bin/build.ts",
+    "merge": "node bin/merge.ts",
     "style": "node bin/style.ts",
     "clean": "node bin/clean.ts",
     "typecheck": "tsc --noEmit",
