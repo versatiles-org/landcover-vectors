@@ -175,31 +175,35 @@ so those areas stay holes for Shortbread's `ocean` layer to fill.
 
 ### ESA WorldCover → Shortbread mapping
 
-| ESA WorldCover class                    | → layer          | `kind`        | this container fills |
-| --------------------------------------- | ---------------- | ------------- | -------------------- |
-| Tree cover                              | `land`           | `forest`      | z0–6                 |
-| Cropland                                | `land`           | `farmland`    | z0–9                 |
-| Built-up                                | `land`           | `residential` | z0–9                 |
-| Bare / sparse vegetation, moss & lichen | `land`           | `sand`        | z0–9                 |
-| Shrubland                               | `land`           | `scrub`       | z0–10                |
-| Grassland                               | `land`           | `grassland`   | z0–10                |
-| Herbaceous wetland                      | `land`           | `marsh`       | z0–10                |
-| Mangroves                               | `land`           | `swamp`       | z0–10                |
-| Snow and ice                            | `water_polygons` | `glacier`     | z0–3                 |
-| Permanent water bodies                  | `water_polygons` | `water`       | z0–3                 |
-| No data / open ocean                    | —                | _(dropped)_   | —                    |
+| ESA WorldCover class     | → layer          | `kind`        | this container fills |
+| ------------------------ | ---------------- | ------------- | -------------------- |
+| Tree cover               | `land`           | `forest`      | z0–6                 |
+| Cropland                 | `land`           | `farmland`    | z0–9                 |
+| Built-up                 | `land`           | `residential` | z0–9                 |
+| Bare / sparse vegetation | `land`           | `bare_rock`   | z0–9                 |
+| Moss & lichen            | `land`           | `heath`       | z0–9                 |
+| Shrubland                | `land`           | `scrub`       | z0–10                |
+| Grassland                | `land`           | `grassland`   | z0–10                |
+| Herbaceous wetland       | `land`           | `marsh`       | z0–10                |
+| Mangroves                | `land`           | `swamp`       | z0–10                |
+| Snow and ice             | `water_polygons` | `glacier`     | z0–3                 |
+| Permanent water bodies   | `water_polygons` | `water`       | z0–3                 |
+| No data / open ocean     | —                | _(dropped)_   | —                    |
 
 Every `kind` here is an existing Shortbread value, so the output validates and styles as plain Shortbread. The
 cutoff per kind is one zoom below Shortbread's min-zoom for that value (e.g. Shortbread `forest` starts at z7,
 so this container supplies `forest` for z0–6).
 
-Two mappings are deliberately **lossy generalizations** — ESA can't resolve the OSM detail, and at these zooms
-it doesn't matter visually:
+Some mappings are deliberately **lossy generalizations** — ESA can't resolve the OSM detail, and at these
+zooms it doesn't matter visually:
 
 - **Built-up → `residential`** — ESA's single "built-up" class can't distinguish residential / industrial /
   commercial; `residential` is the generic settlement fill.
-- **Bare / sparse vegetation (+ moss & lichen) → `sand`** — Shortbread `land` has no generic "bare" value;
-  `sand` matches the dominant case (deserts). Rocky barrens and Arctic tundra are approximated.
+- **Bare / sparse vegetation → `bare_rock`** — this class conflates rocky/gravelly barrens (Iceland, tundra,
+  high mountains) with sandy deserts, which ESA can't tell apart; `bare_rock` renders neutrally for both,
+  where `sand` would tint every barren yellow. Sandy deserts lose their sand tint as a result.
+- **Moss & lichen → `heath`** — Shortbread has no moss/lichen value; `heath` is the closest low tundra
+  vegetation fill.
 
 `wetland` is split to keep fidelity: herbaceous wetland → `marsh`, mangroves → `swamp`.
 
@@ -212,6 +216,15 @@ it doesn't matter visually:
 Merge this container with your OSM-based Shortbread tiles using the VersaTiles CLI (feature-level merge); the
 combined tileset then has `land`/`water_polygons` populated continuously from z0. No style changes are
 required — a standard Shortbread style already has rules for `forest`, `farmland`, `water`, `glacier`, etc.
+
+```sh
+npm run merge      # data/landcover.versatiles + OSM → data/combined.versatiles
+```
+
+`merge` downloads the latest OSM Shortbread container from
+[download.versatiles.org](https://download.versatiles.org/osm.versatiles) to `data/osm.versatiles` (~66 GB,
+once and resumable — skipped if already present), then feature-merges it with `data/landcover.versatiles` via
+the VersaTiles `from_merged_vector` pipeline into `data/combined.versatiles`.
 
 ## License
 
