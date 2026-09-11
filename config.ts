@@ -159,7 +159,7 @@ export const channels: Channel[] = [
 export const meta = {
 	name: 'Versatiles Landcover',
 	attribution:
-		'<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> <a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a>',
+		'<a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a> (<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>)',
 	description:
 		'Landcover vector tiles based on ESA Worldcover 2021, © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium',
 };
