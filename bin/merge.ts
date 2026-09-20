@@ -11,7 +11,7 @@
 import fs from 'node:fs/promises';
 
 import { run, requireCommands } from '../lib/worldcover.ts';
-import { file, OSM_URL } from '../config.ts';
+import { file, OSM_URL, SCHEMA } from '../config.ts';
 
 const exists = (p: string): Promise<boolean> =>
 	fs.stat(p).then(
@@ -55,8 +55,12 @@ if (await exists(file.osm)) {
 	await fs.rename(part, file.osm);
 }
 
-// feature-merge: every output tile carries all features from both sources (from_merged_vector)
-const pipeline = `[,vpl](from_merged_vector [ from_container filename="${file.osm}", from_container filename="${file.container}" ])`;
+// feature-merge: every output tile carries all features from both sources (from_merged_vector). The
+// result is still Shortbread — only fuller — so it says so; from_merged_vector concatenates the two
+// attributions by itself, which is what CC BY requires.
+const pipeline =
+	`[,vpl](from_merged_vector [ from_container filename="${file.osm}", from_container filename="${file.container}" ]` +
+	` | meta_update schema="${SCHEMA}")`;
 
 console.error('Merging → %s …', file.merged);
 await fs.rm(file.merged, { force: true });

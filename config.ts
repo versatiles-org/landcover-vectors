@@ -198,6 +198,10 @@ export const channels: Channel[] = [
 	{ esa: [80], layer: 'water_polygons', kind: 'water', maxZoom: 3, color: '#B3D9E6' }, // permanent water
 ];
 
+// the tile schema the output conforms to: Shortbread's own layer names and `kind` values (see the README
+// section on Shortbread compatibility). Stamped into the container by lib/assemble.ts and bin/merge.ts.
+export const SCHEMA = 'shortbread@1.1';
+
 // metadata embedded in the generated tilesets
 export const meta = {
 	name: 'Versatiles Landcover',

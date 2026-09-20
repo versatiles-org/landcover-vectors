@@ -10,7 +10,7 @@ import path from 'node:path';
 
 import { run, runQuiet, atomic, type Arg } from './worldcover.ts';
 import type { BlockFragments } from './block.ts';
-import { file, meta } from '../config.ts';
+import { file, meta, SCHEMA } from '../config.ts';
 
 // where a tiling run puts its scratch and its per-zoom tilesets. Passed in rather than read from
 // config so a preview run can tile into its own directory while the production cache stays untouched.
@@ -91,9 +91,13 @@ export async function joinZooms(zMbtiles: string[], out: string): Promise<void> 
 	);
 }
 
-// merge the per-zoom tilesets and pack into a brotli versatiles container (the build's final step)
+// merge the per-zoom tilesets and pack into a brotli versatiles container (the build's final step).
+// The container declares Shortbread explicitly: it writes Shortbread's own layer names and `kind` values,
+// which is the whole point, and tippecanoe has no way to say so — without this it ships as "other" and a
+// consumer cannot tell that a stock Shortbread style already fits.
 export async function pack(zMbtiles: string[]): Promise<void> {
 	await joinZooms(zMbtiles, file.tiles);
 	await fs.rm(file.container, { force: true });
-	await run('versatiles', 'convert', ['-c', 'brotli'], file.tiles, file.container);
+	const pipeline = `[,vpl](from_container filename="${file.tiles}" | meta_update schema="${SCHEMA}")`;
+	await run('versatiles', 'convert', ['-c', 'brotli'], pipeline, file.container);
 }

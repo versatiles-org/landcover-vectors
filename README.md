@@ -79,13 +79,17 @@ read (`gdalwarp -te <block ± margin> -ts <px> -r mode -multi`) hits the source'
 block reads a coarse pyramid level rather than the full-resolution data (≈100× less to read), while high-zoom
 blocks read full detail; uncovered pixels are no-data:
 
-1. **Channels** — for each landcover class _active at this zoom_ build a 0/255 membership mask (`gdal_calc.py`);
-   ESA 0 plus every class **not** active at this zoom folds into the no-data channel.
-2. **Blur** — Gaussian-blur each mask (`vips gaussblur`, σ = `BLUR_RADIUS` = 3 px) so the next step yields
-   **curved** boundaries instead of a pixel staircase, while shared borders stay exact.
-3. **Argmax** — the channel with the highest blurred value wins each pixel (`gdal raster calc --calc argmax`),
-   giving a clean single-band coverage; `gdal raster edit` re-attaches the EPSG:3857 georeferencing that vips
-   strips.
+1. **Channels** — for each landcover class _active at this zoom_ build a 0/255 membership mask; ESA 0 plus
+   every class **not** active at this zoom folds into the no-data channel. All masks come from **one**
+   `gdal_calc.py` call (repeated `--calc` → one band per channel), so the window is read once and Python
+   starts once however many channels are active.
+2. **Blur** — one `vips gaussblur` over that multi-band raster (σ = `BLUR_RADIUS` = 3 px, i.e.
+   `BLUR_RENDERED` = 0.75 rendered px); vips blurs each band independently. The blur is what makes the next
+   step yield **curved** boundaries instead of a pixel staircase, while shared borders stay exact.
+3. **Argmax** — the channel with the highest blurred value wins each pixel
+   (`gdal raster calc --calc argmax --flatten` reduces the bands to the winning index), giving a clean
+   single-band coverage; `gdal raster edit` re-attaches the EPSG:3857 georeferencing that vips strips.
+   Steps 1–3 are three processes per block regardless of channel count.
 4. **Sieve** — `gdal raster sieve` drops specks smaller than a circle of the blur radius (`SIEVE_THRESHOLD` =
    round(π·r²) = 28 px).
 5. **Crop** — `gdal_translate -projwin` cuts the classified raster to the block's exact inner 8×8-tile rectangle
@@ -156,7 +160,11 @@ Only `kind` is kept in the tiles.
 ### Merge & pack
 
 `tile-join` merges the per-zoom tilesets (disjoint zoom ranges) into `data/landcover.mbtiles`, then
-`versatiles convert -c brotli` packs it into `data/landcover.versatiles`.
+`versatiles convert -c brotli` packs it into `data/landcover.versatiles`, stamping
+`tile_schema: shortbread@1.0` on the way (`meta_update`) — tippecanoe has no way to declare that, and
+without it the container ships as `"other"` and a consumer cannot tell that a stock Shortbread style fits.
+The build finishes by printing a per-zoom tally of how its blocks were processed (branch counts, core-hours
+and the parallel speed-up) from `data/blocks.log`.
 
 To preview the result, `npm run style` writes a QGIS vector-tiles style (`landcover.qml`) that colours both
 layers by `kind`.

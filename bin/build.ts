@@ -15,6 +15,7 @@ import { planBlocks, countBlocks } from '../lib/plan.ts';
 import { runZooms } from '../lib/pipeline.ts';
 import { cacheValues, sourceValues, readStamp, writeStamp, stampMismatch } from '../lib/fingerprint.ts';
 import { LOG_HEADER } from '../lib/block.ts';
+import { readRunSummary, formatSummary } from '../lib/summary.ts';
 import { pack } from '../lib/assemble.ts';
 import { datadir, dir, file, MAXLEVEL, CPU_CORES } from '../config.ts';
 
@@ -24,6 +25,8 @@ import { datadir, dir, file, MAXLEVEL, CPU_CORES } from '../config.ts';
 const BLOCK_CONCURRENCY = Math.max(1, Math.floor(CPU_CORES / 1.5));
 
 // fail fast (before the long build) if any external tool is missing
+const started = Date.now();
+
 await requireCommands([
 	'gdal',
 	'gdalwarp',
@@ -109,4 +112,9 @@ bar.done();
 
 await pack(zMbtiles);
 await fs.rm(dir.tmp, { recursive: true, force: true }); // scratch no longer needed
-console.error('✓ done');
+
+// what actually happened, from the log this run appended — branch counts included, so a fast path that
+// never fires (or a block that failed and got retried) is visible instead of buried in 8000 TSV rows
+const summary = await readRunSummary(file.log);
+if (summary) console.error('%s', formatSummary(summary, Date.now() - started));
+console.error('✓ done: %s', file.container);

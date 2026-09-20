@@ -204,43 +204,47 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		// channel order for argmax/code mapping: index 1 = no-data, 2.. = activePresent[j]
 		const maskEsa = [nodataEsa, ...activePresent.map((c) => c.esa)];
 
-		// 2-3. per-channel mask (gdal_calc) → blur (vips); blur strips geo, re-attached at argmax
-		const blurred: string[] = [];
-		for (let i = 0; i < maskEsa.length; i++) {
-			const m = tmp(`ch${i}.tif`);
-			await runQuiet(
-				'gdal_calc.py',
-				['-A', window],
-				['--calc', mask(maskEsa[i])],
-				['--type', 'Byte'],
-				'--hideNoData',
-				['--co', 'COMPRESS=DEFLATE'],
-				['--co', 'TILED=YES'],
-				'--overwrite',
-				'--quiet',
-				['--outfile', m],
-			);
-			const b = tmp(`ch${i}_blur.tif`);
-			await runQuiet(
-				'vips',
-				'gaussblur',
-				m,
-				`${b}[compression=deflate,predictor=horizontal,bigtiff=true]`,
-				BLUR_RADIUS,
-				['--precision', 'approximate'],
-			);
-			blurred.push(b);
-		}
+		// 2-3. every channel mask in ONE gdal_calc.py pass (repeated --calc → one band per channel, in
+		// order), then ONE vips blur over that multi-band raster — vips blurs each band independently.
+		// Three processes for the whole stage instead of two per channel, and the window is read once
+		// instead of once per channel; on the z0-10 build that is ~26 000 Python starts down to ~6 500.
+		// Byte-identical to the per-channel route (verified), because each band is the same expression on
+		// the same pixels. Blur strips geo, re-attached at argmax.
+		const masks = tmp('masks.tif');
+		await runQuiet(
+			'gdal_calc.py',
+			['-A', window],
+			maskEsa.flatMap((esa) => ['--calc', mask(esa)]),
+			['--type', 'Byte'],
+			'--hideNoData',
+			['--co', 'COMPRESS=DEFLATE'],
+			['--co', 'TILED=YES'],
+			['--co', 'BIGTIFF=IF_SAFER'], // many channels at a high TILE_PX add up
+			'--overwrite',
+			'--quiet',
+			['--outfile', masks],
+		);
+		const blurred = tmp('blur.tif');
+		await runQuiet(
+			'vips',
+			'gaussblur',
+			masks,
+			`${blurred}[compression=deflate,predictor=horizontal,bigtiff=true]`,
+			BLUR_RADIUS,
+			['--precision', 'approximate'],
+		);
 
-		// 4. argmax → per-pixel winning channel index (1-based); re-attach the 3857 georeferencing
+		// 4. argmax → per-pixel winning channel index (1-based). --flatten reduces the blurred bands to
+		// the index of the winning one; without it, argmax over a single input is trivially always 1.
+		// Re-attach the 3857 georeferencing afterwards.
 		const index = tmp('index.tif');
-		const named = blurred.flatMap((b, i) => ['-i', `${String.fromCharCode(65 + i)}=${b}`]);
 		await runQuiet(
 			'gdal',
 			['raster', 'calc'],
 			['--dialect', 'builtin'],
-			named,
+			['-i', `A=${blurred}`],
 			['--calc', 'argmax'],
+			'--flatten',
 			['--ot', 'UInt8'],
 			'--no-check-crs',
 			['--co', 'COMPRESS=DEFLATE'],
