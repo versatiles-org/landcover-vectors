@@ -278,3 +278,28 @@ describe('bin/stats.ts', () => {
 		}
 	});
 });
+
+describe('bin/preview.ts argument handling', () => {
+	// only the paths that exit before any build: a real preview build needs the 23 GB source raster
+	const run = (args: string[]) =>
+		spawnSync(process.execPath, ['bin/preview.ts', ...args], { cwd: root, encoding: 'utf8' });
+
+	test('--help lists the presets and exits 0', () => {
+		const { status, stderr } = run(['--help']);
+		assert.equal(status, 0);
+		assert.match(stderr, /--area <name\|w,s,e,n>/);
+		assert.match(stderr, /hudson-bay/);
+	});
+
+	test('a bad zoom range fails before touching anything', () => {
+		const { status, stderr } = run(['--zoom', '99']);
+		assert.equal(status, 1);
+		assert.match(stderr, /only builds up to z/);
+	});
+
+	test('an unknown area fails before touching anything', () => {
+		const { status, stderr } = run(['--area', 'atlantis']);
+		assert.equal(status, 1);
+		assert.match(stderr, /unknown area/);
+	});
+});

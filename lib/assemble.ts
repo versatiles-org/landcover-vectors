@@ -10,7 +10,11 @@ import path from 'node:path';
 
 import { run, runQuiet, atomic, type Arg } from './worldcover.ts';
 import type { BlockFragments } from './block.ts';
-import { dir, file, meta } from '../config.ts';
+import { file, meta } from '../config.ts';
+
+// where a tiling run puts its scratch and its per-zoom tilesets. Passed in rather than read from
+// config so a preview run can tile into its own directory while the production cache stays untouched.
+export type TileDirs = { tmp: string; tiles: string };
 
 function vrtUnion(files: string[], layerName: string): string {
 	return (
@@ -37,18 +41,18 @@ async function mergeLayer(files: string[], layerName: string, out: string): Prom
 }
 
 // tile one zoom: merge all block fragments per layer, then one tippecanoe run → z{z}.mbtiles
-export async function tileZoom(z: number, fragments: BlockFragments[]): Promise<string | null> {
+export async function tileZoom(z: number, fragments: BlockFragments[], dirs: TileDirs): Promise<string | null> {
 	const land = fragments.map((f) => f.land).filter((f): f is string => !!f);
 	const water = fragments.map((f) => f.water).filter((f): f is string => !!f);
 	if (land.length === 0 && water.length === 0) return null;
 
-	const landFgb = path.join(dir.tmp, `z${z}_land.fgb`);
-	const waterFgb = path.join(dir.tmp, `z${z}_water.fgb`);
+	const landFgb = path.join(dirs.tmp, `z${z}_land.fgb`);
+	const waterFgb = path.join(dirs.tmp, `z${z}_water.fgb`);
 	const hasLand = await mergeLayer(land, 'land', landFgb);
 	const hasWater = await mergeLayer(water, 'water_polygons', waterFgb);
 
 	// cached per-zoom tileset; written atomically (temp → rename) so its presence means "done"
-	const out = path.join(dir.tiles, `z${z}.mbtiles`);
+	const out = path.join(dirs.tiles, `z${z}.mbtiles`);
 	await atomic(out, (tmp) => {
 		const args: Arg[] = [
 			['-o', tmp],
@@ -72,18 +76,24 @@ export async function tileZoom(z: number, fragments: BlockFragments[]): Promise<
 	return out;
 }
 
-// merge the per-zoom tilesets (disjoint zooms) and pack into a brotli versatiles container
-export async function pack(zMbtiles: string[]): Promise<void> {
-	await fs.rm(file.tiles, { force: true });
+// merge the per-zoom tilesets (disjoint zooms) into one mbtiles, stamping the tileset metadata
+export async function joinZooms(zMbtiles: string[], out: string): Promise<void> {
+	if (zMbtiles.length === 0) throw new Error('nothing to join — no zoom produced any tiles');
+	await fs.rm(out, { force: true });
 	await run(
 		'tile-join',
 		'-f',
 		['--name', meta.name],
 		['--attribution', meta.attribution],
 		['--description', meta.description],
-		['-o', file.tiles],
+		['-o', out],
 		zMbtiles,
 	);
+}
+
+// merge the per-zoom tilesets and pack into a brotli versatiles container (the build's final step)
+export async function pack(zMbtiles: string[]): Promise<void> {
+	await joinZooms(zMbtiles, file.tiles);
 	await fs.rm(file.container, { force: true });
 	await run('versatiles', 'convert', ['-c', 'brotli'], file.tiles, file.container);
 }

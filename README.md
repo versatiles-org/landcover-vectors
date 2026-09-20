@@ -17,6 +17,7 @@ They complement OSM-based [Shortbread](https://shortbread-tiles.org/) tiles at l
 - [`libvips`](https://www.libvips.org/) (`vips`) — used for the Gaussian blur
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`) — `tippecanoe-decode`, which ships with it, is used by `npm run stats -- --attribute`
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
+- for `npm run preview`: a browser, and internet access for MapLibre GL from a CDN (the tiles themselves are served locally)
 
 ## How it's made
 
@@ -183,6 +184,39 @@ plus archipelago, fjord, delta, desert and glacier cases. `--worst N --attribute
 variants of a parameter sweep apart. For the z0–10 build the worst tile is **60.5 KB at z9** (Hudson Bay
 Lowlands, 2273 features / 36 k vertices), with an average of 6–10 KB per tile — roughly **8× headroom** to the
 500 000-byte limit, which is the budget available for more detail.
+
+### Preview / developer mode
+
+```sh
+npm run preview -- --area hudson-bay --zoom 4-10   # build that area, serve it, open the viewer
+npm run preview -- --bbox 4,58,12,64 --watch       # rebuild and reload when config.ts changes
+npm run preview -- --tiles data/landcover.mbtiles  # just look at an existing tileset
+```
+
+A parameter change is worth a few minutes on one area, not eleven hours on the planet. `bin/preview.ts`
+plans the blocks of one area of interest (`--areas` in `npm run stats` lists the presets), runs them
+through **the same** `lib/pipeline.ts` the build uses — a preview on a different code path would prove
+nothing — joins them into one mbtiles and serves it with `versatiles serve`.
+
+Each parameter set builds into `data/preview/<config fingerprint>/`, so flipping between two settings
+reuses each one's cache instead of rebuilding. `--watch` reruns the build in a child process (ESM cannot
+reload `config.ts`), remounts the server on the new fingerprint and the viewer reloads itself.
+
+The viewer (`dev/viewer/`, MapLibre GL) is built around the things that are hard to judge from the
+terminal:
+
+- the **real OSM Shortbread container** is mounted alongside, straight from `download.versatiles.org` over
+  range requests — so the handover at each kind's cutoff is visible against real OSM data without
+  downloading 66 GB. OSM's `ocean` is drawn _under_ the landcover, so the no-data holes show up as ocean.
+- the **block grid** overlay is generated from `blockWindow()` itself, so a seam can be attributed to a
+  block boundary instead of guessed at.
+- a legend generated from `channels` (colour, kind, and the `≤ z` cutoff), with per-kind and per-source
+  toggles, MapLibre's tile boundaries, click-to-inspect, and the config fingerprint plus the live
+  parameter values in the header — so a screenshot documents itself.
+- the position lives in the URL hash (`#z/lat/lon`), which is what `npm run stats -- --worst` prints.
+
+`npm run stats -- --probe hudson-bay --zoom 8-10` combines the two: preview-build the area at the current
+config, then measure the tiles it produced.
 
 ## Shortbread compatibility
 

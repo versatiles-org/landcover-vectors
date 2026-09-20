@@ -4,7 +4,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { AREAS, LAT_LIMIT, resolveArea } from '../lib/areas.ts';
+import { AREAS, LAT_LIMIT, resolveArea, parseZoomRange, areaSlug } from '../lib/areas.ts';
+import { MAXLEVEL } from '../config.ts';
 
 describe('the presets', () => {
 	test('are well-formed rectangles inside the Mercator range', () => {
@@ -48,5 +49,30 @@ describe('resolveArea', () => {
 		assert.throws(() => resolveArea('0,10,5,5'), /south \(10\) must be less than north \(5\)/);
 		assert.throws(() => resolveArea('-200,0,5,1'), /outside ±180/);
 		assert.throws(() => resolveArea('0,86,5,89'), /outside the Mercator range/);
+	});
+});
+
+describe('parseZoomRange', () => {
+	test('a range, a single level, or the whole build', () => {
+		assert.deepEqual(parseZoomRange('4-10'), [4, 10]);
+		assert.deepEqual(parseZoomRange('7'), [7, 7]);
+		assert.deepEqual(parseZoomRange(undefined), [0, MAXLEVEL]);
+		assert.deepEqual(parseZoomRange('0-0'), [0, 0]);
+	});
+
+	test('refuses ranges that cannot be built', () => {
+		assert.throws(() => parseZoomRange('10-4'), /min \(10\) is above max \(4\)/);
+		assert.throws(() => parseZoomRange(String(MAXLEVEL + 1)), new RegExp(`only builds up to z${MAXLEVEL}`));
+		assert.throws(() => parseZoomRange('4..10'), /expected "min-max"/);
+		assert.throws(() => parseZoomRange('z4'), /expected "min-max"/);
+	});
+});
+
+describe('areaSlug', () => {
+	test('is filename-safe, so two previews cannot collide', () => {
+		assert.equal(areaSlug('hudson-bay'), 'hudson_bay');
+		assert.equal(areaSlug('4,58,12,64'), '4_58_12_64');
+		assert.equal(areaSlug('-92,52,-84,58'), '92_52_84_58');
+		assert.equal(areaSlug(undefined), 'world');
 	});
 });

@@ -11,10 +11,11 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
-import { AREAS, resolveArea } from '../lib/areas.ts';
+import { AREAS, resolveArea, parseZoomRange } from '../lib/areas.ts';
 import {
 	readTiles,
 	summarise,
@@ -28,7 +29,7 @@ import {
 } from '../lib/stats.ts';
 import { commandExists } from '../lib/worldcover.ts';
 import { cacheValues, fingerprint } from '../lib/fingerprint.ts';
-import { file } from '../config.ts';
+import { datadir, file } from '../config.ts';
 
 const { values: opt } = parseArgs({
 	options: {
@@ -41,6 +42,8 @@ const { values: opt } = parseArgs({
 		baseline: { type: 'string' }, // write | compare
 		label: { type: 'string' }, // baseline entry name (default: the area), e.g. "hudson-bay@detail2"
 		note: { type: 'string' }, // recorded with a written baseline: where these numbers came from
+		probe: { type: 'string' }, // build this area at the current config, then measure what came out
+		zoom: { type: 'string' }, // zoom range for --probe
 		areas: { type: 'boolean', default: false },
 		help: { type: 'boolean', default: false },
 	},
@@ -61,6 +64,8 @@ if (opt.help) {
 			'  --baseline write|compare remember this run, or diff against the remembered one',
 			'  --label <name>           baseline entry name (default: the area), for comparing variants',
 			'  --note <text>            recorded alongside a written baseline',
+			'  --probe <name|w,s,e,n>   preview-build that area at the current config, then measure it',
+			'  --zoom <min-max>         zoom range for --probe',
 			'  --json                   machine-readable output',
 		].join('\n'),
 	);
@@ -75,9 +80,23 @@ if (opt.areas) {
 	process.exit(0);
 }
 
-const input = opt.input ? path.resolve(opt.input) : file.tiles;
-const label = opt.label ?? opt.area ?? 'world';
-const bbox = opt.area ? clampToMercator(resolveArea(opt.area)) : undefined;
+// --probe: run the preview build for one area, then measure exactly what it produced. The preview
+// reports where it landed, because the path carries the config fingerprint.
+async function probeBuild(area: string): Promise<string> {
+	resolveArea(area); // fail on a bad area before spending minutes on a build
+	parseZoomRange(opt.zoom);
+	const args = ['bin/preview.ts', '--build-only', '--area', area, ...(opt.zoom ? ['--zoom', opt.zoom] : [])];
+	console.error('$ node %s', args.join(' '));
+	const r = spawnSync(process.execPath, args, { cwd: root, stdio: ['ignore', 'inherit', 'inherit'] });
+	if (r.status !== 0) throw new Error(`probe build failed (exit ${r.status})`);
+	const built = JSON.parse(await fs.readFile(path.join(datadir, 'preview', 'last-build.json'), 'utf8'));
+	return built.tileset as string;
+}
+
+const input = opt.probe ? await probeBuild(opt.probe) : opt.input ? path.resolve(opt.input) : file.tiles;
+const label = opt.label ?? opt.probe ?? opt.area ?? 'world';
+// a probe tileset already covers only its area, so there is nothing left to filter
+const bbox = opt.area && !opt.probe ? clampToMercator(resolveArea(opt.area)) : undefined;
 const warnBytes = Math.round(Number(opt.warn ?? 250) * 1024);
 const worstCount = Number(opt.worst ?? (opt.attribute ? 10 : 0));
 

@@ -5,6 +5,7 @@
 // stress the pipeline differently. A parameter change is judged on these, because the global maximum is
 // what decides whether tiles stay under tippecanoe's limit.
 
+import { MAXLEVEL } from '../config.ts';
 import type { LonLat } from './coverage.ts';
 
 export type Area = { bbox: LonLat; why: string };
@@ -25,6 +26,23 @@ export const AREAS: Record<string, Area> = {
 
 // the Mercator limit: tiles do not exist beyond it, so an area outside it can never match anything
 export const LAT_LIMIT = 85.0511287798066;
+
+// "min-max", "min" for a single level, or nothing for the whole range this config builds
+export function parseZoomRange(spec: string | undefined, maxLevel: number = MAXLEVEL): [number, number] {
+	if (!spec) return [0, maxLevel];
+	const m = spec.match(/^(\d+)(?:-(\d+))?$/);
+	if (!m) throw new Error(`bad zoom range "${spec}" — expected "min-max", e.g. 4-10`);
+	const lo = Number(m[1]);
+	const hi = m[2] === undefined ? lo : Number(m[2]);
+	if (lo > hi) throw new Error(`bad zoom range "${spec}" — min (${lo}) is above max (${hi})`);
+	if (hi > maxLevel) throw new Error(`bad zoom range "${spec}" — this config only builds up to z${maxLevel}`);
+	return [lo, hi];
+}
+
+// a filename-safe tag for an area, so two previews never share a tileset
+export function areaSlug(spec: string | undefined): string {
+	return spec ? spec.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '') : 'world';
+}
 
 // a preset name, or an explicit "west,south,east,north" in degrees
 export function resolveArea(spec: string): LonLat {

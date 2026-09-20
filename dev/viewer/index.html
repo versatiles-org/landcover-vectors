@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>landcover preview</title>
+		<!-- pinned on purpose: a preview that changes under you is not a measurement -->
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+		<style>
+			:root {
+				--bg: #1b1d21;
+				--panel: #24262b;
+				--line: #383b42;
+				--text: #e8e6e3;
+				--dim: #9b9aa0;
+			}
+			* {
+				box-sizing: border-box;
+			}
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+				font:
+					12px/1.45 ui-monospace,
+					SFMono-Regular,
+					Menlo,
+					monospace;
+				color: var(--text);
+				background: var(--bg);
+			}
+			#map {
+				position: absolute;
+				inset: 0;
+			}
+			.panel {
+				position: absolute;
+				z-index: 2;
+				background: color-mix(in srgb, var(--panel) 92%, transparent);
+				border: 1px solid var(--line);
+				border-radius: 6px;
+				padding: 8px 10px;
+				backdrop-filter: blur(6px);
+			}
+			#head {
+				top: 10px;
+				left: 10px;
+				max-width: min(46ch, calc(100vw - 20px));
+			}
+			#head b {
+				font-weight: 600;
+			}
+			#head .params {
+				color: var(--dim);
+				margin-top: 4px;
+				word-break: break-all;
+			}
+			#legend {
+				bottom: 10px;
+				left: 10px;
+				max-height: 52vh;
+				overflow: auto;
+			}
+			#legend h4,
+			#opts h4 {
+				margin: 0 0 6px;
+				font-size: 11px;
+				letter-spacing: 0.08em;
+				text-transform: uppercase;
+				color: var(--dim);
+			}
+			#opts {
+				top: 10px;
+				right: 10px;
+			}
+			label {
+				display: flex;
+				gap: 6px;
+				align-items: center;
+				cursor: pointer;
+				white-space: nowrap;
+			}
+			.sw {
+				width: 11px;
+				height: 11px;
+				border: 1px solid #0006;
+				border-radius: 2px;
+				flex: none;
+			}
+			.cut {
+				color: var(--dim);
+			}
+			#status {
+				position: absolute;
+				bottom: 10px;
+				right: 10px;
+				z-index: 2;
+				color: var(--dim);
+			}
+			.maplibregl-popup-content {
+				background: var(--panel);
+				color: var(--text);
+				font: inherit;
+				border: 1px solid var(--line);
+			}
+			.maplibregl-popup-tip {
+				border-top-color: var(--panel) !important;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<div id="head" class="panel">loading…</div>
+		<div id="opts" class="panel">
+			<h4>view</h4>
+			<label><input type="checkbox" id="t-landcover" checked /> landcover</label>
+			<label><input type="checkbox" id="t-osm" checked /> OSM shortbread</label>
+			<label><input type="checkbox" id="t-blocks" /> block grid</label>
+			<label><input type="checkbox" id="t-tiles" /> tile boundaries</label>
+		</div>
+		<div id="legend" class="panel"></div>
+		<div id="status" class="panel">—</div>
+		<script type="module">
+			const $ = (id) => document.getElementById(id);
+			const state = await fetch('/gen/state.json').then((r) => r.json());
+			const style = await fetch('/gen/style.json').then((r) => r.json());
+			const kinds = style.metadata['landcover:kinds'];
+
+			// position lives in the hash (#z/lat/lon) so stats.ts can deep-link to an offending tile
+			const hash = location.hash.match(/^#(\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)/);
+			const bbox = state.bbox;
+			const map = new maplibregl.Map({
+				container: 'map',
+				style,
+				hash: true,
+				center: hash
+					? [+hash[3], +hash[2]]
+					: bbox
+						? [(bbox.west + bbox.east) / 2, (bbox.south + bbox.north) / 2]
+						: [0, 20],
+				zoom: hash ? +hash[1] : bbox ? 0 : 1,
+				maxZoom: 14,
+			});
+			if (!hash && bbox) {
+				map.fitBounds(
+					[
+						[bbox.west, bbox.south],
+						[bbox.east, bbox.north],
+					],
+					{ padding: 24, animate: false },
+				);
+			}
+			map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'bottom-right');
+			map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
+
+			$('head').innerHTML =
+				`<b>${state.area}</b> · z${state.zoom.min}–${state.zoom.max} · config <b>${state.fingerprint}</b>` +
+				`<div class="params">${Object.entries(state.params)
+					.map(([k, v]) => `${k}=${v}`)
+					.join(' · ')}</div>`;
+
+			// one legend row per kind: colour, name, and the zoom this pipeline stops emitting it at
+			$('legend').innerHTML =
+				'<h4>kinds</h4>' +
+				kinds
+					.map(
+						(k) =>
+							`<label><input type="checkbox" data-kind="${k.kind}" checked />` +
+							`<span class="sw" style="background:${k.color}"></span>${k.kind}` +
+							`<span class="cut">≤ z${k.maxZoom}</span></label>`,
+					)
+					.join('');
+
+			const layersFor = (kind) => style.layers.filter((l) => l.metadata?.kind === kind).map((l) => l.id);
+			const sourceLayers = (source) => style.layers.filter((l) => l.metadata?.source === source).map((l) => l.id);
+			const setVisible = (ids, on) => {
+				for (const id of ids)
+					if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+			};
+			const apply = () => {
+				for (const cb of document.querySelectorAll('[data-kind]')) {
+					const on = cb.checked;
+					for (const id of layersFor(cb.dataset.kind)) {
+						const isOsm = style.layers.find((l) => l.id === id)?.metadata?.source === 'osm';
+						const sourceOn = isOsm ? $('t-osm').checked : $('t-landcover').checked;
+						setVisible([id], on && sourceOn);
+					}
+				}
+				setVisible(['osm-ocean', 'osm-boundaries'], $('t-osm').checked);
+			};
+
+			map.on('load', () => {
+				// the real block grid, straight from blockWindow() — so a seam can be blamed on a boundary
+				map.addSource('blocks', { type: 'geojson', data: '/gen/blocks.geojson' });
+				map.addLayer({
+					id: 'blocks',
+					type: 'line',
+					source: 'blocks',
+					paint: { 'line-color': '#ff5c5c', 'line-width': 1, 'line-opacity': 0.9 },
+					layout: { visibility: 'none' },
+				});
+				map.addLayer({
+					id: 'blocks-label',
+					type: 'line', // no glyphs are served, so the grid speaks for itself
+					source: 'blocks',
+					paint: { 'line-color': '#ff5c5c', 'line-width': 3, 'line-opacity': 0.15 },
+					layout: { visibility: 'none' },
+				});
+				apply();
+				refreshStatus();
+			});
+
+			// only the blocks of the zoom being looked at, or the grid is unreadable
+			const filterBlocks = () => {
+				const z = Math.min(state.zoom.max, Math.max(state.zoom.min, Math.round(map.getZoom())));
+				for (const id of ['blocks', 'blocks-label']) {
+					if (map.getLayer(id)) map.setFilter(id, ['==', ['get', 'z'], z]);
+				}
+				return z;
+			};
+
+			const refreshStatus = () => {
+				const z = filterBlocks();
+				const c = map.getCenter();
+				$('status').textContent =
+					`z${map.getZoom().toFixed(1)} · ${c.lat.toFixed(4)}, ${c.lng.toFixed(4)} · blocks shown: z${z}`;
+			};
+			map.on('move', refreshStatus);
+
+			for (const id of ['t-landcover', 't-osm']) $(id).addEventListener('change', apply);
+			$('legend').addEventListener('change', apply);
+			$('t-blocks').addEventListener('change', (e) => setVisible(['blocks', 'blocks-label'], e.target.checked));
+			$('t-tiles').addEventListener('change', (e) => {
+				map.showTileBoundaries = e.target.checked;
+			});
+
+			// click to see what a polygon actually is — kind, layer, and which source it came from
+			map.on('click', (e) => {
+				const hits = map
+					.queryRenderedFeatures(e.point)
+					.filter((f) => f.layer.metadata?.kind || f.layer.id.startsWith('osm-'));
+				if (!hits.length) return;
+				new maplibregl.Popup({ closeButton: false })
+					.setLngLat(e.lngLat)
+					.setHTML(
+						hits
+							.slice(0, 6)
+							.map(
+								(f) =>
+									`<div><b>${f.layer.metadata?.source ?? 'osm'}</b> ${f.sourceLayer}` +
+									`${f.properties.kind ? ` · ${f.properties.kind}` : ''}</div>`,
+							)
+							.join(''),
+					)
+					.addTo(map);
+			});
+
+			// --watch rebuilds into a new fingerprint; when that lands, reload onto it
+			setInterval(async () => {
+				try {
+					const now = await fetch('/gen/state.json', { cache: 'no-store' }).then((r) => r.json());
+					if (now.fingerprint !== state.fingerprint || now.built !== state.built) location.reload();
+				} catch {
+					/* the server restarts during a rebuild — just try again next tick */
+				}
+			}, 2000);
+		</script>
+	</body>
+</html>
