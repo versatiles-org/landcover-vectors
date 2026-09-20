@@ -12,7 +12,7 @@ They complement OSM-based [Shortbread](https://shortbread-tiles.org/) tiles at l
 ## Requirements
 
 - `node` (or `bun`)
-- [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdaladdo`, `gdalwarp`, `gdal_calc.py`, `ogr2ogr` and the `gdal raster` / `gdal vector` subcommands `calc`, `edit`, `sieve`, `polygonize` and `simplify-coverage` on `PATH`
+- [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdaladdo`, `gdalwarp`, `gdalinfo`, `gdal_translate`, `gdal_calc.py`, `ogr2ogr` and the `gdal raster` / `gdal vector` subcommands `calc`, `edit`, `sieve`, `polygonize` and `simplify-coverage` on `PATH`
 - Python 3 with `numpy` (used by `gdal_calc.py` for the per-class masks; both ship with the GDAL install)
 - [`libvips`](https://www.libvips.org/) (`vips`) — used for the Gaussian blur
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`)
@@ -25,12 +25,12 @@ The pipeline turns the global landcover raster into smooth per-class polygons an
 
 ```sh
 npm run download   # once: build the EPSG:3857 source raster from the remote tiles
-npm run build      # everything else → landcover.versatiles
+npm run build      # everything else → data/landcover.versatiles
 ```
 
 `build` runs: **coverage index → for each zoom 0–10 ( per-block processing → per-zoom tiling ) → merge & pack**.
-Everything reads and writes under `data/`; the final container is `landcover.versatiles` in the repo root. All
-the parameters below live in `config.ts`.
+Everything reads and writes under `data/`; the final container is `data/landcover.versatiles`.
+All the parameters below live in `config.ts`.
 
 > **Resources.** A full z0–10 build needs roughly **150 GB** of disk under `data/` (the ~23 GB EPSG:3857 source
 > plus the per-block / per-zoom caches) and on the order of **300 core-hours** of CPU. It's heavily
@@ -42,7 +42,7 @@ the parameters below live in `config.ts`.
 A naïve pipeline renders one global EPSG:3857 raster per zoom level. At the resolution we want that reaches
 60000×60000 px and beyond, and a global coverage-simplify loads the whole thing into RAM and gets OOM-killed.
 Instead each zoom is processed in **blocks** of `BLOCK`×`BLOCK` = 8×8 tiles (`TILE_PX` = 1024 raw px per tile),
-so every raster/vector operation works on a ≤ ~8226² px window — bounded memory, feasible at every zoom. The
+so every raster/vector operation works on a ≤ ~8242² px window — bounded memory, feasible at every zoom. The
 blocks are stitched back into a seamless layer by a single per-zoom tippecanoe run.
 
 ### Build the source raster
@@ -80,20 +80,20 @@ blocks read full detail; uncovered pixels are no-data:
 
 1. **Channels** — for each landcover class _active at this zoom_ build a 0/255 membership mask (`gdal_calc.py`);
    ESA 0 plus every class **not** active at this zoom folds into the no-data channel.
-2. **Blur** — Gaussian-blur each mask (`vips gaussblur`, σ = `BLUR_RADIUS` = 2 px) so the next step yields
+2. **Blur** — Gaussian-blur each mask (`vips gaussblur`, σ = `BLUR_RADIUS` = 3 px) so the next step yields
    **curved** boundaries instead of a pixel staircase, while shared borders stay exact.
 3. **Argmax** — the channel with the highest blurred value wins each pixel (`gdal raster calc --calc argmax`),
    giving a clean single-band coverage; `gdal raster edit` re-attaches the EPSG:3857 georeferencing that vips
    strips.
 4. **Sieve** — `gdal raster sieve` drops specks smaller than a circle of the blur radius (`SIEVE_THRESHOLD` =
-   round(π·r²) = 13 px).
+   round(π·r²) = 28 px).
 5. **Crop** — `gdal_translate -projwin` cuts the classified raster to the block's exact inner 8×8-tile rectangle
    in EPSG:3857, discarding the margin. (Cropping the _raster_ rather than clipping the _vectors_ keeps the edge
    pixel-exact and avoids the boundary slivers a vector clip can turn into GeometryCollections.)
 6. **Polygonize** — `gdal raster polygonize` → one polygon per region (field `code` = channel index), a
    **gap-free coverage of the whole block, including the no-data class**.
 7. **Simplify** — coverage-simplify (`gdal vector simplify-coverage --preserve-boundary`, tolerance
-   `(2·MERC)/(128·2^z)` ≈ 1 px at a 128 px tile) — topology-preserving, so shared borders stay aligned.
+   `(2·MERC)/(256·2^z)` ≈ 1 px at a 256 px tile) — topology-preserving, so shared borders stay aligned.
    ⚠️ **simplify-coverage only simplifies the _interior_ edges shared between adjacent polygons**;
    `--preserve-boundary` freezes the _exterior_. So the input must be a **100 %-filled coverage with no holes** —
    the no-data polygons included. If no-data were dropped first, every coastline would be exterior boundary and
@@ -102,7 +102,7 @@ blocks read full detail; uncovered pixels are no-data:
    reproject to EPSG:4326, and split into the block's `land` and `water_polygons` fragments
    (`-nlt PROMOTE_TO_MULTI`).
 
-The **margin** (`MARGIN_PX` = ceil(3·`BLUR_RADIUS` + 3·√`SIEVE_THRESHOLD`) = 17 px) around each block means the
+The **margin** (`MARGIN_PX` = ceil(3·`BLUR_RADIUS` + 3·√`SIEVE_THRESHOLD`) = 25 px) around each block means the
 blur and sieve at the inner edge see the same neighbourhood they would in a global pass, so a class never
 changes across a block seam. The blocks are cropped at **pixel-aligned, tile-exact** EPSG:3857 coordinates and
 simplified with `--preserve-boundary`, so adjacent blocks share an identical straight edge — no gaps or slivers.
@@ -150,7 +150,7 @@ Only `kind` is kept in the tiles.
 ### Merge & pack
 
 `tile-join` merges the per-zoom tilesets (disjoint zoom ranges) into `data/landcover.mbtiles`, then
-`versatiles convert -c brotli` packs it into `landcover.versatiles` in the repo root.
+`versatiles convert -c brotli` packs it into `data/landcover.versatiles`.
 
 To preview the result, `npm run style` writes a QGIS vector-tiles style (`landcover.qml`) that colours both
 layers by `kind`.

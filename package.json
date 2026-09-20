@@ -7,7 +7,7 @@
   "license": "Unlicense",
   "type": "module",
   "engines": {
-    "node": ">=22.6"
+    "node": ">=22.18"
   },
   "scripts": {
     "check": "npm run typecheck && npm run format:check",

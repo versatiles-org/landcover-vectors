@@ -28,6 +28,7 @@ await requireCommands([
 	'gdalwarp',
 	'gdal_translate',
 	'gdal_calc.py',
+	'gdalinfo', // lib/block.ts reads the window histogram through it
 	'ogr2ogr',
 	'vips',
 	'tippecanoe',

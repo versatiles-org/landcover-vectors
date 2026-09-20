@@ -55,11 +55,11 @@ export const BLUR_RADIUS = 3; // Gaussian σ in pixels (constant across levels)
 export const FULL_PX = TILE_PX * Math.pow(2, MAXLEVEL);
 
 // sieve threshold (px): drop regions smaller than a circle of the blur radius
-export const SIEVE_THRESHOLD = Math.round(Math.PI * BLUR_RADIUS * BLUR_RADIUS); // 13
+export const SIEVE_THRESHOLD = Math.round(Math.PI * BLUR_RADIUS * BLUR_RADIUS); // 28
 // processing margin (px) around a block so blur+sieve at the inner edge match neighbours
-export const MARGIN_PX = Math.ceil(3 * BLUR_RADIUS + 3 * Math.sqrt(SIEVE_THRESHOLD)); // 17
+export const MARGIN_PX = Math.ceil(3 * BLUR_RADIUS + 3 * Math.sqrt(SIEVE_THRESHOLD)); // 25
 
-// coverage-simplification tolerance (metres, EPSG:3857): 1-px accuracy at a 128-px tile
+// coverage-simplification tolerance (metres, EPSG:3857): 1-px accuracy at a 256-px tile
 export function simplifyForLevel(z: number): number {
 	return WORLD / (256 * Math.pow(2, z));
 }
