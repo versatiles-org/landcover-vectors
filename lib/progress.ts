@@ -14,7 +14,7 @@
 const BAR_WIDTH = 24;
 const WINDOW = 64; // number of recent ticks the rate/ETA are averaged over
 
-function fmtTime(s: number): string {
+export function fmtTime(s: number): string {
 	if (!isFinite(s) || s < 0) return '--';
 	s = Math.round(s);
 	const h = Math.floor(s / 3600);

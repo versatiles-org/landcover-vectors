@@ -10,12 +10,13 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "check": "npm run typecheck && npm run format:check",
+    "check": "npm run typecheck && npm run format:check && npm test",
     "download": "node bin/download.ts",
     "build": "node bin/build.ts",
     "merge": "node bin/merge.ts",
     "style": "node bin/style.ts",
     "clean": "node bin/clean.ts",
+    "test": "node --test",
     "typecheck": "tsc --noEmit",
     "upgrade": "npx npm-check-updates -u && npm install",
     "format": "prettier --write .",

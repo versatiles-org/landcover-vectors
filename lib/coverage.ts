@@ -16,7 +16,7 @@ const CELL = 3; // degrees per ESA tile
 const keyOf = (latCell: number, lonCell: number) => `${latCell},${lonCell}`;
 const cellOf = (deg: number) => Math.floor(deg / CELL) * CELL;
 
-function parseCorner(name: string): { lat: number; lon: number } | null {
+export function parseCorner(name: string): { lat: number; lon: number } | null {
 	const m = name.match(/([NS])(\d{2})([EW])(\d{3})/);
 	if (!m) return null;
 	return {
@@ -28,16 +28,13 @@ function parseCorner(name: string): { lat: number; lon: number } | null {
 export type LonLat = { west: number; south: number; east: number; north: number };
 export type Coverage = { isEmpty: (b: LonLat) => boolean; cells: number };
 
-// build the occupied-3°-cell set from the recorded source tile list (one cell per source tile)
-export async function buildCoverage(): Promise<Coverage> {
-	const text = await fs.readFile(file.sourceList, 'utf8').catch(() => '');
+// the occupied-3°-cell set for a list of source tile names or keys (one cell per source tile)
+export function coverageFromKeys(keys: Iterable<string>): Coverage {
 	const occupied = new Set<string>();
-	for (const line of text.split('\n')) {
-		const c = parseCorner(line);
+	for (const key of keys) {
+		const c = parseCorner(key);
 		if (c) occupied.add(keyOf(c.lat, c.lon)); // SW corner is already on the 3° grid
 	}
-	if (occupied.size === 0)
-		throw new Error(`no source tiles listed in ${file.sourceList} — run "npm run download" first`);
 	return {
 		cells: occupied.size,
 		isEmpty(b) {
@@ -49,4 +46,13 @@ export async function buildCoverage(): Promise<Coverage> {
 			return true;
 		},
 	};
+}
+
+// build it from the tile list the download step recorded next to the source raster
+export async function buildCoverage(): Promise<Coverage> {
+	const text = await fs.readFile(file.sourceList, 'utf8').catch(() => '');
+	const coverage = coverageFromKeys(text.split('\n'));
+	if (coverage.cells === 0)
+		throw new Error(`no source tiles listed in ${file.sourceList} — run "npm run download" first`);
+	return coverage;
 }
