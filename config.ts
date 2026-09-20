@@ -14,19 +14,28 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // number of logical CPU cores available to this process (respects CPU affinity)
 export const CPU_CORES = os.availableParallelism();
 
-// base directory for everything the pipeline downloads and generates
-export const datadir = path.resolve(__dirname, 'data');
+// Base directory for everything the pipeline downloads and generates. LANDCOVER_DATA_DIR relocates
+// the whole cache — a preview or a parameter experiment wants its own, so it neither pollutes nor is
+// polluted by the production build. LANDCOVER_SOURCE_DIR points the download mirror somewhere else,
+// so several data dirs can share the one ~23 GB source raster instead of copying it.
+const fromEnv = (name: string, fallback: string): string => {
+	const v = process.env[name];
+	return v ? path.resolve(v) : fallback;
+};
+
+export const datadir = fromEnv('LANDCOVER_DATA_DIR', path.resolve(__dirname, 'data'));
+const sourcedir = fromEnv('LANDCOVER_SOURCE_DIR', path.join(datadir, '0_download'));
 
 export const dir = {
-	source: path.join(datadir, '0_download'), // holds the reprojected source raster + its tile list (download)
+	source: sourcedir, // holds the reprojected source raster + its tile list (download)
 	results: path.join(datadir, '1_results'), // per-block land/water fragments (cached → builds resume)
 	tiles: path.join(datadir, '2_tiles'), // per-zoom mbtiles (cached → builds resume)
 	tmp: path.join(datadir, 'tmp'), // per-block / per-zoom scratch (not cached between runs)
 };
 
 export const file = {
-	source: path.join(datadir, '0_download', 'worldcover-3857.tif'), // single EPSG:3857 source + overviews (download)
-	sourceList: path.join(datadir, '0_download', '_source-tiles.txt'), // remote tile list, read for skip-empty (download)
+	source: path.join(sourcedir, 'worldcover-3857.tif'), // single EPSG:3857 source + overviews (download)
+	sourceList: path.join(sourcedir, '_source-tiles.txt'), // remote tile list, read for skip-empty (download)
 	log: path.join(datadir, 'blocks.log'), // per-block processing log (TSV), one row per block (build)
 	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid (pack)
 	container: path.join(datadir, 'landcover.versatiles'), // brotli versatiles (pack)

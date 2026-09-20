@@ -6,18 +6,21 @@ import path from 'node:path';
 
 import { datadir, dir } from '../config.ts';
 
-const keep = path.basename(dir.source);
-const entries = (await fs.readdir(datadir).catch(() => [] as string[])).filter((name) => name !== keep);
+// compare full paths, not names: LANDCOVER_SOURCE_DIR may point the mirror out of datadir entirely
+const entries = (await fs.readdir(datadir).catch(() => [] as string[])).filter(
+	(name) => path.join(datadir, name) !== dir.source,
+);
 
 for (const name of entries) {
 	await fs.rm(path.join(datadir, name), { recursive: true, force: true });
 	console.error('removed %s', path.join(datadir, name));
 }
 
+const kept = dir.source.startsWith(datadir + path.sep) ? path.relative(datadir, dir.source) : dir.source;
 console.error(
 	'Cleaned %s — kept %s (%d entr%s removed)',
 	datadir,
-	keep,
+	kept,
 	entries.length,
 	entries.length === 1 ? 'y' : 'ies',
 );

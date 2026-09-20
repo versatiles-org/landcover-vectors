@@ -14,6 +14,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { run, atomic, listSourceKeys, BUCKET } from './worldcover.ts';
+import { writeStamp, sourceValues } from './fingerprint.ts';
 import { dir, file, MERC, FULL_PX } from '../config.ts';
 
 export async function download(): Promise<void> {
@@ -73,5 +74,7 @@ export async function download(): Promise<void> {
 
 	await fs.rm(vrt, { force: true });
 	await fs.rm(listFile, { force: true });
+	// record what this raster was built for, so a later build notices a FULL_PX change
+	await writeStamp(dir.source, sourceValues());
 	console.error('✓ source ready: %s', file.source);
 }

@@ -9,8 +9,9 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { channels, datadir, type Channel } from '../config.ts';
+import { channels, type Channel } from '../config.ts';
 
 // "#RRGGBB" or "#RRGGBBAA" → QGIS "R,G,B,A,rgb:r,g,b,a" (0-255 ints plus 0-1 floats)
 function qgisColor(hex: string): string {
@@ -95,7 +96,8 @@ ${mapFillSymbol(qgisColor(c.color))}
 </qgis>
 `;
 
-const root = path.dirname(datadir);
+// the repo root, resolved from this file — not from datadir, which LANDCOVER_DATA_DIR can move away
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const vtStyle = path.join(root, 'landcover.qml');
 await fs.writeFile(vtStyle, vectorTiles);
 
