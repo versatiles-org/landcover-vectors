@@ -19,6 +19,13 @@ const exists = (p: string): Promise<boolean> =>
 		() => false,
 	);
 
+// the remote size via a HEAD request, or null when the server doesn't say
+async function contentLength(url: string): Promise<number | null> {
+	const res = await fetch(url, { method: 'HEAD', redirect: 'follow' }).catch(() => null);
+	const len = res?.ok ? res.headers.get('content-length') : null;
+	return len === null ? null : Number(len);
+}
+
 await requireCommands(['versatiles', 'curl']);
 
 // the landcover container is the build output — without it there is nothing to merge
@@ -31,8 +38,20 @@ if (await exists(file.osm)) {
 	console.error('OSM base present: %s', file.osm);
 } else {
 	const part = file.osm + '.part';
-	console.error('Downloading OSM base %s → %s (resumable) …', OSM_URL, file.osm);
-	await run('curl', '-fL', ['--retry', 5], ['--retry-delay', 2], '-C', '-', ['-o', part], OSM_URL);
+	// A `.part` that is already byte-complete (killed between the last byte and the rename) would make
+	// `curl -C -` ask for a range past the end; the server answers 416 and `-f` turns that into a hard
+	// failure — for good, on every later run. Promote such a file instead of re-requesting it.
+	const partSize = await fs.stat(part).then(
+		(s) => s.size,
+		() => 0,
+	);
+	const remoteSize = partSize > 0 ? await contentLength(OSM_URL) : null;
+	if (partSize > 0 && partSize === remoteSize) {
+		console.error('Partial download is already complete (%d bytes) — promoting %s', partSize, part);
+	} else {
+		console.error('Downloading OSM base %s → %s (resumable) …', OSM_URL, file.osm);
+		await run('curl', '-fL', ['--retry', 5], ['--retry-delay', 2], '-C', '-', ['-o', part], OSM_URL);
+	}
 	await fs.rename(part, file.osm);
 }
 

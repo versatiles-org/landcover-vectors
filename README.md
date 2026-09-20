@@ -118,11 +118,15 @@ boreal forest, a mostly-ocean coastal cell), so:
 - **Channel pruning** — masks + blur are built only for the kinds present; an absent kind's mask is all-zero,
   blurs to all-zero and can never win the argmax, so skipping it is exact (byte-identical output), not an
   approximation.
-- **Uniform short-circuit** — if the whole window is a single value (or maps to no active kind), the entire
-  blur → argmax → sieve → polygonize → simplify chain is skipped and the block is emitted directly as the inner
-  rectangle (`win.innerLonLat`) tagged with that `kind`, or as empty fragments. The histogram must cover the
-  whole window incl. the margin, so a value that only appears in the margin (and bleeds into the inner edge via
-  the blur) is never wrongly pruned.
+- **Uniform short-circuit** — if the whole window is a single value, or maps to no active kind at all, the
+  entire blur → argmax → sieve → polygonize → simplify chain is skipped and the block is emitted directly as the
+  inner rectangle (`win.innerLonLat`) tagged with that `kind`, or as empty fragments. The histogram must cover
+  the whole window incl. the margin, so a value that only appears in the margin (and bleeds into the inner edge
+  via the blur) is never wrongly pruned.
+  ⚠️ **GDAL leaves no-data pixels out of the histogram**, so "a single value" is _not_ the same as "one value
+  everywhere": a mostly-ocean coastal block with a single land class reports exactly one value. The test
+  therefore also requires the histogram's pixel count to equal the window's pixel count (`nodata_px` = 0 in the
+  log) — otherwise the block would get its whole inner rectangle painted with that kind, ocean included.
 
 Both the per-block fragments (`data/1_results`) and the per-zoom tilesets (`data/2_tiles`) are **cached**: each
 is written atomically (temp file renamed on success), and on re-run a block whose fragments already exist is

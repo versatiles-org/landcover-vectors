@@ -8,7 +8,6 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 
 import { runQuiet, atomic, presentValues } from './worldcover.ts';
-import type { Coverage } from './coverage.ts';
 import {
 	channels,
 	blockWindow,
@@ -21,7 +20,6 @@ import {
 
 export type BlockCtx = {
 	src: string;
-	coverage: Coverage;
 	tmpdir: string;
 	resultsdir: string;
 	logFile?: string; // optional TSV log: one row per block (how it was processed, timing, sizes, histogram)
@@ -29,7 +27,7 @@ export type BlockCtx = {
 export type BlockFragments = { land: string | null; water: string | null };
 
 // how a block was processed (recorded in the log)
-type Branch = 'skip-empty' | 'cached' | 'empty' | 'uniform' | 'full';
+type Branch = 'cached' | 'empty' | 'uniform' | 'full' | 'failed';
 
 // per-block TSV log columns; bin/build.ts writes this header once per run, finish() appends a row per block
 export const LOG_HEADER = [
@@ -39,9 +37,11 @@ export const LOG_HEADER = [
 	'ms',
 	'land_bytes',
 	'water_bytes',
-	'present',
+	'present', // distinct ESA values in the window — no-data excluded, see presentValues()
+	'nodata_px', // ... which is exactly why this column exists: no-data pixels in the window
 	'channels',
 	'kind',
+	'note', // error message on a `failed` row
 ].join('\t');
 
 // gdal_calc expression: 255 where band A is one of the given ESA codes, else 0
@@ -53,6 +53,9 @@ const co = ['-co', 'COMPRESS=DEFLATE', '-co', 'TILED=YES', '-co', 'BIGTIFF=YES']
 // block is empty / a layer has no active kinds at this zoom). Fragments are written atomically
 // to ctx.resultsdir and cached: a block whose fragments already exist there is skipped, so a
 // build resumes where it left off. Intermediate scratch in ctx.tmpdir is cleaned up.
+//
+// Blocks without source coverage are expected to be gone already — the caller drops them (bin/build.ts,
+// via lib/coverage.ts) so the progress total reflects real work. This runs the chain on whatever it gets.
 export async function processBlock(z: number, bx: number, by: number, ctx: BlockCtx): Promise<BlockFragments> {
 	const t0 = performance.now();
 	const id = `z${z}_${bx}_${by}`;
@@ -62,7 +65,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 	const finish = async (
 		branch: Branch,
 		frags: BlockFragments,
-		opts: { present?: number[]; channels?: number; kind?: string | null } = {},
+		opts: { present?: number[]; nodata?: number; channels?: number; kind?: string | null; note?: string } = {},
 	) => {
 		if (ctx.logFile) {
 			const sizeOf = (f: string | null) =>
@@ -81,15 +84,15 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 				landBytes ?? '',
 				waterBytes ?? '',
 				opts.present?.join(',') ?? '',
+				opts.nodata ?? '',
 				opts.channels ?? '',
 				opts.kind ?? '',
+				opts.note?.replace(/\s+/g, ' ').trim().slice(0, 300) ?? '', // keep it one TSV row
 			].join('\t');
 			await fs.appendFile(ctx.logFile, row + '\n');
 		}
 		return frags;
 	};
-
-	if (ctx.coverage.isEmpty(win.innerLonLat)) return finish('skip-empty', { land: null, water: null });
 
 	// channels active at this zoom; everything else (incl. ESA 0) folds into the no-data class.
 	const active = channels.filter((c) => c.layer !== null && c.maxZoom >= z);
@@ -138,10 +141,11 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		// so blur bleed near the inner edge is accounted for)? Two short-circuits avoid the
 		// blur→argmax→sieve→polygonize→simplify chain for low-diversity blocks (common at high zoom):
 		//   A) no active kind present → the block is all no-data → empty fragments
-		//   B) a single value fills the whole window → emit the inner rectangle as one polygon
+		//   B) one value fills the whole window, no-data included → emit the inner rectangle as one polygon
 		// Otherwise we build masks only for the present kinds. Pruning is exact: an absent channel's
 		// mask is all-zero, blurs to all-zero, and can never win the argmax.
-		const present = await presentValues(window);
+		const { values: present, counted, pixels } = await presentValues(window);
+		const nodataPx = pixels - counted;
 		const activePresent = active.filter((c) => c.esa.some((v) => present.has(v)));
 
 		// write fragments directly from the inner rectangle (EPSG:4326 = win.innerLonLat): the
@@ -186,11 +190,15 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 
 		if (activePresent.length === 0) {
 			await emit(null); // A: nothing but no-data
-			return finish('empty', frags, { present: [...present] });
+			return finish('empty', frags, { present: [...present], nodata: nodataPx });
 		}
-		if (present.size === 1) {
+		// `counted === pixels` is what makes this safe: the histogram accounted for every pixel, so the
+		// window really is one single class. GDAL omits no-data from the histogram, so without that test a
+		// mostly-ocean coastal block whose only land class is, say, grassland would look uniform here and
+		// get its entire inner rectangle — ocean included — emitted as grassland.
+		if (present.size === 1 && counted === pixels) {
 			await emit(activePresent[0]); // B: one kind fills the block
-			return finish('uniform', frags, { present: [...present], kind: activePresent[0].kind });
+			return finish('uniform', frags, { present: [...present], nodata: nodataPx, kind: activePresent[0].kind });
 		}
 
 		// channel order for argmax/code mapping: index 1 = no-data, 2.. = activePresent[j]
@@ -337,7 +345,13 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			);
 		if (hasLand) await atomic(landFrag, (out) => split(out, 'land', codesFor('land')));
 		if (hasWater) await atomic(waterFrag, (out) => split(out, 'water_polygons', codesFor('water_polygons')));
-		return finish('full', frags, { present: [...present], channels: activePresent.length });
+		return finish('full', frags, { present: [...present], nodata: nodataPx, channels: activePresent.length });
+	} catch (err) {
+		// leave a row behind, then let the caller decide: bin/build.ts collects every failed block of a
+		// zoom and reports them together, so one bad block no longer discards the whole zoom's work
+		const note = err instanceof Error ? err.message : String(err);
+		await finish('failed', { land: null, water: null }, { note }).catch(() => {}); // never mask `err`
+		throw err;
 	} finally {
 		await Promise.all(scratch.map((f) => fs.rm(f, { force: true })));
 	}

@@ -81,18 +81,44 @@ for (let z = 0; z <= MAXLEVEL; z++) {
 		continue;
 	}
 
-	const fragments: BlockFragments[] = [];
-	await pMap(blocks, BLOCK_CONCURRENCY, async ([bx, by]) => {
-		const f = await processBlock(z, bx, by, {
-			src: file.source,
-			coverage,
-			tmpdir: dir.tmp,
-			resultsdir: dir.results,
-			logFile: file.log,
-		});
-		if (f.land || f.water) fragments.push(f);
-		bar.tick();
-	});
+	// collect by block index, not by completion order: this order is the order the fragments are
+	// unioned in and handed to tippecanoe, so keeping it stable makes two runs of the same config
+	// produce identical tiles
+	const collected: (BlockFragments | null)[] = blocks.map(() => null);
+	const failed: { id: string; err: unknown }[] = [];
+	await pMap(
+		blocks.map((_, i) => i),
+		BLOCK_CONCURRENCY,
+		async (i) => {
+			const [bx, by] = blocks[i];
+			try {
+				const f = await processBlock(z, bx, by, {
+					src: file.source,
+					tmpdir: dir.tmp,
+					resultsdir: dir.results,
+					logFile: file.log,
+				});
+				if (f.land || f.water) collected[i] = f;
+			} catch (err) {
+				// one bad block must not discard the zoom's other few thousand: every finished block is
+				// cached, so a rerun retries just the failures. processBlock already logged a `failed` row.
+				failed.push({ id: `z${z}_${bx}_${by}`, err });
+			}
+			bar.tick();
+		},
+	);
+
+	// a partial zoom must never be tiled — report every failure of this zoom at once and stop here
+	if (failed.length) {
+		const ids = failed.slice(0, 8).map((f) => f.id);
+		throw new AggregateError(
+			failed.map((f) => f.err),
+			`zoom ${z}: ${failed.length} of ${blocks.length} blocks failed (${ids.join(', ')}` +
+				`${failed.length > ids.length ? ', …' : ''}) — see ${file.log}; finished blocks are cached, ` +
+				`so rerunning retries only the failures`,
+		);
+	}
+	const fragments = collected.filter((f): f is BlockFragments => f !== null);
 
 	const mb = await tileZoom(z, fragments);
 	if (mb) zMbtiles.push(mb);
