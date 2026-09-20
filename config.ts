@@ -53,10 +53,21 @@ const WORLD = 2 * MERC; // full extent (= circumference) in metres
 // build zoom levels 0..MAXLEVEL (driven by the highest per-kind cutoff below)
 export const MAXLEVEL = 10;
 
-// block-processing geometry
+// block-processing geometry.
+//
+// TILE_PX is the quality/cost dial for the *raster* side: the source is classified at TILE_PX raw pixels
+// per 256-px output tile, so 1024 means 4× oversampling (38 m/px at z10, against ESA's native 10 m). The
+// per-block window is BLOCK × TILE_PX pixels, so halve BLOCK when doubling TILE_PX to keep the window —
+// and therefore the memory per block — where it is. Everything downstream is expressed in *rendered*
+// pixels and derived from OVERSAMPLE, so changing TILE_PX does not silently change the smoothing too.
 export const TILE_PX = 1024; // raw raster pixels per output tile
 export const BLOCK = 8; // tiles per block side
-export const BLUR_RADIUS = 3; // Gaussian σ in pixels (constant across levels)
+export const OVERSAMPLE = TILE_PX / 256; // raw pixels per rendered pixel (4)
+
+// Gaussian σ, in rendered pixels: how much of the pixel staircase is smoothed away before the argmax.
+// Below ~0.5 the boundaries turn blocky again; above ~1 small features start dissolving.
+export const BLUR_RENDERED = 0.75;
+export const BLUR_RADIUS = BLUR_RENDERED * OVERSAMPLE; // Gaussian σ in raw pixels (3)
 
 // full-world raster size at the deepest zoom (TILE_PX × 2^MAXLEVEL). The single EPSG:3857
 // source GeoTIFF is built at this resolution and carries an overview pyramid down to z0, so a
@@ -68,9 +79,32 @@ export const SIEVE_THRESHOLD = Math.round(Math.PI * BLUR_RADIUS * BLUR_RADIUS); 
 // processing margin (px) around a block so blur+sieve at the inner edge match neighbours
 export const MARGIN_PX = Math.ceil(3 * BLUR_RADIUS + 3 * Math.sqrt(SIEVE_THRESHOLD)); // 25
 
-// coverage-simplification tolerance (metres, EPSG:3857): 1-px accuracy at a 256-px tile
+// Vector detail: the simplify tolerance is one pixel of a (256 · DETAIL_PX)-px tile, so DETAIL_PX = 2
+// keeps twice as much boundary detail per tile — and costs roughly twice the bytes. This, not TILE_PX, is
+// what decides how much detail survives into the tiles: raising the raster resolution alone changes
+// almost nothing, because the tolerance dominates. Measure a change with
+// `npm run stats -- --probe <area>` (or `npm run sweep`) before adopting it; the budget is tippecanoe's
+// 500 000 bytes per tile, and the z0–10 build's worst tile sits at ~60 KB.
+//
+// Beyond DETAIL_PX ≈ 16 the MVT grid quantises the extra precision away: tippecanoe's default
+// `--detail 12` gives 4096 units per tile, i.e. 16 units per rendered pixel.
+//
+// LANDCOVER_DETAIL_PX overrides it for a sweep. That is safe rather than sloppy: the tolerance is part of
+// the cache fingerprint, so an override builds into its own directory and is stamped there.
+export const DETAIL_PX = detailFromEnv();
+
+function detailFromEnv(): number {
+	const raw = process.env.LANDCOVER_DETAIL_PX;
+	if (raw === undefined) return 1;
+	const value = Number(raw);
+	if (!Number.isFinite(value) || value <= 0)
+		throw new Error(`bad LANDCOVER_DETAIL_PX "${raw}" — expected a positive number`);
+	return value;
+}
+
+// coverage-simplification tolerance (metres, EPSG:3857): 1-px accuracy at a (256 · DETAIL_PX)-px tile
 export function simplifyForLevel(z: number): number {
-	return WORLD / (256 * Math.pow(2, z));
+	return WORLD / (256 * DETAIL_PX * Math.pow(2, z));
 }
 
 // number of BLOCK×BLOCK blocks per axis at zoom z

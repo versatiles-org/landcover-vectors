@@ -18,6 +18,7 @@ import {
 	MARGIN_PX,
 	FULL_PX,
 	channels,
+	DETAIL_PX,
 	simplifyForLevel,
 } from '../config.ts';
 
@@ -79,10 +80,18 @@ describe('README numbers match config.ts', () => {
 	});
 
 	test('simplify tolerance formula and its meaning', () => {
-		const denom = Number(grab(readme, /`\(2·MERC\)\/\((\d+)·2\^z\)`/, 'README tolerance'));
-		const tilePx = Number(grab(readme, /≈ 1 px at a (\d+) px tile/, 'README tolerance tile'));
-		assert.equal(simplifyForLevel(0), (2 * MERC) / denom);
+		// the formula is stated in terms of DETAIL_PX, so it stays true when a sweep changes it
+		const denom = Number(grab(readme, /`\(2·MERC\)\/\((\d+)·DETAIL_PX·2\^z\)`/, 'README tolerance'));
+		const tilePx = Number(grab(readme, /≈ 1 px at a (\d+)·`DETAIL_PX` px tile/, 'README tolerance tile'));
+		assert.equal(simplifyForLevel(0), (2 * MERC) / (denom * DETAIL_PX));
 		assert.equal(denom, tilePx, 'the formula and the "1 px at N px tile" claim disagree');
+		// ... but the value it quotes as current must match
+		assert.equal(Number(grab(readme, /`DETAIL_PX` = (\d+) today/, 'README DETAIL_PX')), DETAIL_PX);
+	});
+
+	test('the resolution table quotes the real source resolution', () => {
+		const mPerPx = Number(grab(readme, /1024 → (\d+) m\/px at z10/, 'README m/px'));
+		assert.equal(mPerPx, Math.round((2 * MERC) / FULL_PX), 'the metres-per-pixel claim drifted');
 	});
 
 	test('source raster resolution', () => {

@@ -4,6 +4,9 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
 	MERC,
@@ -12,10 +15,17 @@ import {
 	BLOCK,
 	MARGIN_PX,
 	FULL_PX,
+	OVERSAMPLE,
+	BLUR_RENDERED,
+	BLUR_RADIUS,
+	SIEVE_THRESHOLD,
+	DETAIL_PX,
 	blockWindow,
 	blocksPerAxis,
 	simplifyForLevel,
 } from '../config.ts';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // metres per raster pixel at zoom z (the grid every block is aligned to)
 const pxSize = (z: number) => (2 * MERC) / Math.pow(2, z) / TILE_PX;
@@ -132,10 +142,52 @@ describe('blockWindow', () => {
 	});
 });
 
-describe('simplifyForLevel', () => {
-	test('is one pixel of a 256-px tile', () => {
+describe('the resolution knobs', () => {
+	test('smoothing is anchored to rendered pixels, so TILE_PX cannot change it by accident', () => {
+		assert.equal(OVERSAMPLE, TILE_PX / 256);
+		assert.equal(BLUR_RADIUS, BLUR_RENDERED * OVERSAMPLE);
+		// everything downstream of the blur is derived from it, so it scales along
+		assert.equal(SIEVE_THRESHOLD, Math.round(Math.PI * BLUR_RADIUS * BLUR_RADIUS));
+		assert.equal(MARGIN_PX, Math.ceil(3 * BLUR_RADIUS + 3 * Math.sqrt(SIEVE_THRESHOLD)));
+	});
+
+	test('DETAIL_PX scales the tolerance inversely', () => {
+		assert.equal(DETAIL_PX, 1, 'the committed default; a sweep overrides it per run');
 		for (let z = 0; z <= MAXLEVEL; z++) {
-			assert.equal(simplifyForLevel(z), (2 * MERC) / (256 * Math.pow(2, z)), `z${z}`);
+			assert.equal(simplifyForLevel(z), (2 * MERC) / (256 * DETAIL_PX * Math.pow(2, z)), `z${z}`);
+		}
+	});
+
+	test('LANDCOVER_DETAIL_PX overrides it, and a bad value is refused', () => {
+		const read = (value: string) =>
+			spawnSync(
+				process.execPath,
+				[
+					'--input-type=module',
+					'-e',
+					"import('./config.ts').then((c) => console.log(c.DETAIL_PX, c.simplifyForLevel(10)))",
+				],
+				{ cwd: repoRoot, encoding: 'utf8', env: { ...process.env, LANDCOVER_DETAIL_PX: value } },
+			);
+
+		const two = read('2');
+		assert.equal(two.status, 0, two.stderr);
+		const [detail, tolerance] = two.stdout.trim().split(' ').map(Number);
+		assert.equal(detail, 2);
+		assert.equal(tolerance, simplifyForLevel(10) / 2, 'twice the detail is half the tolerance');
+
+		for (const bad of ['0', '-3', 'nonsense']) {
+			const r = read(bad);
+			assert.equal(r.status, 1, `"${bad}" was accepted`);
+			assert.match(r.stderr, /bad LANDCOVER_DETAIL_PX/);
+		}
+	});
+});
+
+describe('simplifyForLevel', () => {
+	test('is one pixel of a (256 · DETAIL_PX)-px tile', () => {
+		for (let z = 0; z <= MAXLEVEL; z++) {
+			assert.equal(simplifyForLevel(z), (2 * MERC) / (256 * DETAIL_PX * Math.pow(2, z)), `z${z}`);
 		}
 	});
 

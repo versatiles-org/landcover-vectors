@@ -94,7 +94,8 @@ blocks read full detail; uncovered pixels are no-data:
 6. **Polygonize** — `gdal raster polygonize` → one polygon per region (field `code` = channel index), a
    **gap-free coverage of the whole block, including the no-data class**.
 7. **Simplify** — coverage-simplify (`gdal vector simplify-coverage --preserve-boundary`, tolerance
-   `(2·MERC)/(256·2^z)` ≈ 1 px at a 256 px tile) — topology-preserving, so shared borders stay aligned.
+   `(2·MERC)/(256·DETAIL_PX·2^z)` ≈ 1 px at a 256·`DETAIL_PX` px tile, `DETAIL_PX` = 1 today) —
+   topology-preserving, so shared borders stay aligned.
    ⚠️ **simplify-coverage only simplifies the _interior_ edges shared between adjacent polygons**;
    `--preserve-boundary` freezes the _exterior_. So the input must be a **100 %-filled coverage with no holes** —
    the no-data polygons included. If no-data were dropped first, every coastline would be exterior boundary and
@@ -217,6 +218,37 @@ terminal:
 
 `npm run stats -- --probe hudson-bay --zoom 8-10` combines the two: preview-build the area at the current
 config, then measure the tiles it produced.
+
+### Resolution: the two knobs
+
+How much detail ends up in the tiles is set by two independent parameters in `config.ts`, and it is worth
+knowing which one does what:
+
+| knob                 | what it changes                                                                               | cost                                                        |
+| -------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `DETAIL_PX` (vector) | the simplify tolerance: how much boundary detail survives into each tile                      | tile bytes; no re-download, no source change                |
+| `TILE_PX` (raster)   | the resolution the source is classified at (1024 → 38 m/px at z10, against ESA's native 10 m) | 4× source raster and 4× CPU per doubling, and a re-download |
+
+**Raising `TILE_PX` alone changes almost nothing visible**, because the tolerance is defined in metres per
+rendered pixel and dominates the result. So `DETAIL_PX` is the knob to try first — it is free to test:
+
+```sh
+npm run sweep -- --area hudson-bay --zoom 8-10 --detail 1,2,4
+```
+
+Each value builds the area into its own cache (the tolerance is part of the config fingerprint) and the
+sweep prints the worst tile per zoom per variant. The budget is tippecanoe's **500 000 bytes** per tile;
+the z0–10 build's worst tile is ~60 KB, so there is roughly 8× of headroom — but measure it rather than
+projecting, because vertex count against tolerance is only roughly 1/x and
+`--coalesce-smallest-as-needed` absorbs part of the rest. Beyond `DETAIL_PX` ≈ 16 the MVT grid quantises
+the extra precision away (tippecanoe's default `--detail 12` is 4096 units per tile, i.e. 16 per rendered
+pixel).
+
+Raising `TILE_PX` is a bigger operation: `FULL_PX` changes, so the source raster has to be rebuilt
+(`npm run download` — the stamp in `data/0_download` makes a stale one an error rather than a surprise),
+and the per-block window is `BLOCK`×`TILE_PX` pixels, so **halve `BLOCK` when doubling `TILE_PX`** to keep
+memory per block where it is. Smoothing is expressed in rendered pixels (`BLUR_RENDERED`, `OVERSAMPLE`)
+precisely so that this does not silently change the blur and sieve as well.
 
 ## Shortbread compatibility
 
