@@ -15,7 +15,7 @@ They complement OSM-based [Shortbread](https://shortbread-tiles.org/) tiles at l
 - [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdaladdo`, `gdalwarp`, `gdalinfo`, `gdal_translate`, `gdal_calc.py`, `ogr2ogr` and the `gdal raster` / `gdal vector` subcommands `calc`, `edit`, `sieve`, `polygonize` and `simplify-coverage` on `PATH`
 - Python 3 with `numpy` (used by `gdal_calc.py` for the per-class masks; both ship with the GDAL install)
 - [`libvips`](https://www.libvips.org/) (`vips`) — used for the Gaussian blur
-- [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`)
+- [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`) — `tippecanoe-decode`, which ships with it, is used by `npm run stats -- --attribute`
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install)
 
 ## How it's made
@@ -158,6 +158,31 @@ Only `kind` is kept in the tiles.
 
 To preview the result, `npm run style` writes a QGIS vector-tiles style (`landcover.qml`) that colours both
 layers by `kind`.
+
+### Size statistics
+
+```sh
+npm run stats                                              # per-zoom distribution of data/landcover.mbtiles
+npm run stats -- --area hudson-bay --worst 5 --attribute   # the biggest tiles, and what fills them
+npm run stats -- --baseline write                          # remember the numbers in doc/size-baseline.json
+npm run stats -- --baseline compare                        # diff a later build against them
+```
+
+`bin/stats.ts` reads tile sizes straight out of the mbtiles (`node:sqlite`, no external tool): those are the
+compressed bytes a client downloads, which is what tippecanoe's `--maximum-tile-bytes` (500 000) applies to. For a
+parameter change the **maximum** is what matters, not the average — past the limit tippecanoe coalesces or drops
+features and the coverage quietly loses detail, so the command exits non-zero when any tile reaches it.
+
+The maximum is always local: one fragmented landscape decides it. `--area` therefore restricts the measurement to
+an area of interest (`--areas` lists the presets, or pass `west,south,east,north`). The presets are the shapes
+that stress the pipeline differently — `hudson-bay` is where the largest tiles of the z0–10 build actually sit,
+plus archipelago, fjord, delta, desert and glacier cases. `--worst N --attribute` decodes those tiles with
+`tippecanoe-decode` and reports features and vertices per layer and `kind`, which answers _why_ a tile is big.
+
+`doc/size-baseline.json` holds the numbers of a build so a later one can be diffed against it; `--label` keeps
+variants of a parameter sweep apart. For the z0–10 build the worst tile is **60.5 KB at z9** (Hudson Bay
+Lowlands, 2273 features / 36 k vertices), with an average of 6–10 KB per tile — roughly **8× headroom** to the
+500 000-byte limit, which is the budget available for more detail.
 
 ## Shortbread compatibility
 

@@ -15,7 +15,7 @@ export type PlanOpts = {
 };
 
 // do two lon/lat rectangles overlap? (merely touching edges do not)
-function overlaps(a: LonLat, b: LonLat): boolean {
+export function overlaps(a: LonLat, b: LonLat): boolean {
 	return a.west < b.east && b.west < a.east && a.south < b.north && b.south < a.north;
 }
 
