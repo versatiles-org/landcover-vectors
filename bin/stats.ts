@@ -25,6 +25,7 @@ import {
 	clampToMercator,
 	MVT_LIMIT,
 	WARN_LIMIT,
+	budgetFlag,
 	type ZoomStats,
 } from '../lib/stats.ts';
 import { commandExists } from '../lib/worldcover.ts';
@@ -37,7 +38,7 @@ const { values: opt } = parseArgs({
 		area: { type: 'string' },
 		worst: { type: 'string' },
 		attribute: { type: 'boolean', default: false },
-		warn: { type: 'string' }, // soft budget in KB
+		warn: { type: 'string' }, // soft budget in bytes
 		json: { type: 'boolean', default: false },
 		baseline: { type: 'string' }, // write | compare
 		label: { type: 'string' }, // baseline entry name (default: the area), e.g. "hudson-bay@detail2"
@@ -60,7 +61,7 @@ if (opt.help) {
 			'  --area <name|w,s,e,n>    restrict to an area of interest ("--areas" lists the presets)',
 			'  --worst <n>              list the n largest tiles',
 			'  --attribute              decode those tiles: features and vertices per layer/kind',
-			'  --warn <kb>              soft budget per tile (default 250)',
+			`  --warn <bytes>           soft budget per tile (default ${WARN_LIMIT})`,
 			'  --baseline write|compare remember this run, or diff against the remembered one',
 			'  --label <name>           baseline entry name (default: the area), for comparing variants',
 			'  --note <text>            recorded alongside a written baseline',
@@ -97,8 +98,13 @@ const input = opt.probe ? await probeBuild(opt.probe) : opt.input ? path.resolve
 const label = opt.label ?? opt.probe ?? opt.area ?? 'world';
 // a probe tileset already covers only its area, so there is nothing left to filter
 const bbox = opt.area && !opt.probe ? clampToMercator(resolveArea(opt.area)) : undefined;
-const warnBytes = Math.round(Number(opt.warn ?? 250) * 1024);
+const warnBytes = Number(opt.warn ?? WARN_LIMIT);
+if (!Number.isInteger(warnBytes) || warnBytes <= 0)
+	throw new Error(`bad --warn "${opt.warn}" — expected bytes, e.g. ${WARN_LIMIT}`);
 const worstCount = Number(opt.worst ?? (opt.attribute ? 10 : 0));
+
+// the same soft budget as the budget line, so the `!` marks and the count can never disagree
+const flag = (bytes: number) => budgetFlag(bytes, warnBytes);
 
 if (
 	!(await fs.stat(input).then(
@@ -159,9 +165,9 @@ if (opt.json) {
 		c.lon.toFixed(4),
 	);
 	console.error(
-		'budget: %d tile(s) over %s KB (soft), %d over %d bytes (tippecanoe --maximum-tile-bytes)',
+		'budget: %d tile(s) at or over %d bytes (soft), %d at or over %d bytes (tippecanoe --maximum-tile-bytes)',
 		rows.filter((r) => r.bytes >= warnBytes).length,
-		kb(warnBytes),
+		warnBytes,
 		rows.filter((r) => r.bytes >= MVT_LIMIT).length,
 		MVT_LIMIT,
 	);
@@ -169,13 +175,6 @@ if (opt.json) {
 
 function pad(s: string, i: number): string {
 	return i === 0 ? s.padStart(3) : i === 8 ? s : s.padStart(9);
-}
-
-// mark how close a tile is to the limit, so a table scan shows trouble without arithmetic
-function flag(bytes: number): string {
-	if (bytes >= MVT_LIMIT) return ' !!';
-	if (bytes >= WARN_LIMIT) return ' !';
-	return '';
 }
 
 if (worstCount > 0) {

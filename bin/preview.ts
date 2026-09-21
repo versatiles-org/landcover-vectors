@@ -22,7 +22,7 @@ import { planBlocks, countBlocks } from '../lib/plan.ts';
 import { runZooms } from '../lib/pipeline.ts';
 import { joinZooms } from '../lib/assemble.ts';
 import { progress } from '../lib/progress.ts';
-import { resolveArea, parseZoomRange, areaSlug, AREAS } from '../lib/areas.ts';
+import { resolveArea, parseZoomRange, areaSlug, previewPaths, AREAS } from '../lib/areas.ts';
 import { maplibreStyle } from '../lib/style-spec.ts';
 import { cacheValues, fingerprint, writeStamp } from '../lib/fingerprint.ts';
 import { blockWindow } from '../config.ts';
@@ -117,12 +117,7 @@ async function build(): Promise<void> {
 	]);
 	if (!(await exists(file.source))) throw new Error(`missing ${file.source} — run "npm run download" first`);
 
-	const dirs = {
-		tmp: path.join(current.previewDir, 'tmp'),
-		results: path.join(current.previewDir, '1_results'),
-		tiles: path.join(current.previewDir, '2_tiles'),
-		log: path.join(current.previewDir, 'blocks.log'),
-	};
+	const dirs = previewPaths(current.previewDir, spec);
 	await fs.rm(dirs.tmp, { recursive: true, force: true });
 	for (const d of [dirs.tmp, dirs.results, dirs.tiles, current.genDir]) await fs.mkdir(d, { recursive: true });
 	await writeStamp(current.previewDir, cacheValues());

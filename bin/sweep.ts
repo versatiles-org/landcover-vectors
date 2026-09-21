@@ -18,7 +18,7 @@ import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
 import { resolveArea, parseZoomRange } from '../lib/areas.ts';
-import { readTiles, summarise, MVT_LIMIT, WARN_LIMIT, type ZoomStats } from '../lib/stats.ts';
+import { readTiles, summarise, budgetFlag, MVT_LIMIT, WARN_LIMIT, type ZoomStats } from '../lib/stats.ts';
 import { datadir } from '../config.ts';
 
 const { values: opt } = parseArgs({
@@ -53,7 +53,7 @@ const values = opt.detail.split(',').map((s) => {
 	return v;
 });
 
-type Variant = { detail: number; tileset: string; zooms: ZoomStats[] };
+type Variant = { detail: number; fingerprint: string; tileset: string; zooms: ZoomStats[] };
 const results: Variant[] = [];
 
 for (const detail of values) {
@@ -67,22 +67,29 @@ for (const detail of values) {
 	if (run.status !== 0) throw new Error(`build failed for DETAIL_PX=${detail} (exit ${run.status})`);
 
 	const built = JSON.parse(await fs.readFile(path.join(datadir, 'preview', 'last-build.json'), 'utf8')) as {
+		fingerprint: string;
 		tileset: string;
 	};
-	results.push({ detail, tileset: built.tileset, zooms: summarise(readTiles(built.tileset)) });
+	results.push({
+		detail,
+		fingerprint: built.fingerprint,
+		tileset: built.tileset,
+		zooms: summarise(readTiles(built.tileset)),
+	});
 }
 
 // ---------------------------------------------------------------- report
 const kb = (n: number) => (n / 1024).toFixed(1);
-const flag = (bytes: number) => (bytes >= MVT_LIMIT ? ' !!' : bytes >= WARN_LIMIT ? ' !' : '');
+const flag = (bytes: number) => budgetFlag(bytes);
 const zooms = [...new Set(results.flatMap((r) => r.zooms.map((z) => z.z)))].sort((a, b) => a - b);
 
 console.error(
-	'\n%s, z%d-%d — max KB per tile (! over %s KB, !! over the MVT limit)',
+	'\n%s, z%d-%d — max KB per tile (! at or over %d bytes, !! at or over the %d-byte MVT limit)',
 	opt.area,
 	minZoom,
 	maxZoom,
-	kb(WARN_LIMIT),
+	WARN_LIMIT,
+	MVT_LIMIT,
 );
 console.error(
 	['  z', ...results.map((r) => `detail ${r.detail}`)].map((s, i) => (i ? s.padStart(12) : s.padStart(3))).join(' '),
@@ -118,7 +125,7 @@ const baseline: Baseline = await fs
 	.catch(() => ({ entries: {} }) as Baseline);
 for (const r of results) {
 	baseline.entries[`${opt.area}@detail${r.detail}`] = {
-		fingerprint: `detail${r.detail}`,
+		fingerprint: r.fingerprint, // the variant's real config fingerprint, so --baseline compare can name it
 		input: path.relative(root, r.tileset),
 		written: new Date().toISOString(),
 		note: `sweep: DETAIL_PX=${r.detail}, area ${opt.area}, z${minZoom}-${maxZoom}`,
