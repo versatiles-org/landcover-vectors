@@ -4,7 +4,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { AREAS, LAT_LIMIT, resolveArea, parseZoomRange, areaSlug } from '../lib/areas.ts';
+import { AREAS, LAT_LIMIT, resolveArea, parseZoomRange, areaSlug, previewPaths } from '../lib/areas.ts';
 import { MAXLEVEL } from '../config.ts';
 
 describe('the presets', () => {
@@ -69,10 +69,57 @@ describe('parseZoomRange', () => {
 });
 
 describe('areaSlug', () => {
-	test('is filename-safe, so two previews cannot collide', () => {
+	test('a preset keeps its name, so existing preview tilesets keep theirs', () => {
 		assert.equal(areaSlug('hudson-bay'), 'hudson_bay');
-		assert.equal(areaSlug('4,58,12,64'), '4_58_12_64');
-		assert.equal(areaSlug('-92,52,-84,58'), '92_52_84_58');
+		assert.equal(areaSlug('greenland-coast'), 'greenland_coast');
 		assert.equal(areaSlug(undefined), 'world');
+	});
+
+	test('an explicit box is keyed by its numbers, sign and decimal point included', () => {
+		assert.equal(areaSlug('4,58,12,64'), 'bbox_4_58_12_64');
+		assert.equal(areaSlug('-92,52,-84,58'), 'bbox_m92_52_m84_58');
+		assert.equal(areaSlug('1.5,-2.25,3,4'), 'bbox_1p5_m2p25_3_4');
+	});
+
+	test('never lets two different areas share a cache', () => {
+		// two valid, different boxes that the version dropping minus signs keyed both as 5_10_20_30
+		assert.notEqual(areaSlug('-5,10,20,30'), areaSlug('5,10,20,30'));
+		// the decimal point moved one number over
+		assert.notEqual(areaSlug('1.2,3,4,5'), areaSlug('1,2.3,4,5'));
+		// a box that happens to equal a preset still is not that preset's cache
+		const { west, south, east, north } = AREAS['norway'].bbox;
+		assert.notEqual(areaSlug(`${west},${south},${east},${north}`), areaSlug('norway'));
+		// every preset is distinct
+		const slugs = Object.keys(AREAS).map(areaSlug);
+		assert.equal(new Set(slugs).size, slugs.length);
+	});
+
+	test('the same box spelled differently is the same area', () => {
+		assert.equal(areaSlug(' 4 , 58 , 12 , 64 '), areaSlug('4,58,12,64'));
+		assert.equal(areaSlug('4.0,58,12,64'), areaSlug('4,58,12,64'));
+	});
+
+	test('an invalid box is refused rather than turned into a key', () => {
+		assert.throws(() => areaSlug('10,0,5,1'), /west/);
+	});
+});
+
+describe('previewPaths', () => {
+	const dir = '/data/preview/fe043f8a';
+
+	test('areas share block fragments but never per-zoom tilesets or scratch', () => {
+		// the regression: a Sahara run's z8 tileset was reused for Hudson Bay under one fingerprint
+		const sahara = previewPaths(dir, 'sahara');
+		const hudson = previewPaths(dir, 'hudson-bay');
+		assert.equal(sahara.results, hudson.results, 'fragments are per block, so sharing them is correct');
+		assert.notEqual(sahara.tiles, hudson.tiles);
+		assert.notEqual(sahara.tmp, hudson.tmp, 'a build wipes its scratch on start');
+		assert.equal(sahara.log, hudson.log);
+	});
+
+	test('everything stays under the fingerprinted directory', () => {
+		for (const p of Object.values(previewPaths(dir, '-92,52,-84,58'))) assert.ok(p.startsWith(dir + '/'), p);
+		assert.equal(previewPaths(dir, 'hudson-bay').tiles, `${dir}/2_tiles/hudson_bay`);
+		assert.equal(previewPaths(dir, undefined).tiles, `${dir}/2_tiles/world`);
 	});
 });

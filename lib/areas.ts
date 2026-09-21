@@ -5,6 +5,8 @@
 // stress the pipeline differently. A parameter change is judged on these, because the global maximum is
 // what decides whether tiles stay under tippecanoe's limit.
 
+import path from 'node:path';
+
 import { MAXLEVEL } from '../config.ts';
 import type { LonLat } from './coverage.ts';
 
@@ -39,9 +41,32 @@ export function parseZoomRange(spec: string | undefined, maxLevel: number = MAXL
 	return [lo, hi];
 }
 
-// a filename-safe tag for an area, so two previews never share a tileset
+// A filename-safe tag for an area. It is a cache key — bin/preview.ts keeps an area's per-zoom tilesets
+// under it — so it has to be collision-free. A preset keeps its name (so existing tilesets keep theirs).
+// An explicit box is keyed by its *resolved* numbers with sign and decimal point spelled out: stripping
+// them would put "-5,10,20,30" and "5,10,20,30" — two different areas — into one cache.
 export function areaSlug(spec: string | undefined): string {
-	return spec ? spec.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '') : 'world';
+	if (!spec) return 'world';
+	if (AREAS[spec]) return spec.replace(/[^a-zA-Z0-9]+/g, '_');
+	const { west, south, east, north } = resolveArea(spec);
+	const n = (v: number) => String(v).replace(/-/g, 'm').replace(/\./g, 'p');
+	return `bbox_${[west, south, east, north].map(n).join('_')}`;
+}
+
+// The cache layout of one preview build, under a config-fingerprinted directory.
+//
+// Block fragments depend only on the block (and the config the directory is keyed on), so every area
+// shares them — which is what makes a second area cheap. A per-zoom tileset is the union of whichever
+// blocks *one area* planned, so it lives under that area: a shared one is how a Sahara z8 once stood in
+// for Hudson Bay's. Scratch is per area too, because a build starts by wiping it.
+export function previewPaths(previewDir: string, spec: string | undefined) {
+	const slug = areaSlug(spec);
+	return {
+		results: path.join(previewDir, '1_results'),
+		tiles: path.join(previewDir, '2_tiles', slug),
+		tmp: path.join(previewDir, 'tmp', slug),
+		log: path.join(previewDir, 'blocks.log'),
+	};
 }
 
 // a preset name, or an explicit "west,south,east,north" in degrees
