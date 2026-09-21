@@ -4,7 +4,7 @@
 			"fingerprint": "fe043f8a",
 			"input": "data/landcover.mbtiles",
 			"written": "2026-09-20T20:52:14.867Z",
-			"note": "built 2026-06-18, before the ESA 60 \u2192 bare_rock mapping change (these tiles still carry kind=sand); sizes are representative, kinds are not",
+			"note": "built 2026-06-18 with the mapping from before bac18a3 (2026-07-01), which put ESA 60 (bare/sparse vegetation) and ESA 100 (moss & lichen) together as kind=sand; they are now bare_rock and heath. Sizes are representative (in hudson-bay the 220 sand features of the worst tile are exactly today's 220 heath features), kinds are not",
 			"zooms": [
 				{
 					"z": 0,
@@ -188,7 +188,7 @@
 			"fingerprint": "fe043f8a",
 			"input": "data/landcover.mbtiles",
 			"written": "2026-09-20T20:53:53.593Z",
-			"note": "built 2026-06-18, before the ESA 60 \u2192 bare_rock mapping change (these tiles still carry kind=sand); sizes are representative, kinds are not",
+			"note": "built 2026-06-18 with the mapping from before bac18a3 (2026-07-01), which put ESA 60 (bare/sparse vegetation) and ESA 100 (moss & lichen) together as kind=sand; they are now bare_rock and heath. Sizes are representative (in hudson-bay the 220 sand features of the worst tile are exactly today's 220 heath features), kinds are not",
 			"zooms": [
 				{
 					"z": 0,
@@ -364,6 +364,174 @@
 						"x": 265,
 						"y": 326,
 						"bytes": 57533
+					}
+				}
+			]
+		},
+		"hudson-bay@detail1": {
+			"fingerprint": "fe043f8a",
+			"input": "data/preview/fe043f8a/preview-hudson_bay-z8-10.mbtiles",
+			"written": "2026-09-21T11:01:08.162Z",
+			"note": "sweep: DETAIL_PX=1, area hudson-bay, z8-10",
+			"zooms": [
+				{
+					"z": 8,
+					"tiles": 242,
+					"bytes": 3389920,
+					"avg": 14007.933884297521,
+					"p50": 9383,
+					"p95": 47154,
+					"p99": 56313,
+					"max": 59651,
+					"worst": {
+						"z": 8,
+						"x": 67,
+						"y": 83,
+						"bytes": 59651
+					}
+				},
+				{
+					"z": 9,
+					"tiles": 514,
+					"bytes": 8723158,
+					"avg": 16971.124513618677,
+					"p50": 9279,
+					"p95": 51479,
+					"p99": 58217,
+					"max": 61838,
+					"worst": {
+						"z": 9,
+						"x": 129,
+						"y": 159,
+						"bytes": 61838
+					}
+				},
+				{
+					"z": 10,
+					"tiles": 924,
+					"bytes": 22281191,
+					"avg": 24113.843073593074,
+					"p50": 22808,
+					"p95": 50210,
+					"p99": 55400,
+					"max": 57520,
+					"worst": {
+						"z": 10,
+						"x": 265,
+						"y": 326,
+						"bytes": 57520
+					}
+				}
+			]
+		},
+		"hudson-bay@detail2": {
+			"fingerprint": "c40f9cf1",
+			"input": "data/preview/c40f9cf1/preview-hudson_bay-z8-10.mbtiles",
+			"written": "2026-09-21T01:22:41.072Z",
+			"note": "sweep: DETAIL_PX=2, area hudson-bay, z8-10",
+			"zooms": [
+				{
+					"z": 8,
+					"tiles": 242,
+					"bytes": 4363762,
+					"avg": 18032.07438016529,
+					"p50": 12001,
+					"p95": 59257,
+					"p99": 69669,
+					"max": 73176,
+					"worst": {
+						"z": 8,
+						"x": 67,
+						"y": 83,
+						"bytes": 73176
+					}
+				},
+				{
+					"z": 9,
+					"tiles": 514,
+					"bytes": 11151584,
+					"avg": 21695.688715953307,
+					"p50": 12041,
+					"p95": 64711,
+					"p99": 72085,
+					"max": 76857,
+					"worst": {
+						"z": 9,
+						"x": 129,
+						"y": 159,
+						"bytes": 76857
+					}
+				},
+				{
+					"z": 10,
+					"tiles": 924,
+					"bytes": 28440904,
+					"avg": 30780.199134199134,
+					"p50": 29749,
+					"p95": 62891,
+					"p99": 68623,
+					"max": 72222,
+					"worst": {
+						"z": 10,
+						"x": 263,
+						"y": 324,
+						"bytes": 72222
+					}
+				}
+			]
+		},
+		"hudson-bay@detail4": {
+			"fingerprint": "b3e3f013",
+			"input": "data/preview/b3e3f013/preview-hudson_bay-z8-10.mbtiles",
+			"written": "2026-09-21T01:22:41.072Z",
+			"note": "sweep: DETAIL_PX=4, area hudson-bay, z8-10",
+			"zooms": [
+				{
+					"z": 8,
+					"tiles": 242,
+					"bytes": 5670780,
+					"avg": 23432.97520661157,
+					"p50": 15933,
+					"p95": 76321,
+					"p99": 89177,
+					"max": 92861,
+					"worst": {
+						"z": 8,
+						"x": 67,
+						"y": 83,
+						"bytes": 92861
+					}
+				},
+				{
+					"z": 9,
+					"tiles": 514,
+					"bytes": 14172120,
+					"avg": 27572.217898832685,
+					"p50": 15624,
+					"p95": 81049,
+					"p99": 90796,
+					"max": 96130,
+					"worst": {
+						"z": 9,
+						"x": 129,
+						"y": 159,
+						"bytes": 96130
+					}
+				},
+				{
+					"z": 10,
+					"tiles": 924,
+					"bytes": 35764847,
+					"avg": 38706.544372294375,
+					"p50": 37576,
+					"p95": 78299,
+					"p99": 84656,
+					"max": 89581,
+					"worst": {
+						"z": 10,
+						"x": 263,
+						"y": 324,
+						"bytes": 89581
 					}
 				}
 			]
