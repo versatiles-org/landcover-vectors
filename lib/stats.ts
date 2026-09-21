@@ -15,10 +15,21 @@ import type { LonLat } from './coverage.ts';
 import { overlaps } from './plan.ts';
 import { LAT_LIMIT } from './areas.ts';
 
+// Both limits are in bytes, the unit tippecanoe's --maximum-tile-bytes uses, and each is defined once:
+// sizes are *displayed* in KB (1024 bytes), but a threshold is never converted, so "250 KB" and
+// "250 000 bytes" can no longer mean two different budgets in two different tools.
+
 // tippecanoe's default --maximum-tile-bytes; above this it coalesces or drops features
 export const MVT_LIMIT = 500_000;
-// a soft budget: staying here keeps room for the OSM features a merged tile also carries
-export const WARN_LIMIT = 250_000;
+// a soft budget, half the hard one: staying under it keeps room for the OSM features a merged tile carries
+export const WARN_LIMIT = MVT_LIMIT / 2;
+
+// the marker a table puts next to a size, so trouble shows up without arithmetic
+export function budgetFlag(bytes: number, soft: number = WARN_LIMIT): string {
+	if (bytes >= MVT_LIMIT) return ' !!';
+	if (bytes >= soft) return ' !';
+	return '';
+}
 
 export type TileRow = { z: number; x: number; y: number; bytes: number }; // y counted from the north (XYZ)
 export type ZoomStats = {

@@ -13,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 
 import {
 	percentile,
+	budgetFlag,
+	WARN_LIMIT,
 	tileBounds,
 	tileCenter,
 	readTiles,
@@ -40,6 +42,22 @@ async function fixture(tiles: { z: number; x: number; y: number; bytes: number }
 	db.close();
 	return file;
 }
+
+describe('the tile budget', () => {
+	test('both limits are in bytes, and the soft one is half the hard one', () => {
+		assert.equal(MVT_LIMIT, 500_000);
+		assert.equal(WARN_LIMIT, 250_000);
+	});
+
+	test('budgetFlag marks at-or-over, with the soft threshold overridable', () => {
+		assert.equal(budgetFlag(WARN_LIMIT - 1), '');
+		assert.equal(budgetFlag(WARN_LIMIT), ' !');
+		assert.equal(budgetFlag(MVT_LIMIT - 1), ' !');
+		assert.equal(budgetFlag(MVT_LIMIT), ' !!');
+		assert.equal(budgetFlag(1000, 1000), ' !');
+		assert.equal(budgetFlag(999, 1000), '');
+	});
+});
 
 describe('percentile', () => {
 	test('nearest rank', () => {
@@ -250,7 +268,7 @@ describe('bin/stats.ts', () => {
 			const { status, stderr } = run(file);
 			assert.equal(status, 0, stderr);
 			assert.match(stderr, /2 tiles/);
-			assert.match(stderr, /0 over 500000 bytes/);
+			assert.match(stderr, /0 tile\(s\) at or over 250000 bytes \(soft\), 0 at or over 500000 bytes/);
 		} finally {
 			await fs.rm(path.dirname(file), { recursive: true, force: true });
 		}
@@ -262,6 +280,38 @@ describe('bin/stats.ts', () => {
 			const { status, stderr } = run(file);
 			assert.equal(status, 1, stderr);
 			assert.match(stderr, /1 tile\(s\) at or over 500000 bytes/);
+		} finally {
+			await fs.rm(path.dirname(file), { recursive: true, force: true });
+		}
+	});
+
+	test('the table marks and the budget count use one and the same soft threshold', async () => {
+		// one tile a byte under the default soft budget, one exactly at it
+		const file = await fixture([
+			{ z: 3, x: 1, y: 1, bytes: WARN_LIMIT - 1 },
+			{ z: 4, x: 1, y: 1, bytes: WARN_LIMIT },
+		]);
+		try {
+			const def = run(file);
+			assert.equal(def.status, 0, def.stderr);
+			assert.match(def.stderr, /1 tile\(s\) at or over 250000 bytes \(soft\)/);
+			assert.equal((def.stderr.match(/ !(?!!)/g) ?? []).length, 1, 'exactly the at-limit tile is marked');
+
+			// --warn is in bytes now; lowering it must move the count and the marks together
+			const low = run(file, ['--warn', '1000']);
+			assert.match(low.stderr, /2 tile\(s\) at or over 1000 bytes \(soft\)/);
+			assert.equal((low.stderr.match(/ !(?!!)/g) ?? []).length, 2);
+		} finally {
+			await fs.rm(path.dirname(file), { recursive: true, force: true });
+		}
+	});
+
+	test('a --warn that is not a byte count is refused', async () => {
+		const file = await fixture([{ z: 0, x: 0, y: 0, bytes: 10 }]);
+		try {
+			const { status, stderr } = run(file, ['--warn', '250KB']);
+			assert.equal(status, 1);
+			assert.match(stderr, /bad --warn "250KB" — expected bytes/);
 		} finally {
 			await fs.rm(path.dirname(file), { recursive: true, force: true });
 		}
