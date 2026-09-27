@@ -535,6 +535,78 @@
 					}
 				}
 			]
+		},
+		"hudson-bay@blur0.5": {
+			"fingerprint": "32f1776e",
+			"input": "data/preview/32f1776e/preview-hudson_bay-z9-9.mbtiles",
+			"written": "2026-09-21T11:32:14.764Z",
+			"note": "sweep: LANDCOVER_BLUR_RENDERED=0.5, area hudson-bay, z9-9",
+			"zooms": [
+				{
+					"z": 9,
+					"tiles": 517,
+					"bytes": 14532179,
+					"avg": 28108.66344294004,
+					"p50": 16018,
+					"p95": 86156,
+					"p99": 96776,
+					"max": 101543,
+					"worst": {
+						"z": 9,
+						"x": 132,
+						"y": 162,
+						"bytes": 101543
+					}
+				}
+			]
+		},
+		"hudson-bay@blur0.75": {
+			"fingerprint": "fe043f8a",
+			"input": "data/preview/fe043f8a/preview-hudson_bay-z9-9.mbtiles",
+			"written": "2026-09-21T11:32:14.764Z",
+			"note": "sweep: LANDCOVER_BLUR_RENDERED=0.75, area hudson-bay, z9-9",
+			"zooms": [
+				{
+					"z": 9,
+					"tiles": 514,
+					"bytes": 8723158,
+					"avg": 16971.124513618677,
+					"p50": 9279,
+					"p95": 51479,
+					"p99": 58217,
+					"max": 61838,
+					"worst": {
+						"z": 9,
+						"x": 129,
+						"y": 159,
+						"bytes": 61838
+					}
+				}
+			]
+		},
+		"hudson-bay@blur1": {
+			"fingerprint": "304e0abb",
+			"input": "data/preview/304e0abb/preview-hudson_bay-z9-9.mbtiles",
+			"written": "2026-09-21T11:32:14.764Z",
+			"note": "sweep: LANDCOVER_BLUR_RENDERED=1, area hudson-bay, z9-9",
+			"zooms": [
+				{
+					"z": 9,
+					"tiles": 510,
+					"bytes": 5760936,
+					"avg": 11295.95294117647,
+					"p50": 5999,
+					"p95": 34257,
+					"p99": 38383,
+					"max": 40613,
+					"worst": {
+						"z": 9,
+						"x": 133,
+						"y": 166,
+						"bytes": 40613
+					}
+				}
+			]
 		}
 	}
 }

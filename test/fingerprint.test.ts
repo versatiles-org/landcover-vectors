@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 import {
 	fingerprint,
@@ -18,6 +20,8 @@ import {
 	type Stamp,
 } from '../lib/fingerprint.ts';
 import { FULL_PX } from '../config.ts';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const stampFor = (values: Record<string, unknown>): Stamp => ({
 	fingerprint: fingerprint(values),
@@ -44,6 +48,29 @@ describe('fingerprint', () => {
 		const json = JSON.stringify(values);
 		assert.ok(!json.includes('#'), 'a colour leaked into the fingerprint');
 		assert.ok(!/attribution|description/i.test(json), 'metadata leaked into the fingerprint');
+	});
+
+	test('each sweep override builds into its own cache, and the committed default stays put', () => {
+		const fp = (env: Record<string, string>) =>
+			spawnSync(
+				process.execPath,
+				[
+					'--input-type=module',
+					'-e',
+					"import('./lib/fingerprint.ts').then((f) => console.log(f.fingerprint(f.cacheValues())))",
+				],
+				{ cwd: repoRoot, encoding: 'utf8', env: { ...process.env, ...env } },
+			).stdout.trim();
+		const base = fp({});
+		const variants = (
+			[
+				{ LANDCOVER_DETAIL_PX: '2' },
+				{ LANDCOVER_BLUR_RENDERED: '0.5' },
+				{ LANDCOVER_SIEVE_RENDERED: '4' },
+				{ LANDCOVER_SIEVE_RENDERED: '0' },
+			] as Record<string, string>[]
+		).map(fp);
+		assert.equal(new Set([base, ...variants]).size, 5, 'every override must move the fingerprint');
 	});
 
 	test('the source stamp tracks the raster resolution', () => {

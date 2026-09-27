@@ -1,15 +1,17 @@
-// Sweep a parameter over one area and report what it costs in tile bytes.
+// Sweep one parameter over one area and report what it costs in bytes and what it buys in quality.
 //
-//   npm run sweep -- --area hudson-bay --zoom 8-10 --detail 1,2,4
+//   npm run sweep -- --area hudson-bay --zoom 9 --blur 0.5,0.75,1       # the raster stage: which class wins
+//   npm run sweep -- --area hudson-bay --zoom 9 --sieve 0,1.77,4        # smallest patch kept
+//   npm run sweep -- --area hudson-bay --zoom 8-10 --detail 1,2,4       # the vector stage: outline precision
 //
-// This is the measurement Phase 6 of the plan turns on: raising DETAIL_PX keeps more boundary detail per
-// tile, and the only question is whether the worst tile still fits in tippecanoe's 500 000 bytes. Each
-// variant is a separate preview build (its own cache directory, because the tolerance is part of the
-// fingerprint), measured with the same code `npm run stats` uses, and recorded in doc/size-baseline.json
-// as "<area>@detail<value>" so the numbers survive the session.
+// Each value is a separate preview build — its own cache directory, because every one of these knobs is
+// part of the config fingerprint — measured with the same code `npm run stats` uses and recorded in
+// doc/size-baseline.json as "<area>@<knob><value>". Then one reference tile (--tile, or the largest tile
+// of the first variant) is compared against its target with `npm run inspect`, for every variant side by
+// side, so size and quality come out of one run.
 //
-// Guessing is not a substitute: vertex count against tolerance is only roughly 1/x, and
-// --coalesce-smallest-as-needed absorbs part of it.
+// Guessing is not a substitute: bytes against tolerance are far from 1/x (the Hudson Bay worst tile grew
+// 1.56×, not 4×, at DETAIL_PX 4), and blur trades texture against speckle in ways only the numbers show.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -17,15 +19,31 @@ import { spawnSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
-import { resolveArea, parseZoomRange } from '../lib/areas.ts';
-import { readTiles, summarise, budgetFlag, MVT_LIMIT, WARN_LIMIT, type ZoomStats } from '../lib/stats.ts';
+import { resolveArea, parseZoomRange, areaSlug } from '../lib/areas.ts';
+import { readTiles, summarise, largest, budgetFlag, MVT_LIMIT, WARN_LIMIT, type ZoomStats } from '../lib/stats.ts';
 import { datadir } from '../config.ts';
+
+// the knobs a sweep can turn, and the environment variable config.ts reads each one from
+const KNOBS = {
+	detail: {
+		env: 'LANDCOVER_DETAIL_PX',
+		zeroOk: false,
+		what: 'DETAIL_PX — simplify tolerance, 1 px of a (256·x)-px tile',
+	},
+	blur: { env: 'LANDCOVER_BLUR_RENDERED', zeroOk: false, what: 'BLUR_RENDERED — Gaussian σ in rendered px' },
+	sieve: { env: 'LANDCOVER_SIEVE_RENDERED', zeroOk: true, what: 'SIEVE_RENDERED — smallest patch kept, rendered px²' },
+} as const;
+type Knob = keyof typeof KNOBS;
 
 const { values: opt } = parseArgs({
 	options: {
 		area: { type: 'string' },
 		zoom: { type: 'string' },
-		detail: { type: 'string', default: '1,2,4' },
+		detail: { type: 'string' },
+		blur: { type: 'string' },
+		sieve: { type: 'string' },
+		tile: { type: 'string' }, // z/x/y to judge quality on
+		'no-inspect': { type: 'boolean', default: false },
 		help: { type: 'boolean', default: false },
 	},
 });
@@ -36,10 +54,15 @@ const BASELINE = path.join(root, 'doc', 'size-baseline.json');
 if (opt.help || !opt.area) {
 	console.error(
 		[
-			'Usage: npm run sweep -- --area <name|w,s,e,n> [--zoom min-max] [--detail 1,2,4]',
+			'Usage: npm run sweep -- --area <name|w,s,e,n> [--zoom min-max] (--detail | --blur | --sieve) <v1,v2,…>',
 			'',
-			'Builds the area once per DETAIL_PX value and prints the tile-size cost of each.',
-			'Each variant keeps its own cache, so a repeated sweep only rebuilds what is new.',
+			...Object.entries(KNOBS).map(([k, v]) => `  --${k.padEnd(7)} ${v.what}`),
+			'  --tile z/x/y     the tile to judge quality on (default: the largest tile of the first variant)',
+			'  --no-inspect     sizes only',
+			'',
+			'One knob per sweep; the others come from config.ts or the environment. Note that the sieve follows',
+			'the blur unless it is pinned: LANDCOVER_SIEVE_RENDERED=1.77 npm run sweep -- --blur 0.5,0.75,1',
+			'Without a knob, it sweeps --detail 1,2,4. Each variant keeps its own cache, so repeats are cheap.',
 		].join('\n'),
 	);
 	process.exit(opt.help ? 0 : 1);
@@ -47,40 +70,47 @@ if (opt.help || !opt.area) {
 
 resolveArea(opt.area); // fail on a bad area before spending hours
 const [minZoom, maxZoom] = parseZoomRange(opt.zoom);
-const values = opt.detail.split(',').map((s) => {
+
+const given = (Object.keys(KNOBS) as Knob[]).filter((k) => opt[k] !== undefined);
+if (given.length > 1) throw new Error(`sweep one knob at a time — got ${given.map((k) => '--' + k).join(' and ')}`);
+const knob: Knob = given[0] ?? 'detail';
+const spec = opt[knob] ?? '1,2,4';
+const values = spec.split(',').map((s) => {
 	const v = Number(s.trim());
-	if (!Number.isFinite(v) || v <= 0) throw new Error(`bad --detail "${s}" — expected positive numbers`);
+	const ok = Number.isFinite(v) && (KNOBS[knob].zeroOk ? v >= 0 : v > 0);
+	if (!ok)
+		throw new Error(`bad --${knob} "${s}" — expected ${KNOBS[knob].zeroOk ? 'numbers ≥ 0' : 'positive numbers'}`);
 	return v;
 });
+if (opt.tile && !/^\d+\/\d+\/\d+$/.test(opt.tile)) throw new Error(`bad --tile "${opt.tile}" — expected z/x/y`);
 
-type Variant = { detail: number; fingerprint: string; tileset: string; zooms: ZoomStats[] };
+type Variant = { value: number; fingerprint: string; tileset: string; zooms: ZoomStats[] };
 const results: Variant[] = [];
 
-for (const detail of values) {
-	console.error('\n═══ DETAIL_PX = %s ═══', detail);
+for (const value of values) {
+	console.error('\n═══ %s = %s ═══', KNOBS[knob].env, value);
 	const args = ['bin/preview.ts', '--build-only', '--area', opt.area, '--zoom', `${minZoom}-${maxZoom}`];
 	const run = spawnSync(process.execPath, args, {
 		cwd: root,
 		stdio: ['ignore', 'inherit', 'inherit'],
-		env: { ...process.env, LANDCOVER_DETAIL_PX: String(detail) },
+		env: { ...process.env, [KNOBS[knob].env]: String(value) },
 	});
-	if (run.status !== 0) throw new Error(`build failed for DETAIL_PX=${detail} (exit ${run.status})`);
+	if (run.status !== 0) throw new Error(`build failed for ${knob}=${value} (exit ${run.status})`);
 
 	const built = JSON.parse(await fs.readFile(path.join(datadir, 'preview', 'last-build.json'), 'utf8')) as {
 		fingerprint: string;
 		tileset: string;
 	};
 	results.push({
-		detail,
+		value,
 		fingerprint: built.fingerprint,
 		tileset: built.tileset,
 		zooms: summarise(readTiles(built.tileset)),
 	});
 }
 
-// ---------------------------------------------------------------- report
+// ---------------------------------------------------------------- size report
 const kb = (n: number) => (n / 1024).toFixed(1);
-const flag = (bytes: number) => budgetFlag(bytes);
 const zooms = [...new Set(results.flatMap((r) => r.zooms.map((z) => z.z)))].sort((a, b) => a - b);
 
 console.error(
@@ -92,25 +122,26 @@ console.error(
 	MVT_LIMIT,
 );
 console.error(
-	['  z', ...results.map((r) => `detail ${r.detail}`)].map((s, i) => (i ? s.padStart(12) : s.padStart(3))).join(' '),
+	['  z', ...results.map((r) => `${knob} ${r.value}`)].map((s, i) => (i ? s.padStart(12) : s.padStart(3))).join(' '),
 );
 for (const z of zooms) {
 	const cells = results.map((r) => {
 		const s = r.zooms.find((x) => x.z === z);
-		return s ? kb(s.max) + flag(s.max) : '—';
+		return s ? kb(s.max) + budgetFlag(s.max) : '—';
 	});
 	console.error([String(z).padStart(3), ...cells.map((c) => c.padStart(12))].join(' '));
 }
 
-// the number that decides the sweep: the worst tile anywhere, and what it cost relative to the first variant
+// the number that decides whether a variant fits: the worst tile anywhere, relative to the first variant
 const worstOf = (v: Variant) => Math.max(...v.zooms.map((z) => z.max));
 const first = worstOf(results[0]);
 console.error('');
 for (const r of results) {
 	const worst = worstOf(r);
 	console.error(
-		'DETAIL_PX %s: worst tile %s KB (%s× the first variant), %s',
-		String(r.detail).padEnd(3),
+		'%s %s: worst tile %s KB (%s× the first variant), %s',
+		knob,
+		String(r.value).padEnd(5),
 		kb(worst).padStart(7),
 		(worst / first).toFixed(2),
 		worst >= MVT_LIMIT ? '✗ over the MVT limit — features would be dropped' : 'within budget',
@@ -124,13 +155,39 @@ const baseline: Baseline = await fs
 	.then((s) => JSON.parse(s) as Baseline)
 	.catch(() => ({ entries: {} }) as Baseline);
 for (const r of results) {
-	baseline.entries[`${opt.area}@detail${r.detail}`] = {
+	baseline.entries[`${opt.area}@${knob}${r.value}`] = {
 		fingerprint: r.fingerprint, // the variant's real config fingerprint, so --baseline compare can name it
 		input: path.relative(root, r.tileset),
 		written: new Date().toISOString(),
-		note: `sweep: DETAIL_PX=${r.detail}, area ${opt.area}, z${minZoom}-${maxZoom}`,
+		note: `sweep: ${KNOBS[knob].env}=${r.value}, area ${opt.area}, z${minZoom}-${maxZoom}`,
 		zooms: r.zooms,
 	};
 }
 await fs.writeFile(BASELINE, JSON.stringify(baseline, null, '\t') + '\n');
 console.error('\nrecorded %d variant(s) in %s', results.length, path.relative(root, BASELINE));
+
+// ---------------------------------------------------------------- quality on one reference tile
+if (!opt['no-inspect']) {
+	const [t] = largest(readTiles(results[0].tileset), 1);
+	const tile = opt.tile ?? `${t.z}/${t.x}/${t.y}`;
+	const out = path.join(datadir, 'inspect', `sweep-${areaSlug(opt.area)}-${knob}-${tile.replaceAll('/', '_')}.png`);
+	console.error(
+		'\n═══ quality on %s (%s) ═══',
+		tile,
+		opt.tile ? 'as requested' : `the largest tile of ${knob} ${results[0].value}`,
+	);
+	const inspect = spawnSync(
+		process.execPath,
+		[
+			'--disable-warning=ExperimentalWarning',
+			'bin/inspect.ts',
+			tile,
+			...results.flatMap((r) => ['--input', r.tileset]),
+			'--out',
+			out,
+		],
+		{ cwd: root, stdio: ['ignore', 'inherit', 'inherit'] },
+	);
+	// sizes are recorded already, so a failed comparison is reported rather than fatal
+	if (inspect.status !== 0) console.error('✗ inspect failed (exit %d) — the size results above stand', inspect.status);
+}

@@ -36,7 +36,7 @@ function grab(text: string, re: RegExp, what: string): string {
 
 describe('config.ts comments state the computed value', () => {
 	test('SIEVE_THRESHOLD', () => {
-		const documented = grab(config, /Math\.PI \* BLUR_RADIUS \* BLUR_RADIUS\); \/\/ (\d+)/, 'sieve comment');
+		const documented = grab(config, /SIEVE_RENDERED \* OVERSAMPLE \* OVERSAMPLE\); \/\/ (\d+)/, 'sieve comment');
 		assert.equal(Number(documented), SIEVE_THRESHOLD);
 	});
 
@@ -46,6 +46,7 @@ describe('config.ts comments state the computed value', () => {
 	});
 
 	test('the derived values are internally consistent', () => {
+		// the default sieve is a circle of the blur radius; the README's "round(π·r²)" relies on that
 		assert.equal(SIEVE_THRESHOLD, Math.round(Math.PI * BLUR_RADIUS * BLUR_RADIUS));
 		assert.equal(MARGIN_PX, Math.ceil(3 * BLUR_RADIUS + 3 * Math.sqrt(SIEVE_THRESHOLD)));
 		assert.equal(FULL_PX, TILE_PX * 2 ** MAXLEVEL);

@@ -14,6 +14,7 @@
     "download": "node bin/download.ts",
     "build": "node bin/build.ts",
     "merge": "node bin/merge.ts",
+    "inspect": "node --disable-warning=ExperimentalWarning bin/inspect.ts",
     "preview": "node bin/preview.ts",
     "style": "node bin/style.ts",
     "stats": "node --disable-warning=ExperimentalWarning bin/stats.ts",

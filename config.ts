@@ -65,17 +65,28 @@ export const BLOCK = 8; // tiles per block side
 export const OVERSAMPLE = TILE_PX / 256; // raw pixels per rendered pixel (4)
 
 // Gaussian σ, in rendered pixels: how much of the pixel staircase is smoothed away before the argmax.
-// Below ~0.5 the boundaries turn blocky again; above ~1 small features start dissolving.
-export const BLUR_RENDERED = 0.75;
+// Below ~0.5 the boundaries turn blocky again; above ~1 small features start dissolving. Because the
+// argmax is a per-pixel majority vote, blurring also moves area from scattered classes to dominant ones
+// (in the Hudson Bay worst tile, heath loses half its area in this one step) — this is the main lever
+// on *which class ends up where*, where DETAIL_PX only changes how precisely the result is outlined.
+export const BLUR_RENDERED = numberFromEnv('LANDCOVER_BLUR_RENDERED', 0.75, { above: 0 });
 export const BLUR_RADIUS = BLUR_RENDERED * OVERSAMPLE; // Gaussian σ in raw pixels (3)
+
+// Smallest patch kept, in rendered px²; smaller regions are merged into their largest neighbour. It
+// defaults to a circle of the blur radius (π·σ² ≈ 1.77 px²) and so follows a blur override;
+// LANDCOVER_SIEVE_RENDERED decouples the two (less smoothing, still no speckle), and 0 turns it off.
+// It is the main lever on feature count, and with that on tile bytes.
+export const SIEVE_RENDERED = numberFromEnv('LANDCOVER_SIEVE_RENDERED', Math.PI * BLUR_RENDERED * BLUR_RENDERED, {
+	atLeast: 0,
+});
 
 // full-world raster size at the deepest zoom (TILE_PX × 2^MAXLEVEL). The single EPSG:3857
 // source GeoTIFF is built at this resolution and carries an overview pyramid down to z0, so a
 // block at any zoom reads the matching pyramid level.
 export const FULL_PX = TILE_PX * Math.pow(2, MAXLEVEL);
 
-// sieve threshold (px): drop regions smaller than a circle of the blur radius
-export const SIEVE_THRESHOLD = Math.round(Math.PI * BLUR_RADIUS * BLUR_RADIUS); // 28
+// sieve threshold in raw pixels (see SIEVE_RENDERED)
+export const SIEVE_THRESHOLD = Math.round(SIEVE_RENDERED * OVERSAMPLE * OVERSAMPLE); // 28
 // processing margin (px) around a block so blur+sieve at the inner edge match neighbours
 export const MARGIN_PX = Math.ceil(3 * BLUR_RADIUS + 3 * Math.sqrt(SIEVE_THRESHOLD)); // 25
 
@@ -91,14 +102,28 @@ export const MARGIN_PX = Math.ceil(3 * BLUR_RADIUS + 3 * Math.sqrt(SIEVE_THRESHO
 //
 // LANDCOVER_DETAIL_PX overrides it for a sweep. That is safe rather than sloppy: the tolerance is part of
 // the cache fingerprint, so an override builds into its own directory and is stamped there.
-export const DETAIL_PX = detailFromEnv();
+export const DETAIL_PX = numberFromEnv('LANDCOVER_DETAIL_PX', 1, { above: 0 });
 
-function detailFromEnv(): number {
-	const raw = process.env.LANDCOVER_DETAIL_PX;
-	if (raw === undefined) return 1;
+// A numeric setting a sweep may override through the environment (LANDCOVER_DETAIL_PX,
+// LANDCOVER_BLUR_RENDERED, LANDCOVER_SIEVE_RENDERED). An unparsable or out-of-range value is an error,
+// never a silent fallback, because it changes the output. Empty counts as unset.
+function numberFromEnv(name: string, fallback: number, bound: { above?: number; atLeast?: number }): number {
+	const raw = process.env[name];
+	if (raw === undefined || raw === '') return fallback;
 	const value = Number(raw);
-	if (!Number.isFinite(value) || value <= 0)
-		throw new Error(`bad LANDCOVER_DETAIL_PX "${raw}" — expected a positive number`);
+	const inRange =
+		Number.isFinite(value) &&
+		(bound.above === undefined || value > bound.above) &&
+		(bound.atLeast === undefined || value >= bound.atLeast);
+	if (!inRange) {
+		const want =
+			bound.above === 0
+				? 'a positive number'
+				: bound.above !== undefined
+					? `a number above ${bound.above}`
+					: `a number of at least ${bound.atLeast}`;
+		throw new Error(`bad ${name} "${raw}" — expected ${want}`);
+	}
 	return value;
 }
 

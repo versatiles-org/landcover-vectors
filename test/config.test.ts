@@ -18,6 +18,7 @@ import {
 	OVERSAMPLE,
 	BLUR_RENDERED,
 	BLUR_RADIUS,
+	SIEVE_RENDERED,
 	SIEVE_THRESHOLD,
 	DETAIL_PX,
 	blockWindow,
@@ -147,8 +148,44 @@ describe('the resolution knobs', () => {
 		assert.equal(OVERSAMPLE, TILE_PX / 256);
 		assert.equal(BLUR_RADIUS, BLUR_RENDERED * OVERSAMPLE);
 		// everything downstream of the blur is derived from it, so it scales along
-		assert.equal(SIEVE_THRESHOLD, Math.round(Math.PI * BLUR_RADIUS * BLUR_RADIUS));
+		assert.equal(SIEVE_THRESHOLD, Math.round(SIEVE_RENDERED * OVERSAMPLE * OVERSAMPLE));
+		assert.equal(SIEVE_RENDERED, Math.PI * BLUR_RENDERED * BLUR_RENDERED, 'by default, a circle of the blur radius');
 		assert.equal(MARGIN_PX, Math.ceil(3 * BLUR_RADIUS + 3 * Math.sqrt(SIEVE_THRESHOLD)));
+	});
+
+	test('LANDCOVER_BLUR_RENDERED and LANDCOVER_SIEVE_RENDERED override the raster stage', () => {
+		const read = (env: Record<string, string>) => {
+			const r = spawnSync(
+				process.execPath,
+				[
+					'--input-type=module',
+					'-e',
+					"import('./config.ts').then((c) => console.log(JSON.stringify([c.BLUR_RADIUS, c.SIEVE_THRESHOLD, c.MARGIN_PX])))",
+				],
+				{ cwd: repoRoot, encoding: 'utf8', env: { ...process.env, ...env } },
+			);
+			return { status: r.status, stderr: r.stderr, values: r.status === 0 ? JSON.parse(r.stdout) : null };
+		};
+
+		// a blur override drags the default sieve along (still a circle of the blur radius) and the margin
+		assert.deepEqual(read({ LANDCOVER_BLUR_RENDERED: '0.5' }).values, [2, 13, 17]);
+		// a sieve override is independent of the blur, and the margin still grows to cover it
+		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '4' }).values, [3, 64, 33]);
+		assert.deepEqual(read({ LANDCOVER_BLUR_RENDERED: '0.5', LANDCOVER_SIEVE_RENDERED: '1.77' }).values, [2, 28, 22]);
+		// 0 switches the sieve off; the margin then only has to cover the blur
+		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '0' }).values, [3, 0, 9]);
+		// empty means unset
+		assert.deepEqual(read({ LANDCOVER_BLUR_RENDERED: '' }).values, [3, 28, 25]);
+
+		for (const [name, bad] of [
+			['LANDCOVER_BLUR_RENDERED', '0'],
+			['LANDCOVER_BLUR_RENDERED', 'abc'],
+			['LANDCOVER_SIEVE_RENDERED', '-1'],
+		]) {
+			const r = read({ [name]: bad });
+			assert.equal(r.status, 1, `${name}=${bad} was accepted`);
+			assert.match(r.stderr, new RegExp(`bad ${name} "${bad}"`));
+		}
 	});
 
 	test('DETAIL_PX scales the tolerance inversely', () => {

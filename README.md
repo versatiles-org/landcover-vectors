@@ -227,36 +227,58 @@ terminal:
 `npm run stats -- --probe hudson-bay --zoom 8-10` combines the two: preview-build the area at the current
 config, then measure the tiles it produced.
 
-### Resolution: the two knobs
+### Quality and size: the knobs
 
-How much detail ends up in the tiles is set by two independent parameters in `config.ts`, and it is worth
-knowing which one does what:
+Two stages decide how a tile looks, and they are tuned separately. All four knobs live in `config.ts`; the
+first three can be overridden per run for a sweep, and each builds into its own cache because all of them are
+part of the config fingerprint.
 
-| knob                 | what it changes                                                                               | cost                                                        |
-| -------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `DETAIL_PX` (vector) | the simplify tolerance: how much boundary detail survives into each tile                      | tile bytes; no re-download, no source change                |
-| `TILE_PX` (raster)   | the resolution the source is classified at (1024 → 38 m/px at z10, against ESA's native 10 m) | 4× source raster and 4× CPU per doubling, and a re-download |
+| stage  | knob                                                         | what it changes                                                                                      | override                   |
+| ------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | -------------------------- |
+| raster | `BLUR_RENDERED` (0.75 rendered px)                           | the Gaussian σ before the per-pixel majority vote — **which class ends up where**                    | `LANDCOVER_BLUR_RENDERED`  |
+| raster | `SIEVE_RENDERED` (π·σ², so it follows the blur)              | the smallest patch kept; the main lever on feature count; 0 turns it off                             | `LANDCOVER_SIEVE_RENDERED` |
+| vector | `DETAIL_PX` (1)                                              | the simplify tolerance — how precisely outlines follow the result                                    | `LANDCOVER_DETAIL_PX`      |
+| raster | `TILE_PX` (1024 → 38 m/px at z10, against ESA's native 10 m) | the resolution the source is classified at; 4× source raster and CPU per doubling, and a re-download | — (edit, then re-download) |
 
-**Raising `TILE_PX` alone changes almost nothing visible**, because the tolerance is defined in metres per
-rendered pixel and dominates the result. So `DETAIL_PX` is the knob to try first — it is free to test:
+**The raster stage decides the quality; the vector stage only refines outlines.** Measured on the worst
+tile of the z0–10 build (9/129/159, Hudson Bay Lowlands), against what it should show:
+
+| variant           | agreement at 256 px | heath kept | tile KB |
+| ----------------- | ------------------- | ---------- | ------- |
+| blur 0.5          | 79.4 %              | 36 %       | 98.5    |
+| blur 0.75 (today) | 74.5 %              | 27 %       | 60.4    |
+| blur 1.0          | 69.3 %              | 20 %       | 39.3    |
+| `DETAIL_PX` 4     | 77.9 %              | 31 %       | 93.9    |
+
+At about the same size, a smaller blur beats a finer tolerance on every measure: the blur is where scattered
+classes are voted away (heath loses half its area in that one step), and no outline precision brings them
+back. `DETAIL_PX` 4 costs 1.56× the bytes of `DETAIL_PX` 1, far less than 4×, because MVT delta-encodes
+dense vertices; beyond `DETAIL_PX` ≈ 16 the MVT grid quantises the extra precision away (tippecanoe's default
+`--detail 12` is 4096 units per tile, i.e. 16 per rendered pixel). The budget is tippecanoe's
+**500 000 bytes** per tile.
 
 ```sh
-npm run sweep -- --area hudson-bay --zoom 8-10 --detail 1,2,4
+npm run sweep -- --area hudson-bay --zoom 9 --blur 0.5,0.75,1        # the raster stage: size and quality
+LANDCOVER_SIEVE_RENDERED=1.77 npm run sweep -- --area hudson-bay --zoom 9 --blur 0.5,0.75,1   # sieve held fixed
+npm run sweep -- --area hudson-bay --zoom 8-10 --detail 1,2,4        # the vector stage
+npm run inspect -- 9/129/159 --preview hudson-bay                    # one tile, every variant built for the area
 ```
 
-Each value builds the area into its own cache (the tolerance is part of the config fingerprint) and the
-sweep prints the worst tile per zoom per variant. The budget is tippecanoe's **500 000 bytes** per tile;
-the z0–10 build's worst tile is ~60 KB, so there is roughly 8× of headroom — but measure it rather than
-projecting, because vertex count against tolerance is only roughly 1/x and
-`--coalesce-smallest-as-needed` absorbs part of the rest. Beyond `DETAIL_PX` ≈ 16 the MVT grid quantises
-the extra precision away (tippecanoe's default `--detail 12` is 4096 units per tile, i.e. 16 per rendered
-pixel).
+A sweep builds the area once per value, prints the worst tile per zoom per variant, records each in
+`doc/size-baseline.json` as `<area>@<knob><value>`, and ends with `npm run inspect` on a reference tile
+(`--tile`, or the largest tile of the first variant). `inspect` rasterises the tile onto the pipeline's own
+grid and compares it pixel by pixel with its **target**: the source read at `TILE_PX` like a block reads it,
+with every class the zoom does not draw turned into a hole. It reports each class's area and how much of it
+was kept, the overall agreement — at full resolution, which also counts the pixel-level mosaic the blur
+removes on purpose, and at the 4×4 majority the tolerance is calibrated to, which is the structural number —
+the errors split into wrong kind, gap and overdraw, and the tile's bytes, features and vertices. It also
+writes a PNG to `data/inspect/` with the source, the target, and each variant next to a map of its errors.
 
-Raising `TILE_PX` is a bigger operation: `FULL_PX` changes, so the source raster has to be rebuilt
-(`npm run download` — the stamp in `data/0_download` makes a stale one an error rather than a surprise),
-and the per-block window is `BLOCK`×`TILE_PX` pixels, so **halve `BLOCK` when doubling `TILE_PX`** to keep
-memory per block where it is. Smoothing is expressed in rendered pixels (`BLUR_RENDERED`, `OVERSAMPLE`)
-precisely so that this does not silently change the blur and sieve as well.
+Raising `TILE_PX` is the bigger operation, and so far unmeasured: blur, sieve and tolerance are all set in
+rendered pixels (via `OVERSAMPLE`), so it refines the grid they operate on without changing them. `FULL_PX`
+changes, so the source raster has to be rebuilt (`npm run download` — the stamp in `data/0_download` makes a
+stale one an error rather than a surprise), and the per-block window is `BLOCK`×`TILE_PX` pixels, so **halve
+`BLOCK` when doubling `TILE_PX`** to keep memory per block where it is.
 
 ## Shortbread compatibility
 
