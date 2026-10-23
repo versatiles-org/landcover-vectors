@@ -305,8 +305,8 @@ so those areas stay holes for Shortbread's `ocean` layer to fill.
 | Tree cover               | `land`           | `forest`      | z0–6                 |
 | Cropland                 | `land`           | `farmland`    | z0–9                 |
 | Built-up                 | `land`           | `residential` | z0–9                 |
-| Bare / sparse vegetation | `land`           | `bare_rock`   | z0–9                 |
-| Moss & lichen            | `land`           | `heath`       | z0–9                 |
+| Bare / sparse vegetation | `land`           | `bare_rock`   | z0–10                |
+| Moss & lichen            | `land`           | `heath`       | z0–10                |
 | Shrubland                | `land`           | `scrub`       | z0–10                |
 | Grassland                | `land`           | `grassland`   | z0–10                |
 | Herbaceous wetland       | `land`           | `marsh`       | z0–10                |
