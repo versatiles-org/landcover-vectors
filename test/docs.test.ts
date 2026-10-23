@@ -107,12 +107,12 @@ describe('README numbers match config.ts', () => {
 });
 
 describe('the README mapping table matches the channel table', () => {
-	// rows look like: | Tree cover | `land` | `forest` | z0–6 |
+	// rows look like: | Built-up | `land` | `residential` | z0–10 | z0–9 |
 	const rows = readme
 		.split('\n')
-		.map((line) => line.match(/^\|[^|]+\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|\s*z0–(\d+)\s*\|$/))
+		.map((line) => line.match(/^\|[^|]+\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|\s*z0–(\d+)\s*\|\s*z0–(\d+)\s*\|$/))
 		.filter((m): m is RegExpMatchArray => m !== null)
-		.map((m) => ({ layer: m[1], kind: m[2], maxZoom: Number(m[3]) }));
+		.map((m) => ({ layer: m[1], kind: m[2], maxZoom: Number(m[3]), merged: Number(m[4]) }));
 
 	test('the table lists every emitting channel exactly once', () => {
 		const emitting = channels.filter((c) => c.kind && c.layer);
@@ -126,6 +126,9 @@ describe('the README mapping table matches the channel table', () => {
 			assert.ok(channel, `${row.kind} is in the README but not in config.ts`);
 			assert.equal(row.layer, channel.layer, `${row.kind} layer`);
 			assert.equal(row.maxZoom, channel.maxZoom, `${row.kind} cutoff`);
+			// a merge hands a kind with `osmFrom` to OSM there (lib/handover.ts)
+			const merged = channel.osmFrom === undefined ? channel.maxZoom : channel.osmFrom - 1;
+			assert.equal(row.merged, merged, `${row.kind} zooms used in a merge`);
 		}
 	});
 });

@@ -160,7 +160,12 @@
 					.map(([k, v]) => `${k}=${v}`)
 					.join(' · ')}</div>`;
 
-			// one legend row per kind: colour, name, and the zoom this pipeline stops emitting it at
+			// one legend row per kind: colour, name, and the highest zoom the landcover is drawn at — its cutoff,
+			// or lower where the merge hands the kind to OSM earlier (the hover says which)
+			const cutTitle = (k) =>
+				k.drawnTo < k.maxZoom
+					? `built to z${k.maxZoom}; the merge takes OSM's from z${k.drawnTo + 1}`
+					: `built and merged to z${k.maxZoom}`;
 			$('legend').innerHTML =
 				'<h4>kinds</h4>' +
 				kinds
@@ -168,7 +173,7 @@
 						(k) =>
 							`<label><input type="checkbox" data-kind="${k.kind}" checked />` +
 							`<span class="sw" style="background:${k.color}"></span>${k.kind}` +
-							`<span class="cut">≤ z${k.maxZoom}</span></label>`,
+							`<span class="cut" title="${cutTitle(k)}">≤ z${k.drawnTo}</span></label>`,
 					)
 					.join('');
 

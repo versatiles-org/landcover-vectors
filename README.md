@@ -29,24 +29,29 @@ on, OSM takes over.
 ## What's in the tiles
 
 Each ESA WorldCover class becomes an existing Shortbread `kind`, so the output validates and styles as plain
-Shortbread — no schema extension, no new style rules:
+Shortbread — no schema extension, no new style rules. The last column is what a merge with OSM uses of it; above
+that zoom the kind comes from OSM (see [the handover](#the-handover)):
 
-| ESA WorldCover class     | → layer          | `kind`        | this container fills |
-| ------------------------ | ---------------- | ------------- | -------------------- |
-| Tree cover               | `land`           | `forest`      | z0–10                |
-| Cropland                 | `land`           | `farmland`    | z0–10                |
-| Built-up                 | `land`           | `residential` | z0–10                |
-| Bare / sparse vegetation | `land`           | `bare_rock`   | z0–10                |
-| Moss & lichen            | `land`           | `heath`       | z0–10                |
-| Shrubland                | `land`           | `scrub`       | z0–10                |
-| Grassland                | `land`           | `grassland`   | z0–10                |
-| Herbaceous wetland       | `land`           | `marsh`       | z0–10                |
-| Mangroves                | `land`           | `swamp`       | z0–10                |
-| Snow and ice             | `water_polygons` | `glacier`     | z0–10                |
-| Permanent water bodies   | `water_polygons` | `water`       | z0–10                |
-| No data / open ocean     | —                | _(dropped)_   | —                    |
+| ESA WorldCover class     | → layer          | `kind`        | this container fills | used in a merge |
+| ------------------------ | ---------------- | ------------- | -------------------- | --------------- |
+| Tree cover               | `land`           | `forest`      | z0–10                | z0–10           |
+| Cropland                 | `land`           | `farmland`    | z0–10                | z0–10           |
+| Built-up                 | `land`           | `residential` | z0–10                | z0–9            |
+| Bare / sparse vegetation | `land`           | `bare_rock`   | z0–10                | z0–10           |
+| Moss & lichen            | `land`           | `heath`       | z0–10                | z0–10           |
+| Shrubland                | `land`           | `scrub`       | z0–10                | z0–10           |
+| Grassland                | `land`           | `grassland`   | z0–10                | z0–10           |
+| Herbaceous wetland       | `land`           | `marsh`       | z0–10                | z0–10           |
+| Mangroves                | `land`           | `swamp`       | z0–10                | z0–10           |
+| Snow and ice             | `water_polygons` | `glacier`     | z0–10                | z0–10           |
+| Permanent water bodies   | `water_polygons` | `water`       | z0–10                | z0–3            |
+| No data                  | —                | _(dropped)_   | —                    | —               |
 
-Open ocean is left out, so it stays a hole for Shortbread's `ocean` layer to fill. Only `kind` is stored.
+Only `kind` is stored. Where ESA has no data — the open ocean outside its 3° tiles — the container has a hole
+for Shortbread's `ocean` layer to fill. **Inside a coastal 3° tile, though, ESA classifies the sea as permanent
+water**, so this container's `water` reaches out to the tile edge. A merge only uses its `water` at z0–3, and
+the VersaTiles styles draw `water` and `ocean` in the same colour, so it doesn't show there; a style with
+different colours, or the container on its own, shows square blocks of `water` off the coasts.
 
 Some mappings are deliberately **lossy generalizations** — ESA can't resolve the OSM detail, and at these
 zooms it doesn't matter visually:
@@ -66,7 +71,7 @@ zooms it doesn't matter visually:
 ### The handover
 
 For most kinds there is **one handover, at z10 → z11**: up to z10 the land cover supplies them, from z11 OSM
-does. Two kinds go to OSM earlier (see below).
+does. Two kinds go to OSM earlier (see below); the mapping table above lists the zooms per kind.
 
 OSM has its own copies of some kinds earlier — `forest` from z7, `farmland` from z10, `glacier` from z4 — but they are sparse where the satellite data is complete: in central Spitsbergen, OSM maps
 9 % of a tile as glacier where ESA sees 96 % ice. So a merge **drops OSM's features of these kinds up to z10**.
@@ -82,10 +87,16 @@ merge keeps **OSM's** copy and drops the land cover's instead:
   commercial, retail and railway land; ESA's single built-up class would cover them all and, drawn on top,
   hide OSM's urban detail. The land cover's `residential` is used up to z9.
 
-Both containers still carry these kinds to z10, so each stands on its own.
+This container still carries both kinds to z10, so it also works on its own.
 
 Expect the land cover to thin out at z11: that is what swapping a complete satellite classification for
 hand-mapped OSM looks like, and a base land fill underneath covers the gaps.
+
+**At z10, both sources fill `land`.** OSM's urban kinds (`industrial`, `commercial`, `retail`, `railway`, …) start
+at z10 and are kept, while the land cover still supplies its natural kinds. Where ESA sees trees or grass inside
+an OSM residential or industrial area, the two overlap, and the style's layer order decides what shows: in
+versatiles-style, `forest`, `grassland`, `scrub`, `bare_rock`, `marsh` and `farmland` are drawn above the urban
+kinds, so ESA's green covers parts of towns at z10 that turn plain residential at z11.
 
 ### Merge with the VersaTiles CLI
 

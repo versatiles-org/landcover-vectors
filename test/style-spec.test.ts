@@ -106,13 +106,23 @@ describe('maplibreStyle', () => {
 		const meta = withOsm.metadata as Record<string, unknown>;
 		assert.equal(meta['landcover:fingerprint'], 'abc12345');
 		assert.equal(meta['landcover:maxLevel'], MAXLEVEL);
-		const legend = meta['landcover:kinds'] as { kind: string; color: string; maxZoom: number }[];
+		const legend = meta['landcover:kinds'] as { kind: string; color: string; maxZoom: number; drawnTo: number }[];
 		assert.equal(legend.length, kinded.length);
 		assert.deepEqual(
 			legend.map((k) => k.kind),
 			kinded.map((c) => c.kind),
 		);
 		assert.ok(legend.every((k) => /^#[0-9A-Fa-f]{6}$/.test(k.color)));
+		// the legend's "≤ z" is where the landcover stops being drawn, which next to OSM is the merge's handover
+		const drawnTo = Object.fromEntries(legend.map((k) => [k.kind, k.drawnTo]));
+		assert.equal(drawnTo.water, 3);
+		assert.equal(drawnTo.residential, 9);
+		assert.equal(drawnTo.forest, 10);
+		const alone = (local.metadata as Record<string, unknown>)['landcover:kinds'] as typeof legend;
+		assert.ok(
+			alone.every((k) => k.drawnTo === k.maxZoom),
+			'without OSM every kind is drawn to its cutoff',
+		);
 	});
 
 	test('the tiles URL is passed through verbatim, cache-buster and all', () => {

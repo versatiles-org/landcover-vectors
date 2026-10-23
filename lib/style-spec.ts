@@ -29,10 +29,14 @@ export function maplibreStyle(opts: StyleOpts): Record<string, unknown> {
 	const sources: Record<string, unknown> = { landcover: { type: 'vector', url: opts.tiles } };
 	if (opts.osm) sources.osm = { type: 'vector', url: opts.osm };
 
-	// the zooms the merge keeps of each source's copy of a kind (lib/handover.ts); MapLibre's maxzoom is exclusive
+	// the highest zoom the landcover's copy of a kind is drawn at: its cutoff, or below OSM's takeover when
+	// OSM is mounted — what the merge keeps (lib/handover.ts)
+	const drawnTo = (c: Channel): number => (opts.osm && c.osmFrom !== undefined ? c.osmFrom - 1 : c.maxZoom);
+
+	// the zooms the merge keeps of each source's copy of a kind; MapLibre's maxzoom is exclusive
 	const zooms = (source: 'landcover' | 'osm', c: Channel): Record<string, number> => {
 		if (source === 'osm') return c.osmFrom === undefined ? { minzoom: c.maxZoom + 1 } : {};
-		return opts.osm && c.osmFrom !== undefined ? { maxzoom: c.osmFrom } : {};
+		return drawnTo(c) < c.maxZoom ? { maxzoom: drawnTo(c) + 1 } : {};
 	};
 
 	const fill = (source: 'landcover' | 'osm', c: Channel): StyleLayer => ({
@@ -84,7 +88,13 @@ export function maplibreStyle(opts: StyleOpts): Record<string, unknown> {
 		metadata: {
 			'landcover:fingerprint': opts.fingerprint ?? null,
 			'landcover:maxLevel': MAXLEVEL,
-			'landcover:kinds': kinded.map((c) => ({ kind: c.kind, layer: c.layer, color: c.color, maxZoom: c.maxZoom })),
+			'landcover:kinds': kinded.map((c) => ({
+				kind: c.kind,
+				layer: c.layer,
+				color: c.color,
+				maxZoom: c.maxZoom,
+				drawnTo: drawnTo(c),
+			})),
 		},
 	};
 }
