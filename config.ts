@@ -5,7 +5,7 @@
 // own features of those kinds there (lib/handover.ts), so OSM takes over from z11. `water` is the
 // exception: OSM's lakes are the better source wherever OSM has them, so the merge keeps those instead.
 // Each zoom is processed in BLOCK×BLOCK-tile blocks (with a pixel margin for blur/sieve) so
-// memory stays bounded; see lib/block.ts and the README "Shortbread compatibility" section.
+// memory stays bounded; see lib/block.ts and the README "Merging with OSM" section.
 
 import os from 'node:os';
 import path from 'node:path';
@@ -229,7 +229,7 @@ export const channels: Channel[] = [
 ];
 
 // the tile schema the output conforms to: Shortbread's own layer names and `kind` values (see the README
-// section on Shortbread compatibility). Stamped into the container by lib/assemble.ts and bin/merge.ts.
+// section "What's in the tiles"). Stamped into the container by lib/assemble.ts and bin/merge.ts.
 export const SCHEMA = 'shortbread@1.1';
 
 // metadata embedded in the generated tilesets
