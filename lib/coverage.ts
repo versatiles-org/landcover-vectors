@@ -11,7 +11,7 @@ import fs from 'node:fs/promises';
 
 import { file } from '../config.ts';
 
-const CELL = 3; // degrees per ESA tile
+export const CELL = 3; // degrees per ESA tile
 
 const keyOf = (latCell: number, lonCell: number) => `${latCell},${lonCell}`;
 const cellOf = (deg: number) => Math.floor(deg / CELL) * CELL;

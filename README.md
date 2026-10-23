@@ -274,11 +274,28 @@ removes on purpose, and at the 4×4 majority the tolerance is calibrated to, whi
 the errors split into wrong kind, gap and overdraw, and the tile's bytes, features and vertices. It also
 writes a PNG to `data/inspect/` with the source, the target, and each variant next to a map of its errors.
 
-Raising `TILE_PX` is the bigger operation, and so far unmeasured: blur, sieve and tolerance are all set in
-rendered pixels (via `OVERSAMPLE`), so it refines the grid they operate on without changing them. `FULL_PX`
-changes, so the source raster has to be rebuilt (`npm run download` — the stamp in `data/0_download` makes a
-stale one an error rather than a surprise), and the per-block window is `BLOCK`×`TILE_PX` pixels, so **halve
-`BLOCK` when doubling `TILE_PX`** to keep memory per block where it is.
+Raising `TILE_PX` is the bigger operation: blur, sieve and tolerance are all set in rendered pixels (via
+`OVERSAMPLE`), so it refines the grid they operate on without changing them. `FULL_PX` changes, so the source
+raster has to be rebuilt (`npm run download` — the stamp in `data/0_download` makes a stale one an error rather
+than a surprise), and the per-block window is `BLOCK`×`TILE_PX` pixels, so **halve `BLOCK` when doubling
+`TILE_PX`** to keep memory per block where it is.
+
+The target above cannot judge that change: it _is_ the source at `TILE_PX`, so whatever the download's `-r mode`
+throws away is missing from the target too, and a new `TILE_PX` moves the target along with the tile.
+`--native` measures against ESA's own 10 m pixels instead, read straight from the remote COGs (no source raster
+needed), and replays the source's resampling for this one tile at each `--tile-px`:
+
+```sh
+npm run inspect -- 9/129/159 --native --tile-px 1024,2048            # ~10 s; tilesets present are added last
+```
+
+Each stage is scored by its area share per class against the native share (grid-independent) and by the
+agreement of the 256-px majorities. The stages are: `10 m mode` (the download's warp forced onto ESA's base
+level), `download` (the warp as it runs, on whichever ESA overview GDAL picks — the difference is what ESA's
+overviews cost), `pyramid` (our mode overview read like a block, below z10 — the cascaded majority vote), and
+then each tileset, which adds blur, sieve and simplify. On 9/129/159 the source loses little at 1024 (heath
+95 % kept, 92 % agreement through the z9 pyramid) and a bit less at 2048 (98 %, 96 %); the blur's loss sits on
+top of that.
 
 ## Shortbread compatibility
 
