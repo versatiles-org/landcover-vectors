@@ -6,7 +6,8 @@
 // above it. Mounting the real OSM Shortbread container alongside makes that visible. The OSM fills start
 // above the cutoff, exactly like the merge drops them below it (lib/handover.ts), so the viewer shows the
 // merged result; the landcover layers carry no zoom limits, so a kind that keeps drawing past its cutoff
-// is a bug you can see rather than infer.
+// is a bug you can see rather than infer. The one exception mirrors the merge too: a kind OSM supplies
+// (`osmFrom`, i.e. `water`) is OSM's at every zoom, and the landcover's copy stops where OSM's begins.
 
 import { channels, MAXLEVEL, type Channel } from '../config.ts';
 
@@ -28,16 +29,21 @@ export function maplibreStyle(opts: StyleOpts): Record<string, unknown> {
 	const sources: Record<string, unknown> = { landcover: { type: 'vector', url: opts.tiles } };
 	if (opts.osm) sources.osm = { type: 'vector', url: opts.osm };
 
+	// the zooms the merge keeps of each source's copy of a kind (lib/handover.ts); MapLibre's maxzoom is exclusive
+	const zooms = (source: 'landcover' | 'osm', c: Channel): Record<string, number> => {
+		if (source === 'osm') return c.osmFrom === undefined ? { minzoom: c.maxZoom + 1 } : {};
+		return opts.osm && c.osmFrom !== undefined ? { maxzoom: c.osmFrom } : {};
+	};
+
 	const fill = (source: 'landcover' | 'osm', c: Channel): StyleLayer => ({
 		id: layerId(source, c),
-		// OSM's copy of a kind only above the landcover's cutoff — what the merge keeps
-		...(source === 'osm' ? { minzoom: c.maxZoom + 1 } : {}),
+		...zooms(source, c),
 		type: 'fill',
 		source,
 		'source-layer': c.layer as string,
 		filter: ['==', ['get', 'kind'], c.kind],
 		paint: { 'fill-color': c.color as string, 'fill-antialias': false },
-		metadata: { kind: c.kind, layer: c.layer, maxZoom: c.maxZoom, source },
+		metadata: { kind: c.kind, layer: c.layer, maxZoom: c.maxZoom, osmFrom: c.osmFrom, source },
 	});
 
 	const layers: StyleLayer[] = [{ id: 'background', type: 'background', paint: { 'background-color': '#f6f4f0' } }];

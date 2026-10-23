@@ -312,12 +312,16 @@ into Shortbread's _own_ layer names and `kind` values, so **no schema extension 
 needed**: a stock Shortbread style simply starts drawing `land`/`water_polygons` at low zoom.
 
 **One handover, at z10 → z11.** Every kind is emitted up to z10 (`fills` column below). OSM has its own copies of
-some of them earlier — `forest` from z7, `farmland` and `residential` from z10, `glacier` and `water` from z4
-— but they are sparse where the satellite data is complete (in central Spitsbergen, OSM maps 9 % of a tile as
-glacier where ESA sees 96 % ice). So a merge **drops OSM's features of these kinds up to z10** (see
+some of them earlier — `forest` from z7, `farmland` and `residential` from z10, `glacier` from z4 — but they
+are sparse where the satellite data is complete (in central Spitsbergen, OSM maps 9 % of a tile as glacier
+where ESA sees 96 % ice). So a merge **drops OSM's features of these kinds up to z10** (see
 [Using it](#using-it)); from z11 OSM takes over every kind. Each zoom then has exactly one source per kind, and
 the handover sits at the same zoom for all of them. OSM's other kinds (`river`, `reservoir`, `park`, …) are
-kept at every zoom. ESA's open ocean / no-data is left out, so those areas stay holes for Shortbread's `ocean`
+kept at every zoom.
+
+**`water` is the exception.** OSM's lakes are precise and complete where ESA's are a classified raster, so
+the merge keeps **OSM's `water`** wherever Shortbread has it (from z4) and drops this container's instead.
+Its `water` is only used at z0–3, where Shortbread has no lakes at all. ESA's open ocean / no-data is left out, so those areas stay holes for Shortbread's `ocean`
 layer to fill.
 
 ### ESA WorldCover → Shortbread mapping
@@ -339,7 +343,8 @@ layer to fill.
 
 Every `kind` here is an existing Shortbread value, so the output validates and styles as plain Shortbread. The
 cutoff is z10 for every kind: most of OSM's `land` kinds start at z11 anyway (Shortbread 1.1), and where OSM
-starts earlier, its copies are dropped at the merge.
+starts earlier, its copies are dropped at the merge. The container carries `water` to z10 too, so it stands on
+its own, but a merge uses it only up to z3 (see above).
 
 Some mappings are deliberately **lossy generalizations** — ESA can't resolve the OSM detail, and at these
 zooms it doesn't matter visually:
@@ -361,8 +366,8 @@ zooms it doesn't matter visually:
 ### Using it
 
 Merge this container with your OSM-based Shortbread tiles using the VersaTiles CLI (feature-level merge), and
-drop OSM's own features of the landcover kinds up to z10 on the way in — otherwise both sources draw them at
-the same zooms. The combined tileset then has `land`/`water_polygons` populated continuously from z0, from
+drop OSM's own features of the landcover kinds up to z10 on the way in, and this container's `water` from z4
+— otherwise both sources draw them at the same zooms. The combined tileset then has `land`/`water_polygons` populated continuously from z0, from
 one source per kind and zoom. No style changes are required — a standard Shortbread style already has rules
 for `forest`, `farmland`, `water`, `glacier`, etc.
 
@@ -373,8 +378,8 @@ npm run merge      # data/landcover.versatiles + OSM → data/combined.versatile
 `merge` downloads the latest OSM Shortbread container from
 [download.versatiles.org](https://download.versatiles.org/osm.versatiles) to `data/osm.versatiles` (~66 GB,
 once and resumable — skipped if already present), then feature-merges it with `data/landcover.versatiles` via
-the VersaTiles `from_merged_vector` pipeline into `data/combined.versatiles`, with OSM filtered as below. The
-filter is generated from `channels` (`lib/handover.ts`), so it follows any change of a cutoff.
+the VersaTiles `from_merged_vector` pipeline into `data/combined.versatiles`, with both sources filtered as
+below. The filters are generated from `channels` (`lib/handover.ts`), so they follow any change of a cutoff.
 
 To merge by hand, write the pipeline to a file — the filter's CEL strings use single quotes, which a shell
 argument in single quotes cannot hold — and convert it:
@@ -384,8 +389,9 @@ cat > merge.vpl <<'EOF'
 from_merged_vector [
   from_container filename="osm.versatiles"
     | vector_filter_features layer=["land"] expr="!(zoom <= 10 && kind in ['forest', 'farmland', 'residential', 'bare_rock', 'heath', 'scrub', 'grassland', 'marsh', 'swamp'])"
-    | vector_filter_features layer=["water_polygons"] expr="!(zoom <= 10 && kind in ['glacier', 'water'])",
+    | vector_filter_features layer=["water_polygons"] expr="!(zoom <= 10 && kind in ['glacier'])",
   from_container filename="landcover-vectors.versatiles"
+    | vector_filter_features layer=["water_polygons"] expr="!(zoom >= 4 && kind in ['water'])"
 ]
 EOF
 versatiles convert -c brotli merge.vpl combined.versatiles
@@ -393,7 +399,7 @@ versatiles convert -c brotli merge.vpl combined.versatiles
 
 > **Needs versatiles ≥ 4.15.0.** `vector_filter_features` gained the tile's `zoom` in 4.15.0. Older versions do
 > not report an error: 4.14.0 silently drops every feature of the filtered layers, at every zoom, so the merged
-> tileset ends up without `land`. `npm run merge` checks the version and refuses to run below 4.15.0.
+> tileset ends up without `land` and `water_polygons`. `npm run merge` checks the version and refuses to run below 4.15.0.
 
 ## License
 

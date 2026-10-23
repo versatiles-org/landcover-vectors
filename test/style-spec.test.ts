@@ -45,19 +45,36 @@ describe('maplibreStyle', () => {
 		assert.equal(new Set(ids).size, ids.length);
 	});
 
+	const meta = (l: { [k: string]: unknown }) => (l.metadata ?? {}) as Record<string, unknown>;
+
 	test('the landcover carries no zoom limits, so a kind drawing past its cutoff is visible', () => {
-		for (const l of layers(withOsm).filter((l) => !l.id.startsWith('osm-'))) {
+		for (const l of layers(local)) {
+			assert.equal(l.minzoom, undefined, `${l.id} has a minzoom`);
+			assert.equal(l.maxzoom, undefined, `${l.id} has a maxzoom`);
+		}
+		for (const l of layers(withOsm).filter((l) => !l.id.startsWith('osm-') && meta(l).osmFrom === undefined)) {
 			assert.equal(l.minzoom, undefined, `${l.id} has a minzoom`);
 			assert.equal(l.maxzoom, undefined, `${l.id} has a maxzoom`);
 		}
 	});
 
 	test("OSM's copy of a kind starts above its cutoff, like the merge keeps it", () => {
-		const meta = (l: { [k: string]: unknown }) => (l.metadata ?? {}) as Record<string, unknown>;
 		for (const l of layers(withOsm).filter((l) => l.id.startsWith('osm-') && meta(l).kind)) {
-			assert.equal(l.minzoom, (meta(l).maxZoom as number) + 1, `${l.id} minzoom`);
+			const osmFrom = meta(l).osmFrom;
+			assert.equal(
+				l.minzoom,
+				osmFrom === undefined ? (meta(l).maxZoom as number) + 1 : undefined,
+				`${l.id} minzoom`,
+			);
 			assert.equal(l.maxzoom, undefined, `${l.id} has a maxzoom`);
 		}
+	});
+
+	test("next to OSM, the landcover's copy of a kind OSM supplies stops where OSM's begins", () => {
+		const water = layers(withOsm).find((l) => l.id === 'landcover-water_polygons-water');
+		assert.ok(water);
+		assert.equal(water.maxzoom, 4, 'MapLibre maxzoom is exclusive: drawn up to z3');
+		assert.equal(water.minzoom, undefined);
 	});
 
 	test('draws OSM over the landcover, with ocean underneath both', () => {

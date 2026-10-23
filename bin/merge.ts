@@ -5,13 +5,14 @@
 // container via the VersaTiles `from_merged_vector` pipeline into data/combined.versatiles.
 // The merged tileset has `land`/`water_polygons` populated continuously from z0 — see the
 // README "Shortbread compatibility" section. The landcover container is built first by
-// `npm run build`. Up to each kind's cutoff OSM's own features of that kind are dropped (lib/handover.ts),
-// so the two sources fill land/water_polygons at disjoint zooms and nothing double-draws.
+// `npm run build`. Up to each kind's cutoff OSM's own features of that kind are dropped, and for a kind
+// OSM maps better (`water`) the landcover's are dropped instead (lib/handover.ts), so each kind comes from
+// one source per zoom and nothing double-draws.
 
 import fs from 'node:fs/promises';
 
 import { run, runCapture, requireCommands } from '../lib/worldcover.ts';
-import { osmFilter, versionAtLeast, MIN_VERSATILES } from '../lib/handover.ts';
+import { osmFilter, landcoverFilter, versionAtLeast, MIN_VERSATILES } from '../lib/handover.ts';
 import { file, OSM_URL, SCHEMA } from '../config.ts';
 
 const exists = (p: string): Promise<boolean> =>
@@ -61,12 +62,14 @@ if (await exists(file.osm)) {
 	await fs.rename(part, file.osm);
 }
 
-// feature-merge: every output tile carries the features of both sources (from_merged_vector), minus OSM's
-// copies of the kinds the landcover supplies at that zoom (osmFilter, which needs versatiles ≥ 4.15). The
-// result is still Shortbread — only fuller — so it says so; from_merged_vector concatenates the two
-// attributions by itself, which is what CC BY requires.
+// feature-merge: every output tile carries the features of both sources (from_merged_vector), minus each
+// source's copies of the kinds the other supplies at that zoom (osmFilter / landcoverFilter, which need
+// versatiles ≥ 4.15). The result is still Shortbread — only fuller — so it says so; from_merged_vector
+// concatenates the two attributions by itself, which is what CC BY requires.
+const filtered = (filename: string, filter: string): string =>
+	`from_container filename="${filename}"` + (filter ? ` | ${filter}` : '');
 const pipeline =
-	`[,vpl](from_merged_vector [ from_container filename="${file.osm}" | ${osmFilter()}, from_container filename="${file.container}" ]` +
+	`[,vpl](from_merged_vector [ ${filtered(file.osm, osmFilter())}, ${filtered(file.container, landcoverFilter())} ]` +
 	` | meta_update schema="${SCHEMA}")`;
 
 console.error('Merging → %s …', file.merged);

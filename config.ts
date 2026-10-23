@@ -2,7 +2,8 @@
 //
 // The pipeline builds, per zoom level, a set of vector tiles that populate Shortbread's
 // `land` and `water_polygons` layers up to z10, where OSM is still sparse or absent; a merge drops OSM's
-// own features of those kinds there (lib/handover.ts), so OSM takes over from z11.
+// own features of those kinds there (lib/handover.ts), so OSM takes over from z11. `water` is the
+// exception: OSM's lakes are the better source wherever OSM has them, so the merge keeps those instead.
 // Each zoom is processed in BLOCK×BLOCK-tile blocks (with a pixel margin for blur/sieve) so
 // memory stays bounded; see lib/block.ts and the README "Shortbread compatibility" section.
 
@@ -197,13 +198,16 @@ export function blockWindow(z: number, bx: number, by: number): BlockWindow {
 // One channel of the blur/argmax stage. `esa` are the ESA WorldCover class codes that map to
 // it; `layer`/`kind` are the Shortbread target (null = the dropped no-data class); `maxZoom`
 // is the highest zoom this pipeline emits the kind — up to there the merge drops OSM's features of
-// that kind, above it OSM owns it (lib/handover.ts); `color` is the fill used by the generated QGIS styles.
+// that kind, above it OSM owns it (lib/handover.ts); `osmFrom`, if set, turns that around for a kind
+// OSM maps better: from that zoom on the merge keeps OSM's features and drops this container's instead;
+// `color` is the fill used by the generated QGIS styles.
 // At a given zoom z, channels with maxZoom < z are folded into the no-data class (lib/block.ts).
 export type Channel = {
 	esa: number[];
 	layer: 'land' | 'water_polygons' | null;
 	kind: string | null;
 	maxZoom: number;
+	osmFrom?: number;
 	color?: string;
 };
 
@@ -221,7 +225,7 @@ export const channels: Channel[] = [
 	{ esa: [90], layer: 'land', kind: 'marsh', maxZoom: 10, color: '#D3E6DB' }, // herbaceous wetland
 	{ esa: [95], layer: 'land', kind: 'swamp', maxZoom: 10, color: '#C6DCC6' }, // mangroves
 	{ esa: [70], layer: 'water_polygons', kind: 'glacier', maxZoom: 10, color: '#FFFFFF' }, // snow & ice
-	{ esa: [80], layer: 'water_polygons', kind: 'water', maxZoom: 10, color: '#B3D9E6' }, // permanent water
+	{ esa: [80], layer: 'water_polygons', kind: 'water', maxZoom: 10, osmFrom: 4, color: '#B3D9E6' }, // permanent water (OSM's from z4, where Shortbread starts it)
 ];
 
 // the tile schema the output conforms to: Shortbread's own layer names and `kind` values (see the README
