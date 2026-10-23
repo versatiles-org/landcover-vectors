@@ -65,17 +65,24 @@ zooms it doesn't matter visually:
 
 ### The handover
 
-There is **one handover, at z10 → z11**. Up to z10 the land cover supplies every kind above; from z11 OSM does.
+For most kinds there is **one handover, at z10 → z11**: up to z10 the land cover supplies them, from z11 OSM
+does. Two kinds go to OSM earlier (see below).
 
-OSM has its own copies of some kinds earlier — `forest` from z7, `farmland` and `residential` from z10,
-`glacier` from z4 — but they are sparse where the satellite data is complete: in central Spitsbergen, OSM maps
+OSM has its own copies of some kinds earlier — `forest` from z7, `farmland` from z10, `glacier` from z4 — but they are sparse where the satellite data is complete: in central Spitsbergen, OSM maps
 9 % of a tile as glacier where ESA sees 96 % ice. So a merge **drops OSM's features of these kinds up to z10**.
 Each zoom then has exactly one source per kind. OSM's other kinds (`river`, `reservoir`, `park`, …) are kept at
 every zoom.
 
-**`water` is the exception.** OSM's lakes are precise where ESA's are a classified raster, so the merge keeps
-**OSM's `water`** wherever Shortbread has it (from z4) and drops the land cover's instead. The land cover's
-`water` is only used at z0–3, where Shortbread has no lakes at all.
+**`water` and `residential` are the exceptions.** Where OSM has them, they are more precise than ESA's, so the
+merge keeps **OSM's** copy and drops the land cover's instead:
+
+- **`water` from z4**, where Shortbread starts it. OSM's lakes are precise where ESA's are a classified raster.
+  The land cover's `water` is only used at z0–3, where Shortbread has no lakes at all.
+- **`residential` from z10**, where Shortbread starts every urban kind. OSM separates residential, industrial,
+  commercial, retail and railway land; ESA's single built-up class would cover them all and, drawn on top,
+  hide OSM's urban detail. The land cover's `residential` is used up to z9.
+
+Both containers still carry these kinds to z10, so each stands on its own.
 
 Expect the land cover to thin out at z11: that is what swapping a complete satellite classification for
 hand-mapped OSM looks like, and a base land fill underneath covers the gaps.
@@ -89,9 +96,10 @@ shell argument in single quotes cannot hold, so write the pipeline to a file:
 cat > merge.vpl <<'EOF'
 from_merged_vector [
   from_container filename="osm.versatiles"
-    | vector_filter_features layer=["land"] expr="!(zoom <= 10 && kind in ['forest', 'farmland', 'residential', 'bare_rock', 'heath', 'scrub', 'grassland', 'marsh', 'swamp'])"
+    | vector_filter_features layer=["land"] expr="!(zoom <= 10 && kind in ['forest', 'farmland', 'bare_rock', 'heath', 'scrub', 'grassland', 'marsh', 'swamp'])"
     | vector_filter_features layer=["water_polygons"] expr="!(zoom <= 10 && kind in ['glacier'])",
   from_container filename="landcover-vectors.versatiles"
+    | vector_filter_features layer=["land"] expr="!(zoom >= 10 && kind in ['residential'])"
     | vector_filter_features layer=["water_polygons"] expr="!(zoom >= 4 && kind in ['water'])"
 ]
 EOF

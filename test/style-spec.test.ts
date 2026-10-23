@@ -71,10 +71,15 @@ describe('maplibreStyle', () => {
 	});
 
 	test("next to OSM, the landcover's copy of a kind OSM supplies stops where OSM's begins", () => {
-		const water = layers(withOsm).find((l) => l.id === 'landcover-water_polygons-water');
-		assert.ok(water);
-		assert.equal(water.maxzoom, 4, 'MapLibre maxzoom is exclusive: drawn up to z3');
-		assert.equal(water.minzoom, undefined);
+		for (const [id, maxzoom] of [
+			['landcover-water_polygons-water', 4],
+			['landcover-land-residential', 10],
+		] as const) {
+			const layer = layers(withOsm).find((l) => l.id === id);
+			assert.ok(layer, id);
+			assert.equal(layer.maxzoom, maxzoom, `${id}: MapLibre maxzoom is exclusive, drawn up to z${maxzoom - 1}`);
+			assert.equal(layer.minzoom, undefined);
+		}
 	});
 
 	test('draws OSM over the landcover, with ocean underneath both', () => {

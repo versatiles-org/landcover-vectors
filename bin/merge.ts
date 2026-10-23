@@ -6,7 +6,7 @@
 // The merged tileset has `land`/`water_polygons` populated continuously from z0 — see the
 // README "Merging with OSM" section. The landcover container is built first by
 // `npm run build`. Up to each kind's cutoff OSM's own features of that kind are dropped, and for a kind
-// OSM maps better (`water`) the landcover's are dropped instead (lib/handover.ts), so each kind comes from
+// OSM maps better (`water`, `residential`) the landcover's are dropped instead (lib/handover.ts), so each kind comes from
 // one source per zoom and nothing double-draws.
 
 import fs from 'node:fs/promises';

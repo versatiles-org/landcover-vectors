@@ -7,7 +7,7 @@
 // above the cutoff, exactly like the merge drops them below it (lib/handover.ts), so the viewer shows the
 // merged result; the landcover layers carry no zoom limits, so a kind that keeps drawing past its cutoff
 // is a bug you can see rather than infer. The one exception mirrors the merge too: a kind OSM supplies
-// (`osmFrom`, i.e. `water`) is OSM's at every zoom, and the landcover's copy stops where OSM's begins.
+// (`osmFrom`: `water`, `residential`) is OSM's at every zoom, and the landcover's copy stops where OSM's begins.
 
 import { channels, MAXLEVEL, type Channel } from '../config.ts';
 

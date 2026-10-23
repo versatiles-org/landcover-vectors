@@ -2,8 +2,9 @@
 //
 // The pipeline builds, per zoom level, a set of vector tiles that populate Shortbread's
 // `land` and `water_polygons` layers up to z10, where OSM is still sparse or absent; a merge drops OSM's
-// own features of those kinds there (lib/handover.ts), so OSM takes over from z11. `water` is the
-// exception: OSM's lakes are the better source wherever OSM has them, so the merge keeps those instead.
+// own features of those kinds there (lib/handover.ts), so OSM takes over from z11. `water` and
+// `residential` are the exceptions: OSM's lakes and urban land use are the better source wherever OSM
+// has them, so the merge keeps those instead.
 // Each zoom is processed in BLOCK×BLOCK-tile blocks (with a pixel margin for blur/sieve) so
 // memory stays bounded; see lib/block.ts and the README "Merging with OSM" section.
 
@@ -217,7 +218,7 @@ export const channels: Channel[] = [
 	{ esa: [0], layer: null, kind: null, maxZoom: -1 }, // no data / open ocean (dropped)
 	{ esa: [10], layer: 'land', kind: 'forest', maxZoom: 10, color: '#66AA44' }, // tree cover
 	{ esa: [40], layer: 'land', kind: 'farmland', maxZoom: 10, color: '#F0E7D1' }, // cropland
-	{ esa: [50], layer: 'land', kind: 'residential', maxZoom: 10, color: '#EAE6E1' }, // built-up
+	{ esa: [50], layer: 'land', kind: 'residential', maxZoom: 10, osmFrom: 10, color: '#EAE6E1' }, // built-up (OSM's from z10, where Shortbread starts every urban kind)
 	{ esa: [60], layer: 'land', kind: 'bare_rock', maxZoom: 10, color: '#D9D5CE' }, // bare / sparse vegetation
 	{ esa: [100], layer: 'land', kind: 'heath', maxZoom: 10, color: '#CFD3B0' }, // moss & lichen (tundra)
 	{ esa: [20], layer: 'land', kind: 'scrub', maxZoom: 10, color: '#E0E4E5' }, // shrubland
