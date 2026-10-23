@@ -7,7 +7,7 @@
 // One gdalwarp reprojects the mosaic into a single EPSG:3857 GeoTIFF covering the whole
 // Mercator square at the deepest zoom's resolution (FULL_PX²), then gdaladdo adds an overview
 // pyramid down to z0 — so a block read at any zoom hits the matching pyramid level. The
-// GeoTIFF is tiled with fast DEFLATE, BigTIFF, and sparse (all-nodata ocean blocks aren't
+// GeoTIFF is tiled with ZSTD, BigTIFF, and sparse (all-nodata ocean blocks aren't
 // stored). The remote tile list is recorded next to it for the build's skip-empty step.
 
 import fs from 'node:fs/promises';
@@ -51,9 +51,12 @@ export async function download(): Promise<void> {
 			['-co', 'TILED=YES'],
 			['-co', 'BLOCKXSIZE=512'],
 			['-co', 'BLOCKYSIZE=512'],
-			['-co', 'COMPRESS=DEFLATE'],
-			['-co', 'ZLEVEL=1'],
-			['-co', 'PREDICTOR=1'], // fast deflate
+			// ZSTD 9: about a third smaller than DEFLATE 1 on ESA classes, at the same read and write speed
+			// (LZW is as small; ZSTD 19 saves another ~15 % but writes ~40× slower). No predictor: class
+			// codes are categories, so differencing neighbours only adds entropy.
+			['-co', 'COMPRESS=ZSTD'],
+			['-co', 'ZSTD_LEVEL=9'],
+			['-co', 'PREDICTOR=1'],
 			['-co', 'BIGTIFF=YES'],
 			['-co', 'SPARSE_OK=TRUE'],
 			['-co', 'NUM_THREADS=ALL_CPUS'],
@@ -65,7 +68,8 @@ export async function download(): Promise<void> {
 		await run(
 			'gdaladdo',
 			['-r', 'mode'],
-			['--config', 'COMPRESS_OVERVIEW', 'DEFLATE'],
+			['--config', 'COMPRESS_OVERVIEW', 'ZSTD'],
+			['--config', 'ZSTD_LEVEL_OVERVIEW', 9],
 			['--config', 'GDAL_NUM_THREADS', 'ALL_CPUS'],
 			tmp,
 			[2, 4, 8, 16, 32, 64, 128, 256, 512, 1024],

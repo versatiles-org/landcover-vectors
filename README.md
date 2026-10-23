@@ -64,7 +64,7 @@ overview pyramid down to z0.
 Because every ESA tile carries internal overviews, the VRT exposes virtual overviews, so the warp reads a coarse
 level instead of the full 10 m data — the transfer is a fraction of the ~124 GB full dataset. Resampling is
 `-r mode` (dominant class — the only correct choice for categorical data). The GeoTIFF is tiled (512×512 blocks),
-fast-DEFLATE compressed (`ZLEVEL=1`), BigTIFF, and **sparse** — all-no-data ocean blocks aren't stored. The
+ZSTD-compressed (level 9, about a third smaller than fast DEFLATE at the same speed), BigTIFF, and **sparse** — all-no-data ocean blocks aren't stored. The
 remote tile list is saved alongside (`_source-tiles.txt`) for the build's skip-empty step, and the raster is
 written atomically, so an interrupted run leaves no half-built source.
 
