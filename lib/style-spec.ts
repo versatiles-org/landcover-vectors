@@ -3,9 +3,10 @@
 // second edit anywhere.
 //
 // The interesting thing to look at is the handover: each kind stops at its `maxZoom` and OSM takes over
-// above it. Mounting the real OSM Shortbread container alongside makes that visible, and because the
-// landcover layers carry no zoom limits here, a kind that keeps drawing past its cutoff is a bug you can
-// see rather than infer.
+// above it. Mounting the real OSM Shortbread container alongside makes that visible. The OSM fills start
+// above the cutoff, exactly like the merge drops them below it (lib/handover.ts), so the viewer shows the
+// merged result; the landcover layers carry no zoom limits, so a kind that keeps drawing past its cutoff
+// is a bug you can see rather than infer.
 
 import { channels, MAXLEVEL, type Channel } from '../config.ts';
 
@@ -29,6 +30,8 @@ export function maplibreStyle(opts: StyleOpts): Record<string, unknown> {
 
 	const fill = (source: 'landcover' | 'osm', c: Channel): StyleLayer => ({
 		id: layerId(source, c),
+		// OSM's copy of a kind only above the landcover's cutoff — what the merge keeps
+		...(source === 'osm' ? { minzoom: c.maxZoom + 1 } : {}),
 		type: 'fill',
 		source,
 		'source-layer': c.layer as string,
@@ -52,7 +55,7 @@ export function maplibreStyle(opts: StyleOpts): Record<string, unknown> {
 		});
 	}
 
-	// the landcover itself, then OSM's own land/water on top, so the handover reads as a takeover
+	// the landcover itself, then OSM's own land/water on top from each cutoff up, so the handover reads as a takeover
 	for (const c of kinded) layers.push(fill('landcover', c));
 	if (opts.osm) {
 		for (const c of kinded) layers.push(fill('osm', c));

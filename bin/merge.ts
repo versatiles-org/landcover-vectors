@@ -5,12 +5,13 @@
 // container via the VersaTiles `from_merged_vector` pipeline into data/combined.versatiles.
 // The merged tileset has `land`/`water_polygons` populated continuously from z0 — see the
 // README "Shortbread compatibility" section. The landcover container is built first by
-// `npm run build`; OSM and landcover fill land/water_polygons at disjoint zooms, so nothing
-// double-draws in the merged output.
+// `npm run build`. Up to each kind's cutoff OSM's own features of that kind are dropped (lib/handover.ts),
+// so the two sources fill land/water_polygons at disjoint zooms and nothing double-draws.
 
 import fs from 'node:fs/promises';
 
-import { run, requireCommands } from '../lib/worldcover.ts';
+import { run, runCapture, requireCommands } from '../lib/worldcover.ts';
+import { osmFilter, versionAtLeast, MIN_VERSATILES } from '../lib/handover.ts';
 import { file, OSM_URL, SCHEMA } from '../config.ts';
 
 const exists = (p: string): Promise<boolean> =>
@@ -27,6 +28,11 @@ async function contentLength(url: string): Promise<number | null> {
 }
 
 await requireCommands(['versatiles', 'curl']);
+const versatilesVersion = (await runCapture('versatiles', '--version')).trim();
+if (!versionAtLeast(versatilesVersion, MIN_VERSATILES))
+	throw new Error(
+		`${versatilesVersion || 'versatiles'} is too old — the merge filter needs versatiles ≥ ${MIN_VERSATILES} (older versions silently drop the whole land layer)`,
+	);
 
 // the landcover container is the build output — without it there is nothing to merge
 if (!(await exists(file.container))) throw new Error(`missing ${file.container} — run "npm run build" first`);
@@ -55,11 +61,12 @@ if (await exists(file.osm)) {
 	await fs.rename(part, file.osm);
 }
 
-// feature-merge: every output tile carries all features from both sources (from_merged_vector). The
+// feature-merge: every output tile carries the features of both sources (from_merged_vector), minus OSM's
+// copies of the kinds the landcover supplies at that zoom (osmFilter, which needs versatiles ≥ 4.15). The
 // result is still Shortbread — only fuller — so it says so; from_merged_vector concatenates the two
 // attributions by itself, which is what CC BY requires.
 const pipeline =
-	`[,vpl](from_merged_vector [ from_container filename="${file.osm}", from_container filename="${file.container}" ]` +
+	`[,vpl](from_merged_vector [ from_container filename="${file.osm}" | ${osmFilter()}, from_container filename="${file.container}" ]` +
 	` | meta_update schema="${SCHEMA}")`;
 
 console.error('Merging → %s …', file.merged);

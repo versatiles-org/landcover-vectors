@@ -113,9 +113,9 @@ blur and sieve at the inner edge see the same neighbourhood they would in a glob
 changes across a block seam. The blocks are cropped at **pixel-aligned, tile-exact** EPSG:3857 coordinates and
 simplified with `--preserve-boundary`, so adjacent blocks share an identical straight edge — no gaps or slivers.
 
-Which classes are active is per zoom: each `kind` is emitted only up to its cutoff (the `maxZoom` column in
-`config.ts`, one below Shortbread's min-zoom for that value — see the mapping table below). Above its cutoff a
-class folds into no-data, so the block produces nothing there and OSM takes over.
+Which classes are active is per zoom: each `kind` is emitted up to its cutoff (the `maxZoom` column in
+`config.ts` — z10 for every kind today, see the mapping table below). Above its cutoff a class folds into
+no-data, so the block produces nothing there and OSM takes over.
 
 **Low-diversity fast paths.** Right after the warp, one histogram read of the window (`gdalinfo -hist`) tells
 which ESA values are actually present. Most blocks at high zoom sit inside a large uniform region (Sahara,
@@ -300,8 +300,8 @@ top of that.
 ## Shortbread compatibility
 
 This project does **not** define its own layer. It produces a `.versatiles` container that adds polygons to
-Shortbread's **own** [`land`](https://shortbread-tiles.org/) and **`water_polygons`** layers, at the **low zoom
-levels where OpenStreetMap doesn't provide them yet**. You then **feature-merge** it with an OSM-based
+Shortbread's **own** [`land`](https://shortbread-tiles.org/) and **`water_polygons`** layers, at the **zoom
+levels where OpenStreetMap is still sparse or absent (z0–10)**. You then **feature-merge** it with an OSM-based
 Shortbread container (the VersaTiles CLI merges tilesets at the feature level) to get one seamless tileset.
 
 Shortbread's `land`/`water_polygons` are OSM-derived: sparse (only what's mapped) and high-zoom (`land`
@@ -311,30 +311,35 @@ satellite imagery** ([ESA WorldCover](https://esa-worldcover.org/), CC BY) — w
 into Shortbread's _own_ layer names and `kind` values, so **no schema extension and no new style rules are
 needed**: a stock Shortbread style simply starts drawing `land`/`water_polygons` at low zoom.
 
-**No overlap.** Each kind is emitted only _below_ the zoom where Shortbread introduces it (`fills` column
-below); from that zoom up, the authoritative OSM features take over. ESA's open ocean / no-data is left out,
-so those areas stay holes for Shortbread's `ocean` layer to fill.
+**One handover, at z10 → z11.** Every kind is emitted up to z10 (`fills` column below). OSM has its own copies of
+some of them earlier — `forest` from z7, `farmland` and `residential` from z10, `glacier` and `water` from z4
+— but they are sparse where the satellite data is complete (in central Spitsbergen, OSM maps 9 % of a tile as
+glacier where ESA sees 96 % ice). So a merge **drops OSM's features of these kinds up to z10** (see
+[Using it](#using-it)); from z11 OSM takes over every kind. Each zoom then has exactly one source per kind, and
+the handover sits at the same zoom for all of them. OSM's other kinds (`river`, `reservoir`, `park`, …) are
+kept at every zoom. ESA's open ocean / no-data is left out, so those areas stay holes for Shortbread's `ocean`
+layer to fill.
 
 ### ESA WorldCover → Shortbread mapping
 
 | ESA WorldCover class     | → layer          | `kind`        | this container fills |
 | ------------------------ | ---------------- | ------------- | -------------------- |
-| Tree cover               | `land`           | `forest`      | z0–6                 |
-| Cropland                 | `land`           | `farmland`    | z0–9                 |
-| Built-up                 | `land`           | `residential` | z0–9                 |
+| Tree cover               | `land`           | `forest`      | z0–10                |
+| Cropland                 | `land`           | `farmland`    | z0–10                |
+| Built-up                 | `land`           | `residential` | z0–10                |
 | Bare / sparse vegetation | `land`           | `bare_rock`   | z0–10                |
 | Moss & lichen            | `land`           | `heath`       | z0–10                |
 | Shrubland                | `land`           | `scrub`       | z0–10                |
 | Grassland                | `land`           | `grassland`   | z0–10                |
 | Herbaceous wetland       | `land`           | `marsh`       | z0–10                |
 | Mangroves                | `land`           | `swamp`       | z0–10                |
-| Snow and ice             | `water_polygons` | `glacier`     | z0–3                 |
-| Permanent water bodies   | `water_polygons` | `water`       | z0–3                 |
+| Snow and ice             | `water_polygons` | `glacier`     | z0–10                |
+| Permanent water bodies   | `water_polygons` | `water`       | z0–10                |
 | No data / open ocean     | —                | _(dropped)_   | —                    |
 
 Every `kind` here is an existing Shortbread value, so the output validates and styles as plain Shortbread. The
-cutoff per kind is one zoom below Shortbread's min-zoom for that value (e.g. Shortbread `forest` starts at z7,
-so this container supplies `forest` for z0–6).
+cutoff is z10 for every kind: most of OSM's `land` kinds start at z11 anyway (Shortbread 1.1), and where OSM
+starts earlier, its copies are dropped at the merge.
 
 Some mappings are deliberately **lossy generalizations** — ESA can't resolve the OSM detail, and at these
 zooms it doesn't matter visually:
@@ -349,15 +354,17 @@ zooms it doesn't matter visually:
 
 `wetland` is split to keep fidelity: herbaceous wetland → `marsh`, mangroves → `swamp`.
 
-> **The complete→sparse handover.** Below a kind's cutoff this data is a complete wall-to-wall coverage; at and
-> above it, OSM is sparse. Expect the landcover to thin out at the handover zoom — that is inherent to swapping
-> a satellite classification for hand-mapped OSM, and a base land/ocean fill underneath covers the gaps.
+> **The complete→sparse handover.** Up to z10 this data is a complete wall-to-wall coverage; from z11, OSM is
+> sparse. Expect the landcover to thin out at z11 — that is inherent to swapping a satellite classification for
+> hand-mapped OSM, and a base land/ocean fill underneath covers the gaps.
 
 ### Using it
 
-Merge this container with your OSM-based Shortbread tiles using the VersaTiles CLI (feature-level merge); the
-combined tileset then has `land`/`water_polygons` populated continuously from z0. No style changes are
-required — a standard Shortbread style already has rules for `forest`, `farmland`, `water`, `glacier`, etc.
+Merge this container with your OSM-based Shortbread tiles using the VersaTiles CLI (feature-level merge), and
+drop OSM's own features of the landcover kinds up to z10 on the way in — otherwise both sources draw them at
+the same zooms. The combined tileset then has `land`/`water_polygons` populated continuously from z0, from
+one source per kind and zoom. No style changes are required — a standard Shortbread style already has rules
+for `forest`, `farmland`, `water`, `glacier`, etc.
 
 ```sh
 npm run merge      # data/landcover.versatiles + OSM → data/combined.versatiles
@@ -366,7 +373,27 @@ npm run merge      # data/landcover.versatiles + OSM → data/combined.versatile
 `merge` downloads the latest OSM Shortbread container from
 [download.versatiles.org](https://download.versatiles.org/osm.versatiles) to `data/osm.versatiles` (~66 GB,
 once and resumable — skipped if already present), then feature-merges it with `data/landcover.versatiles` via
-the VersaTiles `from_merged_vector` pipeline into `data/combined.versatiles`.
+the VersaTiles `from_merged_vector` pipeline into `data/combined.versatiles`, with OSM filtered as below. The
+filter is generated from `channels` (`lib/handover.ts`), so it follows any change of a cutoff.
+
+To merge by hand, write the pipeline to a file — the filter's CEL strings use single quotes, which a shell
+argument in single quotes cannot hold — and convert it:
+
+```sh
+cat > merge.vpl <<'EOF'
+from_merged_vector [
+  from_container filename="osm.versatiles"
+    | vector_filter_features layer=["land"] expr="!(zoom <= 10 && kind in ['forest', 'farmland', 'residential', 'bare_rock', 'heath', 'scrub', 'grassland', 'marsh', 'swamp'])"
+    | vector_filter_features layer=["water_polygons"] expr="!(zoom <= 10 && kind in ['glacier', 'water'])",
+  from_container filename="landcover-vectors.versatiles"
+]
+EOF
+versatiles convert -c brotli merge.vpl combined.versatiles
+```
+
+> **Needs versatiles ≥ 4.15.0.** `vector_filter_features` gained the tile's `zoom` in 4.15.0. Older versions do
+> not report an error: 4.14.0 silently drops every feature of the filtered layers, at every zoom, so the merged
+> tileset ends up without `land`. `npm run merge` checks the version and refuses to run below 4.15.0.
 
 ## License
 

@@ -1,7 +1,8 @@
 // shared configuration for the landcover-vectors pipeline
 //
 // The pipeline builds, per zoom level, a set of vector tiles that populate Shortbread's
-// `land` and `water_polygons` layers at the low zooms where OSM doesn't yet provide them.
+// `land` and `water_polygons` layers up to z10, where OSM is still sparse or absent; a merge drops OSM's
+// own features of those kinds there (lib/handover.ts), so OSM takes over from z11.
 // Each zoom is processed in BLOCK×BLOCK-tile blocks (with a pixel margin for blur/sieve) so
 // memory stays bounded; see lib/block.ts and the README "Shortbread compatibility" section.
 
@@ -195,8 +196,8 @@ export function blockWindow(z: number, bx: number, by: number): BlockWindow {
 
 // One channel of the blur/argmax stage. `esa` are the ESA WorldCover class codes that map to
 // it; `layer`/`kind` are the Shortbread target (null = the dropped no-data class); `maxZoom`
-// is the highest zoom this pipeline emits the kind (one below Shortbread's min-zoom for that
-// value, so OSM owns it above); `color` is the fill used by the generated QGIS styles.
+// is the highest zoom this pipeline emits the kind — up to there the merge drops OSM's features of
+// that kind, above it OSM owns it (lib/handover.ts); `color` is the fill used by the generated QGIS styles.
 // At a given zoom z, channels with maxZoom < z are folded into the no-data class (lib/block.ts).
 export type Channel = {
 	esa: number[];
@@ -210,17 +211,17 @@ export type Channel = {
 // first. Legend: https://esa-worldcover.org/en/data-access
 export const channels: Channel[] = [
 	{ esa: [0], layer: null, kind: null, maxZoom: -1 }, // no data / open ocean (dropped)
-	{ esa: [10], layer: 'land', kind: 'forest', maxZoom: 6, color: '#66AA44' }, // tree cover
-	{ esa: [40], layer: 'land', kind: 'farmland', maxZoom: 9, color: '#F0E7D1' }, // cropland
-	{ esa: [50], layer: 'land', kind: 'residential', maxZoom: 9, color: '#EAE6E1' }, // built-up
+	{ esa: [10], layer: 'land', kind: 'forest', maxZoom: 10, color: '#66AA44' }, // tree cover
+	{ esa: [40], layer: 'land', kind: 'farmland', maxZoom: 10, color: '#F0E7D1' }, // cropland
+	{ esa: [50], layer: 'land', kind: 'residential', maxZoom: 10, color: '#EAE6E1' }, // built-up
 	{ esa: [60], layer: 'land', kind: 'bare_rock', maxZoom: 10, color: '#D9D5CE' }, // bare / sparse vegetation
 	{ esa: [100], layer: 'land', kind: 'heath', maxZoom: 10, color: '#CFD3B0' }, // moss & lichen (tundra)
 	{ esa: [20], layer: 'land', kind: 'scrub', maxZoom: 10, color: '#E0E4E5' }, // shrubland
 	{ esa: [30], layer: 'land', kind: 'grassland', maxZoom: 10, color: '#D8E8C8' }, // grassland
 	{ esa: [90], layer: 'land', kind: 'marsh', maxZoom: 10, color: '#D3E6DB' }, // herbaceous wetland
 	{ esa: [95], layer: 'land', kind: 'swamp', maxZoom: 10, color: '#C6DCC6' }, // mangroves
-	{ esa: [70], layer: 'water_polygons', kind: 'glacier', maxZoom: 3, color: '#FFFFFF' }, // snow & ice
-	{ esa: [80], layer: 'water_polygons', kind: 'water', maxZoom: 3, color: '#B3D9E6' }, // permanent water
+	{ esa: [70], layer: 'water_polygons', kind: 'glacier', maxZoom: 10, color: '#FFFFFF' }, // snow & ice
+	{ esa: [80], layer: 'water_polygons', kind: 'water', maxZoom: 10, color: '#B3D9E6' }, // permanent water
 ];
 
 // the tile schema the output conforms to: Shortbread's own layer names and `kind` values (see the README

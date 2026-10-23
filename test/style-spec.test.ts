@@ -45,9 +45,17 @@ describe('maplibreStyle', () => {
 		assert.equal(new Set(ids).size, ids.length);
 	});
 
-	test('carries no zoom limits, so a kind drawing past its cutoff is visible', () => {
-		for (const l of layers(withOsm)) {
+	test('the landcover carries no zoom limits, so a kind drawing past its cutoff is visible', () => {
+		for (const l of layers(withOsm).filter((l) => !l.id.startsWith('osm-'))) {
 			assert.equal(l.minzoom, undefined, `${l.id} has a minzoom`);
+			assert.equal(l.maxzoom, undefined, `${l.id} has a maxzoom`);
+		}
+	});
+
+	test("OSM's copy of a kind starts above its cutoff, like the merge keeps it", () => {
+		const meta = (l: { [k: string]: unknown }) => (l.metadata ?? {}) as Record<string, unknown>;
+		for (const l of layers(withOsm).filter((l) => l.id.startsWith('osm-') && meta(l).kind)) {
+			assert.equal(l.minzoom, (meta(l).maxZoom as number) + 1, `${l.id} minzoom`);
 			assert.equal(l.maxzoom, undefined, `${l.id} has a maxzoom`);
 		}
 	});

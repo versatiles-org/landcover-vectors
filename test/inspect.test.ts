@@ -32,16 +32,18 @@ const u8 = (...v: number[]) => new Uint8Array(v);
 
 describe('what a zoom draws', () => {
 	test('mirrors the channel cutoffs', () => {
-		const z9 = activeCodes(9);
-		for (const code of [20, 30, 40, 50, 60, 90, 95, 100]) assert.ok(z9.has(code), `z9 should draw ${code}`);
-		for (const code of [0, 10, 70, 80]) assert.ok(!z9.has(code), `z9 must not draw ${code}`);
-		for (const code of [10, 70, 80]) assert.ok(activeCodes(3).has(code), `z3 draws ${code}`);
+		// every kind runs to MAXLEVEL (one handover for all, see lib/handover.ts); no-data is never drawn
+		for (const z of [0, 3, 9, MAXLEVEL]) {
+			for (const code of [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100])
+				assert.ok(activeCodes(z).has(code), `z${z} should draw ${code}`);
+			assert.ok(!activeCodes(z).has(0), `z${z} must not draw no-data`);
+		}
 		assert.equal(activeCodes(MAXLEVEL + 1).size, 0);
 	});
 
 	test('targetFor turns everything a zoom does not draw into a hole', () => {
-		assert.deepEqual([...targetFor(u8(0, 10, 20, 80, 90, 100), 9)], [0, 0, 20, 0, 90, 100]);
-		assert.deepEqual([...targetFor(u8(10, 80), 3)], [10, 80]);
+		assert.deepEqual([...targetFor(u8(0, 10, 20, 80, 90, 100), 9)], [0, 10, 20, 80, 90, 100]);
+		assert.deepEqual([...targetFor(u8(10, 80), MAXLEVEL + 1)], [0, 0]);
 	});
 
 	test('class names', () => {
