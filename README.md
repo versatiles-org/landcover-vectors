@@ -88,8 +88,24 @@ merge keeps **OSM's** copy and drops the land cover's instead:
 
 This container still carries both kinds to z10, so it also works on its own.
 
-Expect the land cover to thin out at z11: that is what swapping a complete satellite classification for
-hand-mapped OSM looks like, and a base land fill underneath covers the gaps.
+**Expect the land cover to thin out at z11**, in most of the world by far. At z10 every land pixel ESA
+classifies is filled; from z11 only what OSM maps is. Measured on one inland z8 tile per region (OSM container of
+October 2026), the share of land that OSM's `land` and `water_polygons` still cover at z11:
+
+| region                  | covered at z11 |     | region                 | covered at z11 |
+| ----------------------- | -------------- | --- | ---------------------- | -------------- |
+| Borneo, interior        | 99.5 %         |     | Russia, Siberia        | 20.8 %         |
+| Netherlands, Gelderland | 89.2 %         |     | USA, Iowa              | 13.8 %         |
+| Germany, Hesse          | 84.7 %         |     | Canada, Manitoba north | 9.4 %          |
+| DR Congo, basin         | 83.1 %         |     | India, Ganges plain    | 3.1 %          |
+| Brazil, Mato Grosso     | 40.4 %         |     | Niger, Sahel           | 2.7 %          |
+| Spain, Castilla         | 35.2 %         |     | Australia, outback     | 0.1 %          |
+
+So where OSM's land use is mapped wall to wall (Central Europe, the large rainforests) the handover is barely
+visible; elsewhere most of the coloured land turns into the style's background — farmland included, which
+OSM rarely maps as land use outside Europe. That is the cost of handing over to hand-mapped data: carrying the
+land cover beyond z10 would need a raster at twice the resolution per zoom (~4× disk and CPU) and, inside
+Shortbread's `land` layer, would cover OSM's own kinds wherever both exist.
 
 **At z10, both sources fill `land`.** OSM's urban kinds (`industrial`, `commercial`, `retail`, `railway`, …) start
 at z10 and are kept, while the land cover still supplies its natural kinds. Where ESA sees trees or grass inside
