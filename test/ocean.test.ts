@@ -54,7 +54,8 @@ describe('maskOcean', { skip: !haveGdal && 'GDAL is not on PATH' }, () => {
 				features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } }],
 			}),
 		);
-		await runQuiet('ogr2ogr', ['-f', 'FlatGeobuf'], ['-nln', 'ocean'], file.ocean, gj);
+		// typed like the real mask (lib/ocean.ts downloadOcean), which is what a simplified clip has to fit
+		await runQuiet('ogr2ogr', ['-f', 'FlatGeobuf'], ['-nln', 'ocean'], ['-nlt', 'PROMOTE_TO_MULTI'], file.ocean, gj);
 	});
 	after(() => fs.rm(tmp, { recursive: true, force: true }));
 

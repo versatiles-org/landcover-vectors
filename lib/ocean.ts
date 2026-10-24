@@ -47,6 +47,7 @@ export async function maskOcean(tif: string, extent: Rect, widthPx: number, scra
 		['-f', 'FlatGeobuf'],
 		['-lco', 'SPATIAL_INDEX=NO'], // read once, sequentially
 		['-nln', LAYER],
+		['-nlt', 'PROMOTE_TO_MULTI'], // simplifying can turn a MultiPolygon into a Polygon, which the layer type would refuse
 		scratch,
 		file.ocean,
 		LAYER,
