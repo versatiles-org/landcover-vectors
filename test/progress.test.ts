@@ -89,3 +89,39 @@ describe('progress', () => {
 		);
 	});
 });
+
+describe("GDAL's own progress, shown as a bar", () => {
+	test('counts the 2.5 % marks on the last line, after any prefix', async () => {
+		const { gdalProgressSteps, GDAL_PROGRESS_STEPS } = await import('../lib/worldcover.ts');
+		const done = '0...10...20...30...40...50...60...70...80...90...100 - done.\n';
+		for (const [out, steps] of [
+			['', 0],
+			['Input file size is 4096, 4096\n', 0], // gdal_translate, before it starts
+			['Input file size is 4096, 4096\n0', 0],
+			['0...', 3],
+			['0...10..', 6],
+			['Creating output file that is 2048P x 2048L.\nProcessing g.tif [1/1] : 0...10...20', 8], // gdalwarp
+			[done, GDAL_PROGRESS_STEPS],
+			['Processing g.tif [1/1] : ' + done, GDAL_PROGRESS_STEPS],
+		] as const)
+			assert.equal(gdalProgressSteps(out), steps, JSON.stringify(out));
+	});
+
+	test('runProgress runs a real GDAL tool to the end', async (t) => {
+		const { runProgress, runQuiet, commandExists } = await import('../lib/worldcover.ts');
+		if (!(await commandExists('gdal_translate'))) return t.skip('GDAL is not on PATH');
+		const fs = await import('node:fs/promises');
+		const os = await import('node:os');
+		const path = await import('node:path');
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lcv-progress-'));
+		try {
+			const src = path.join(dir, 'in.tif');
+			await runQuiet('gdal_create', ['-of', 'GTiff'], ['-ot', 'Byte'], ['-outsize', 512, 512], ['-burn', 7], src);
+			const out = path.join(dir, 'out.tif');
+			await runProgress('copy', 'gdal_translate', src, out);
+			assert.ok((await fs.stat(out)).size > 0);
+		} finally {
+			await fs.rm(dir, { recursive: true, force: true });
+		}
+	});
+});

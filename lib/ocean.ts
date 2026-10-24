@@ -15,7 +15,7 @@ import path from 'node:path';
 
 import { existsSync } from 'node:fs';
 
-import { run, runQuiet, atomic, pMap } from './worldcover.ts';
+import { run, runQuiet, runProgress, atomic, pMap } from './worldcover.ts';
 import { progress } from './progress.ts';
 import { readStamp, type Values } from './fingerprint.ts';
 import { dir, file, OCEAN_URL, MERC, FULL_PX, MAXLEVEL, CPU_CORES, type Rect } from '../config.ts';
@@ -33,7 +33,16 @@ export async function downloadOcean(): Promise<void> {
 	const shp = `/vsizip/${zip}/${path.basename(OCEAN_URL, '.zip')}/water_polygons.shp`;
 	console.error('Converting → %s …', file.ocean);
 	await atomic(file.ocean, (out) =>
-		run('ogr2ogr', ['-f', 'FlatGeobuf'], ['-nln', LAYER], ['-nlt', 'PROMOTE_TO_MULTI'], out, shp),
+		runProgress(
+			'water polygons',
+			'ogr2ogr',
+			'-progress',
+			['-f', 'FlatGeobuf'],
+			['-nln', LAYER],
+			['-nlt', 'PROMOTE_TO_MULTI'],
+			out,
+			shp,
+		),
 	);
 	await fs.rm(zip, { force: true });
 	console.error('✓ ocean mask ready: %s', file.ocean);
@@ -203,9 +212,9 @@ export async function buildSeaShare(out: string, opts: SeaShareOpts): Promise<vo
 		vrt,
 	);
 	await atomic(out, async (tmp) => {
-		await run(
+		await runProgress(
+			'mosaic',
 			'gdal_translate',
-			'-q',
 			['-a_nodata', 'none'],
 			['-co', 'TILED=YES'],
 			['-co', 'BLOCKXSIZE=512'],
@@ -217,9 +226,9 @@ export async function buildSeaShare(out: string, opts: SeaShareOpts): Promise<vo
 			vrt,
 			tmp,
 		);
-		await run(
+		await runProgress(
+			'overviews',
 			'gdaladdo',
-			'-q',
 			['-r', 'average'], // every level holds the true sea share of its pixels
 			['--config', 'COMPRESS_OVERVIEW', 'ZSTD'],
 			['--config', 'SPARSE_OK_OVERVIEW', 'ON'],

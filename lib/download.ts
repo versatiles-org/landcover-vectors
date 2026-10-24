@@ -18,7 +18,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { run, atomic, listSourceKeys, BUCKET } from './worldcover.ts';
+import { runProgress, atomic, listSourceKeys, BUCKET } from './worldcover.ts';
 import { writeStamp, readStamp, stampMismatch, sourceValues, fingerprint, type Values } from './fingerprint.ts';
 import { downloadOcean, buildSeaShare, seaShareValues, SEA_SHARE_STAMP } from './ocean.ts';
 import { dir, file, MERC, FULL_PX } from '../config.ts';
@@ -70,12 +70,13 @@ async function downloadSource(): Promise<void> {
 	const vrt = path.join(dir.tmp, '_remote.vrt');
 	const listFile = path.join(dir.tmp, '_remote.txt');
 	await fs.writeFile(listFile, keys.map((k) => `/vsicurl/${BUCKET}/${k}`).join('\n') + '\n');
-	await run('gdalbuildvrt', '-overwrite', ['-input_file_list', listFile], vrt);
+	await runProgress('ESA tiles', 'gdalbuildvrt', '-overwrite', ['-input_file_list', listFile], vrt);
 
 	// warp into one EPSG:3857 GeoTIFF (whole Mercator square, deepest-zoom resolution) + overviews
 	console.error('Warping → %s (%d×%d px, EPSG:3857) …', file.source, FULL_PX, FULL_PX);
 	await atomic(file.source, async (tmp) => {
-		await run(
+		await runProgress(
+			'warp',
 			'gdalwarp',
 			['-t_srs', 'EPSG:3857'],
 			['-te', -MERC, -MERC, MERC, MERC], // full Mercator square
@@ -104,7 +105,8 @@ async function downloadSource(): Promise<void> {
 			tmp,
 		);
 		console.error('Building overview pyramid (mode) …');
-		await run(
+		await runProgress(
+			'overviews',
 			'gdaladdo',
 			['-r', 'mode'],
 			['--config', 'COMPRESS_OVERVIEW', 'ZSTD'],

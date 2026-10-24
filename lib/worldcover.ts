@@ -6,6 +6,8 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { progress } from './progress.ts';
+
 export const BUCKET = 'https://esa-worldcover.s3.eu-central-1.amazonaws.com';
 export const PREFIX = 'v200/2021/map/';
 
@@ -43,6 +45,46 @@ export function run(cmd: string, ...args: Arg[]): Promise<void> {
 		child.on('error', reject);
 		child.on('exit', (code, signal) => (code === 0 ? resolve() : reject(new Error(exitMessage(cmd, code, signal)))));
 	});
+}
+
+// Run a GDAL tool that reports its progress the GDAL way on stdout ("0...10...20...100 - done."), and show
+// that as a progress bar with rate and ETA (lib/progress.ts) instead. Works for gdal_translate, gdaladdo,
+// gdalwarp, and ogr2ogr with -progress; the tool must not be run with -q. Anything else on stdout (e.g.
+// gdal_translate's "Input file size is …") is dropped; stderr stays inherited, so warnings still show.
+export function runProgress(label: string, cmd: string, ...args: Arg[]): Promise<void> {
+	const argv = toArgv(args);
+	return new Promise<void>((resolve, reject) => {
+		console.error('$ %s %s', cmd, argv.join(' '));
+		const bar = progress(GDAL_PROGRESS_STEPS, label);
+		let out = '';
+		let shown = 0;
+		const child = spawn(cmd, argv, { stdio: ['ignore', 'pipe', 'inherit'], env: gdalEnv });
+		child.stdout?.on('data', (d) => {
+			out += d;
+			const steps = gdalProgressSteps(out);
+			if (steps > shown) bar.tick(steps - shown);
+			shown = Math.max(shown, steps);
+		});
+		child.on('error', reject);
+		child.on('exit', (code, signal) => {
+			bar.done();
+			if (code === 0) resolve();
+			else reject(new Error(exitMessage(cmd, code, signal)));
+		});
+	});
+}
+
+// GDAL's progress counts 2.5 % per mark: "0", three dots, "10", three dots, … "100"
+export const GDAL_PROGRESS_STEPS = 40;
+
+// how many of those marks the last line of a GDAL tool's stdout shows (0 before it starts, 40 when done).
+// The marks end the line, after a prefix in gdalwarp's case ("Processing x.tif [1/1] : 0...10...").
+export function gdalProgressSteps(stdout: string): number {
+	const line = stdout.slice(stdout.lastIndexOf('\n', stdout.length - 2) + 1);
+	const m = line.match(/(?:^|[\s:])(0[.\d]*)( - done\.)?\s*$/);
+	if (!m) return 0; // not a progress line (yet)
+	if (m[2]) return GDAL_PROGRESS_STEPS;
+	return Math.min(GDAL_PROGRESS_STEPS, (m[1].match(/\d+|\./g) ?? []).length - 1);
 }
 
 // run a child process quietly, capturing stderr for the error message
