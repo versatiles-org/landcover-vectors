@@ -6,7 +6,8 @@
 // `-r mode` threw away, so that loss can never show up as an error, and a TILE_PX change moves the target
 // along with the tile. This module reads the remote ESA COGs directly instead, and replays the source's
 // resampling steps for one tile at any TILE_PX — so the loss per step and per resolution is measured
-// without downloading or rebuilding the 23 GB source raster:
+// without downloading or rebuilding the 19 GB source raster. Every stage, the reference included, has OSM's
+// sea masked out the way a block does, so the comparison is about land cover, not about the coastline:
 //
 //   native    ESA's base level, point-sampled (nearest, overviews off): unbiased area shares
 //   10 m mode the download's warp, but forced onto ESA's base level (-ovr NONE)
@@ -22,6 +23,7 @@ import path from 'node:path';
 import { runQuiet, BUCKET, type Arg } from './worldcover.ts';
 import { parseCorner, CELL, type LonLat } from './coverage.ts';
 import { readBytes, tileBounds3857 } from './inspect.ts';
+import { maskOcean } from './ocean.ts';
 import { MERC, MAXLEVEL } from '../config.ts';
 
 // ESA WorldCover pixel: 3° per 36 000 px
@@ -92,7 +94,7 @@ export async function esaMosaic(keys: string[], dir: string): Promise<string> {
 	return vrt;
 }
 
-// warp `src` onto the px×px EPSG:3857 grid of tile z/x/y
+// warp `src` onto the px×px EPSG:3857 grid of tile z/x/y, with OSM's sea masked out like a block's window
 async function warpTile(src: string, out: string, z: number, x: number, y: number, px: number, ...args: Arg[]) {
 	const b = tileBounds3857(z, x, y);
 	await runQuiet(
@@ -109,6 +111,7 @@ async function warpTile(src: string, out: string, z: number, x: number, y: numbe
 		src,
 		out,
 	);
+	await maskOcean(out, b, px, out + '.sea.fgb');
 }
 
 // ESA's base level under the tile, point-sampled

@@ -8,7 +8,8 @@
 //
 // Deliberately NOT part of the fingerprint: paths, concurrency, and the per-channel `color` (styles
 // are generated separately, so recolouring must not invalidate a 55-core-hour cache) or `meta`
-// (name/attribution/description are stamped in at pack time, not baked into the fragments).
+// (name/attribution/description are stamped in at pack time, not baked into the fragments). Nor is the
+// date of the ocean mask: OSM's coastline moves by metres a year, which is not worth a rebuild.
 
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -23,6 +24,7 @@ import {
 	SIEVE_THRESHOLD,
 	MARGIN_PX,
 	FULL_PX,
+	OCEAN_URL,
 	simplifyForLevel,
 } from '../config.ts';
 
@@ -43,6 +45,7 @@ export function cacheValues(): Values {
 		// what matters is the tolerance per zoom, not how it is written: sample the function
 		simplify: Array.from({ length: MAXLEVEL + 1 }, (_, z) => simplifyForLevel(z)),
 		channels: channels.map((c) => ({ esa: c.esa, layer: c.layer, kind: c.kind, maxZoom: c.maxZoom })),
+		ocean: path.basename(OCEAN_URL, '.zip'), // which sea is masked out of every block (lib/ocean.ts)
 	};
 }
 

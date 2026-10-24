@@ -47,11 +47,10 @@ that zoom the kind comes from OSM (see [the handover](#the-handover)):
 | Permanent water bodies   | `water_polygons` | `water`       | z0–10                | z0–3            |
 | No data                  | —                | _(dropped)_   | —                    | —               |
 
-Only `kind` is stored. Where ESA has no data — the open ocean outside its 3° tiles — the container has a hole
-for Shortbread's `ocean` layer to fill. **Inside a coastal 3° tile, though, ESA classifies the sea as permanent
-water**, so this container's `water` reaches out to the tile edge. A merge only uses its `water` at z0–3, and
-the VersaTiles styles draw `water` and `ocean` in the same colour, so it doesn't show there; a style with
-different colours, or the container on its own, shows square blocks of `water` off the coasts.
+Only `kind` is stored. **The sea is a hole** for Shortbread's `ocean` layer to fill: every block masks out
+OSM's sea polygons, the ones Shortbread's `ocean` is built from, before it classifies ESA's pixels (see
+[ocean mask](#ocean-mask)). So the land cover ends at OSM's coastline, and ESA's own sea — which it classifies as
+permanent water inside its coastal 3° tiles — never becomes `water`. Lakes are not part of OSM's sea and stay.
 
 Some mappings are deliberately **lossy generalizations** — ESA can't resolve the OSM detail, and at these
 zooms it doesn't matter visually:
@@ -132,24 +131,25 @@ so they follow any change of a cutoff.
 ### Requirements
 
 - `node` (or `bun`)
-- [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdaladdo`, `gdalwarp`, `gdalinfo`, `gdal_translate`, `gdal_calc.py`, `ogr2ogr` and the `gdal raster` / `gdal vector` subcommands `calc`, `edit`, `sieve`, `polygonize` and `simplify-coverage` on `PATH`
+- [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdaladdo`, `gdalwarp`, `gdalinfo`, `gdal_translate`, `gdal_calc.py`, `gdal_rasterize`, `ogr2ogr` and the `gdal raster` / `gdal vector` subcommands `calc`, `edit`, `sieve`, `polygonize` and `simplify-coverage` on `PATH`
 - Python 3 with `numpy` (used by `gdal_calc.py` for the per-class masks; both ship with the GDAL install)
 - [`libvips`](https://www.libvips.org/) (`vips`) — used for the Gaussian blur
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`) — `tippecanoe-decode`, which ships with it, is used by `npm run stats -- --attribute`
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install) ≥ 4.15.0
+- `curl`, for the ocean mask and the OSM base
 - for `npm run preview`: a browser, and internet access for MapLibre GL from a CDN (the tiles themselves are served locally)
 
 ### Run
 
 ```sh
-npm run download   # once: build the EPSG:3857 source raster from ESA's remote tiles
+npm run download   # once: build the EPSG:3857 source raster from ESA's remote tiles, fetch the ocean mask
 npm run build      # everything else → data/landcover.versatiles
 npm run merge      # optional: merge with OSM → data/combined.versatiles
 ```
 
-> **Resources.** A full z0–10 build needs roughly **150 GB** of disk under `data/` (the ~23 GB EPSG:3857 source
-> plus the per-block / per-zoom caches) and on the order of **300 core-hours** of CPU. It's heavily
-> parallelised, but plan for a long run on a many-core machine with ample free disk.
+> **Resources.** A full z0–10 build needs roughly **150 GB** of disk under `data/` (the ~19 GB EPSG:3857 source,
+> the ~1.3 GB ocean mask, and the per-block / per-zoom caches) and on the order of **300 core-hours** of CPU. It's
+> heavily parallelised, but plan for a long run on a many-core machine with ample free disk.
 
 Everything reads and writes under `data/`; `LANDCOVER_DATA_DIR` moves it, and `LANDCOVER_SOURCE_DIR` lets
 several data dirs share one source raster. All parameters live in `config.ts`.
@@ -183,7 +183,30 @@ choice for categorical data) reprojects them into **one EPSG:3857 GeoTIFF** at t
 
 The warp reads ESA's internal overviews rather than the full 10 m data, so it transfers a fraction of the
 ~124 GB dataset. The output is tiled, ZSTD-compressed (level 9), BigTIFF and **sparse** — all-ocean blocks
-aren't stored. It is written atomically, so an interrupted run leaves no half-built source.
+aren't stored. It is written atomically, so an interrupted run leaves no half-built source. A re-run keeps a
+raster that is already there (unless it was built for another `TILE_PX`); delete it to rebuild.
+
+### Ocean mask
+
+ESA classifies the sea inside its coastal 3° tiles as permanent water, and its coastline is not OSM's. The
+download therefore also fetches [OSM's water polygons](https://osmdata.openstreetmap.de/data/water-polygons.html)
+(`water-polygons-split-3857`, ~930 MB, updated daily from OSM's coastline) — the file planetiler-shortbread
+builds Shortbread's `ocean` layer from — and converts them to a FlatGeobuf with a spatial index,
+`data/0_download/water-polygons-3857.fgb`. Every block burns them into its window as no-data
+(`lib/ocean.ts`). The result:
+
+- The land cover ends at OSM's coastline, within about one source pixel, so it neither overlaps OSM's ocean
+  nor leaves a gap before it.
+- ESA's coastal sea is gone at every zoom, also from `water` at z0–3 and from the container on its own.
+- Lakes stay: they are not in OSM's sea. Neither is ESA sea inside OSM's land (a harbour, a recently
+  reclaimed coast), which stays as `water`; a merge drops that from z4 along with the rest of ESA's water.
+- ESA classes seaward of OSM's coastline are dropped, e.g. salt marsh on the outer tidal flats.
+
+It costs little: a block first clips the polygons to its window through the spatial index (`ogr2ogr -spat`,
+simplified to half a raster pixel), then rasterizes the clip (`gdal_rasterize`). That takes ~0.2 s inland,
+~0.5 s on a coastal z10 block and ~100 s for the world-sized blocks of z0–3. The mask is part of the
+cache fingerprint, so a build without it is not mixed with one with it. Its date is not, so a newer coastline
+doesn't invalidate a cache: delete the file and re-run `npm run download` to refresh it.
 
 ### Coverage index
 
@@ -196,7 +219,7 @@ it never skips a block that overlaps land.
 
 `lib/block.ts` turns one block at one zoom into `land`/`water_polygons` fragments. It reads the block's window
 plus a margin from the source (`gdalwarp -r mode`, which picks the matching overview level, so a low-zoom block
-reads ≈100× less), then:
+reads ≈100× less), masks out OSM's sea (see [ocean mask](#ocean-mask)), then:
 
 1. **Channels** — one 0/255 mask per class active at this zoom, all from one `gdal_calc.py` call. ESA's no-data
    and every inactive class fold into the no-data channel.
@@ -291,4 +314,5 @@ to measure a change, and what the measurements so far say, is in [doc/TUNING.md]
 
 - [ESA Worldcover](https://esa-worldcover.org/en/data-access) is licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/)
 - The Versatiles Landcover Vectors tileset is derived from ESA Worldcover and therefore also licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/)
+- The ocean mask is [OSM's water polygons](https://osmdata.openstreetmap.de/data/water-polygons.html), © OpenStreetMap contributors, [ODbL](https://opendatacommons.org/licenses/odbl/)
 - The code in this repository is in the [Public Domain](http://unlicense.org/UNLICENSE)

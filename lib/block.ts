@@ -8,6 +8,7 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 
 import { runQuiet, atomic, presentValues } from './worldcover.ts';
+import { maskOcean } from './ocean.ts';
 import {
 	channels,
 	blockWindow,
@@ -136,6 +137,11 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			window,
 		);
 		scratch.push(window + '.aux.xml'); // gdalinfo -hist (below) leaves a PAM sidecar — clean it up too
+
+		// 1b. blank OSM's sea out of the window (→ no-data), so the land cover ends at OSM's coastline and
+		//     ESA's coastal sea never becomes `water`. Before the histogram, so the fast paths see the masked
+		//     window: an all-sea block turns empty, and a coastal block is no longer mistaken for uniform.
+		await maskOcean(window, w, px.width, tmp('sea.fgb'));
 
 		// Histogram-gate the work: which active kinds actually occur in this window (incl. margin,
 		// so blur bleed near the inner edge is accounted for)? Two short-circuits avoid the

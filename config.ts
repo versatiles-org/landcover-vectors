@@ -20,7 +20,7 @@ export const CPU_CORES = os.availableParallelism();
 // Base directory for everything the pipeline downloads and generates. LANDCOVER_DATA_DIR relocates
 // the whole cache — a preview or a parameter experiment wants its own, so it neither pollutes nor is
 // polluted by the production build. LANDCOVER_SOURCE_DIR points the download mirror somewhere else,
-// so several data dirs can share the one ~23 GB source raster instead of copying it.
+// so several data dirs can share the one ~19 GB source raster instead of copying it.
 const fromEnv = (name: string, fallback: string): string => {
 	const v = process.env[name];
 	return v ? path.resolve(v) : fallback;
@@ -30,7 +30,7 @@ export const datadir = fromEnv('LANDCOVER_DATA_DIR', path.resolve(__dirname, 'da
 const sourcedir = fromEnv('LANDCOVER_SOURCE_DIR', path.join(datadir, '0_download'));
 
 export const dir = {
-	source: sourcedir, // holds the reprojected source raster + its tile list (download)
+	source: sourcedir, // holds the reprojected source raster, its tile list and the ocean mask (download)
 	results: path.join(datadir, '1_results'), // per-block land/water fragments (cached → builds resume)
 	tiles: path.join(datadir, '2_tiles'), // per-zoom mbtiles (cached → builds resume)
 	tmp: path.join(datadir, 'tmp'), // per-block / per-zoom scratch (not cached between runs)
@@ -39,6 +39,7 @@ export const dir = {
 export const file = {
 	source: path.join(sourcedir, 'worldcover-3857.tif'), // single EPSG:3857 source + overviews (download)
 	sourceList: path.join(sourcedir, '_source-tiles.txt'), // remote tile list, read for skip-empty (download)
+	ocean: path.join(sourcedir, 'water-polygons-3857.fgb'), // OSM's sea polygons, masked out of every block (download)
 	log: path.join(datadir, 'blocks.log'), // per-block processing log (TSV), one row per block (build)
 	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid (pack)
 	container: path.join(datadir, 'landcover.versatiles'), // brotli versatiles (pack)
@@ -48,6 +49,11 @@ export const file = {
 
 // upstream OSM-based Shortbread container the landcover is feature-merged into (bin/merge.ts)
 export const OSM_URL = 'https://download.versatiles.org/osm.versatiles';
+
+// OSM's sea, computed from its coastline: the polygons Shortbread's `ocean` layer is built from (planetiler-shortbread
+// reads this very file). Every block blanks them out of the ESA window before classifying it (lib/ocean.ts), so the
+// land cover ends at OSM's coastline instead of ESA's, and ESA's class-80 sea inside coastal 3° tiles never becomes `water`.
+export const OCEAN_URL = 'https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip';
 
 // EPSG:3857 (Web Mercator) world half-extent in metres (±MERC ≈ ±85.0511°)
 export const MERC = 20037508.342789244;
@@ -215,7 +221,7 @@ export type Channel = {
 // ESA WorldCover → Shortbread mapping. Order is the argmax channel order; the no-data class is
 // first. Legend: https://esa-worldcover.org/en/data-access
 export const channels: Channel[] = [
-	{ esa: [0], layer: null, kind: null, maxZoom: -1 }, // no data / open ocean (dropped)
+	{ esa: [0], layer: null, kind: null, maxZoom: -1 }, // no data / OSM's sea (dropped)
 	{ esa: [10], layer: 'land', kind: 'forest', maxZoom: 10, color: '#66AA44' }, // tree cover
 	{ esa: [40], layer: 'land', kind: 'farmland', maxZoom: 10, color: '#F0E7D1' }, // cropland
 	{ esa: [50], layer: 'land', kind: 'residential', maxZoom: 10, osmFrom: 10, color: '#EAE6E1' }, // built-up (OSM's from z10, where Shortbread starts every urban kind)
@@ -237,7 +243,7 @@ export const SCHEMA = 'shortbread@1.1';
 export const meta = {
 	name: 'Versatiles Landcover',
 	attribution:
-		'<a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a> (<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>)',
+		'<a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a> (<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>), coastline <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>',
 	description:
 		'Landcover vector tiles based on ESA Worldcover 2021, © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium',
 };

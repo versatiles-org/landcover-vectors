@@ -9,18 +9,39 @@
 // pyramid down to z0 — so a block read at any zoom hits the matching pyramid level. The
 // GeoTIFF is tiled with ZSTD, BigTIFF, and sparse (all-nodata ocean blocks aren't
 // stored). The remote tile list is recorded next to it for the build's skip-empty step.
+//
+// Next to it goes the ocean mask (lib/ocean.ts). Each of the two is only built when it is missing (or, for the
+// raster, stamped for another FULL_PX), so adding the mask to an existing download costs ~1 GB, not a re-warp.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { run, atomic, listSourceKeys, BUCKET } from './worldcover.ts';
-import { writeStamp, sourceValues } from './fingerprint.ts';
+import { writeStamp, readStamp, stampMismatch, sourceValues } from './fingerprint.ts';
+import { downloadOcean } from './ocean.ts';
 import { dir, file, MERC, FULL_PX } from '../config.ts';
+
+const exists = (p: string): Promise<boolean> =>
+	fs.stat(p).then(
+		() => true,
+		() => false,
+	);
 
 export async function download(): Promise<void> {
 	await fs.mkdir(dir.source, { recursive: true });
 	await fs.mkdir(dir.tmp, { recursive: true });
 
+	// a raster from before stamping counts as current, like the build treats it
+	const stamp = await readStamp(dir.source);
+	const current = (await exists(file.source)) && !(stamp && stampMismatch(stamp, sourceValues()));
+	if (current) console.error('Source raster present: %s (delete it to rebuild)', file.source);
+	else await downloadSource();
+
+	if (await exists(file.ocean)) console.error('Ocean mask present: %s (delete it to refresh)', file.ocean);
+	else await downloadOcean();
+}
+
+async function downloadSource(): Promise<void> {
 	// list the remote tiles and record them (skip-empty reads this list at build time)
 	console.error('Listing source tiles from s3://esa-worldcover …');
 	const keys = await listSourceKeys();

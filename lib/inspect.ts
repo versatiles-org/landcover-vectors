@@ -2,8 +2,8 @@
 // size half in lib/stats.ts.
 //
 // "What it should show" is the *target*: the source resampled to this tile at the pipeline's own
-// working resolution (TILE_PX per tile, the same `-r mode` read a block does), with every class that is
-// not active at this zoom turned into a hole. That is exactly the raster the blur → argmax → sieve →
+// working resolution (TILE_PX per tile, the same `-r mode` read a block does, OSM's sea masked out the
+// same way), with every class that is not active at this zoom turned into a hole. That is exactly the raster the blur → argmax → sieve →
 // simplify chain sets out to reproduce. The tile is rasterised onto the same grid and the two are
 // compared pixel by pixel.
 //
@@ -16,6 +16,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { runQuiet, runCapture } from './worldcover.ts';
+import { maskOcean } from './ocean.ts';
 import { countVertices, type GeoGeometry } from './stats.ts';
 import type { RGBImage } from './png.ts';
 import { channels, MERC, TILE_PX, type Rect } from '../config.ts';
@@ -253,7 +254,7 @@ export function pixelsOfPGM(file: Uint8Array, px: number): Uint8Array {
 
 export type Rendered = { codes: Uint8Array; features: number; vertices: number; unknownKinds: string[] };
 
-// the source's ESA classes over one tile, read the way a block reads its window
+// the source's ESA classes over one tile, read and sea-masked the way a block reads its window
 export async function renderSource(source: string, z: number, x: number, y: number, px = TILE_PX): Promise<Uint8Array> {
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lcv-inspect-'));
 	try {
@@ -269,6 +270,7 @@ export async function renderSource(source: string, z: number, x: number, y: numb
 			source,
 			out,
 		);
+		await maskOcean(out, b, px, path.join(dir, 'sea.fgb'));
 		return await readBytes(out, dir, px);
 	} finally {
 		await fs.rm(dir, { recursive: true, force: true });

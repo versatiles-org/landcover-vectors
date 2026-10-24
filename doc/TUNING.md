@@ -63,7 +63,8 @@ A sweep builds the area once per value, prints the worst tile per zoom per varia
 (`--tile`, or the largest tile of the first variant).
 
 `inspect` rasterises the tile onto the pipeline's own grid and compares it pixel by pixel with its **target**:
-the source read at `TILE_PX` like a block reads it, with every class the zoom does not draw turned into a hole.
+the source read at `TILE_PX` and sea-masked like a block reads it, with every class the zoom does not draw turned
+into a hole.
 It reports:
 
 - each class's area and how much of it was kept;

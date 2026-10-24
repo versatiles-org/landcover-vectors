@@ -53,6 +53,7 @@ import {
 	shares,
 } from '../lib/native.ts';
 import { requireCommands, listSourceKeys } from '../lib/worldcover.ts';
+import { requireOcean } from '../lib/ocean.ts';
 import { channels, datadir, file, MAXLEVEL, MERC, TILE_PX } from '../config.ts';
 
 const { values: opt, positionals } = parseArgs({
@@ -168,7 +169,8 @@ else await inspectTarget();
 // the default: the tile against its target, our own source read at TILE_PX
 async function inspectTarget(): Promise<void> {
 	// ---------------------------------------------------------------- render and compare
-	await requireCommands(['gdalwarp', 'gdal_translate', 'gdal_rasterize', 'tippecanoe-decode']);
+	await requireCommands(['gdalwarp', 'gdal_translate', 'gdal_rasterize', 'ogr2ogr', 'tippecanoe-decode']);
+	await requireOcean();
 	if (
 		!(await fs.stat(file.source).then(
 			() => true,
@@ -319,8 +321,10 @@ async function inspectNative(): Promise<void> {
 		'gdaladdo',
 		'gdal_translate',
 		'gdal_rasterize',
+		'ogr2ogr',
 		'tippecanoe-decode',
 	]);
+	await requireOcean(); // every stage is sea-masked like a block (lib/native.ts)
 	const tilePxs = (opt['tile-px'] ?? String(TILE_PX)).split(',').map(Number);
 	for (const t of tilePxs) {
 		if (!Number.isInteger(t) || t < 256 || t % 256 !== 0)
