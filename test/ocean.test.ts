@@ -12,9 +12,9 @@ const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'lcv-ocean-'));
 process.env.LANDCOVER_SOURCE_DIR = tmp; // config.ts reads it on import, so import everything after this
 
 const { runQuiet, commandExists } = await import('../lib/worldcover.ts');
-const { maskOcean, buildSeaShare, SEA } = await import('../lib/ocean.ts');
+const { maskOcean, buildSeaShare, shareLevel, seaShareWindow, SEA } = await import('../lib/ocean.ts');
 const { readBytes } = await import('../lib/inspect.ts');
-const { file, MERC } = await import('../config.ts');
+const { file, MERC, MAXLEVEL, FULL_PX, blockWindow, blocksPerAxis } = await import('../config.ts');
 
 const haveGdal = (await commandExists('gdal_rasterize')) && (await commandExists('ogr2ogr'));
 const PX = 10;
@@ -135,9 +135,51 @@ describe('buildSeaShare', { skip: !haveGdal && 'GDAL is not on PATH' }, () => {
 		assert.deepEqual([...l1.subarray(0, 2)], [(3 * SEA) / 4, 0]);
 	});
 
+	test('a window VRT reads its level of the pyramid as is', async () => {
+		// the western quarter of the world at level 1 (factor 4): 256 columns wide, 64 rows from row 32 on
+		const step = 4 * px;
+		const rect = { minx: -MERC, maxx: -MERC + 256 * step, maxy: MERC - 32 * step, miny: MERC - 96 * step };
+		const vrt = path.join(tmp, 'window.vrt');
+		await seaShareWindow(vrt, rect, 256, 64, share, FULL);
+		const tif = path.join(tmp, 'window.tif');
+		await runQuiet('gdal_translate', '-q', ['-srcwin', 0, 0, 64, 64], vrt, tif);
+		const got = await readBytes(tif, tmp, 64);
+		for (let row = 0; row < 64; row++)
+			assert.deepEqual([...got.subarray(row * 64, row * 64 + 2)], [(3 * SEA) / 4, 0]);
+	});
+
 	test('cleans up its per-tile rasters', async () => {
 		assert.equal(await fs.stat(path.join(tmp, 'share-tiles')).catch(() => null), null);
 	});
 
 	after(() => fs.rm(tmp, { recursive: true, force: true }));
+});
+
+describe('shareLevel', () => {
+	test('every block at every zoom sits on its level of the pyramid, at whole pixels', () => {
+		for (let z = 0; z <= MAXLEVEL; z++) {
+			const n = blocksPerAxis(z);
+			for (const [bx, by] of [
+				[0, 0],
+				[n - 1, n - 1],
+				[Math.floor(n / 2), Math.floor(n / 3)],
+			]) {
+				const { window3857: r, windowPx: w } = blockWindow(z, bx, by);
+				const { overview, xOff, yOff } = shareLevel(r, w.width, w.height);
+				assert.equal(overview, z === MAXLEVEL ? null : MAXLEVEL - z - 1, `z${z} ${bx}/${by}`);
+				const size = FULL_PX / 2 ** (MAXLEVEL - z); // that level's side in pixels
+				assert.ok(xOff >= 0 && yOff >= 0 && xOff + w.width <= size && yOff + w.height <= size, `z${z} ${bx}/${by}`);
+			}
+		}
+	});
+
+	test('refuses a window off the grid instead of resampling it', () => {
+		const { window3857: r, windowPx: w } = blockWindow(9, 3, 3);
+		const half = (r.maxx - r.minx) / w.width / 2;
+		assert.throws(
+			() => shareLevel({ ...r, minx: r.minx + half, maxx: r.maxx + half }, w.width, w.height),
+			/x offset/,
+		);
+		assert.throws(() => shareLevel(r, Math.round(w.width / 3), w.height), /no pyramid level/);
+	});
 });

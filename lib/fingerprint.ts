@@ -24,6 +24,7 @@ import {
 	MARGIN_PX,
 	FULL_PX,
 	OCEAN_URL,
+	SEA_SHARE_MIN,
 	simplifyForLevel,
 } from '../config.ts';
 
@@ -43,7 +44,8 @@ export function cacheValues(): Values {
 		// what matters is the tolerance per zoom, not how it is written: sample the function
 		simplify: Array.from({ length: MAXLEVEL + 1 }, (_, z) => simplifyForLevel(z)),
 		channels: channels.map((c) => ({ esa: c.esa, layer: c.layer, kind: c.kind, maxZoom: c.maxZoom })),
-		ocean: path.basename(OCEAN_URL, '.zip'), // which sea is masked out of every block (lib/ocean.ts)
+		// which sea is masked out of every block, and how: the sea-share pyramid, thresholded (lib/ocean.ts)
+		ocean: `${path.basename(OCEAN_URL, '.zip')}, sea share ≥ ${SEA_SHARE_MIN} %`,
 	};
 }
 

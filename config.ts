@@ -40,7 +40,7 @@ export const file = {
 	source: path.join(sourcedir, 'worldcover-3857.tif'), // single EPSG:3857 source + overviews (download)
 	seaShare: path.join(sourcedir, 'seashare-3857.tif'), // OSM's sea share on the source's grid + overviews (download)
 	sourceList: path.join(sourcedir, '_source-tiles.txt'), // remote tile list, read for skip-empty (download)
-	ocean: path.join(sourcedir, 'water-polygons-3857.fgb'), // OSM's sea polygons, masked out of every block (download)
+	ocean: path.join(sourcedir, 'water-polygons-3857.fgb'), // OSM's sea polygons, rasterized into seaShare (download)
 	log: path.join(datadir, 'blocks.log'), // per-block processing log (TSV), one row per block (build)
 	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid (pack)
 	container: path.join(datadir, 'landcover.versatiles'), // brotli versatiles (pack)
@@ -52,7 +52,7 @@ export const file = {
 export const OSM_URL = 'https://download.versatiles.org/osm.versatiles';
 
 // OSM's sea, computed from its coastline: the polygons Shortbread's `ocean` layer is built from (planetiler-shortbread
-// reads this very file). Every block blanks them out of the ESA window before classifying it (lib/ocean.ts), so the
+// reads this very file). Every block blanks them out of the ESA window as it classifies it (lib/ocean.ts), so the
 // land cover ends at OSM's coastline instead of ESA's, and ESA's class-80 sea inside coastal 3° tiles never becomes `water`.
 export const OCEAN_URL = 'https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip';
 
@@ -227,6 +227,11 @@ export const channels: Channel[] = [
 	{ esa: [70], layer: 'water_polygons', kind: 'glacier', maxZoom: 10, color: '#FFFFFF' }, // snow & ice
 	{ esa: [80], layer: 'water_polygons', kind: 'water', maxZoom: 10, osmFrom: 4, color: '#B3D9E6' }, // permanent water (OSM's from z4, where Shortbread starts it)
 ];
+
+// A pixel is sea, and so no-data, when at least this share of it (in percent) is OSM's sea: the sea-share
+// pyramid (lib/ocean.ts) holds the true share at every zoom. 50 keeps the sea's area within ±0.2 % of an exact
+// burn at each zoom and moves the coastline by single pixels (0.1–0.2 % of a coastal block's pixels).
+export const SEA_SHARE_MIN = 50;
 
 // the tile schema the output conforms to: Shortbread's own layer names and `kind` values (see the README
 // section "What's in the tiles"). Stamped into the container by lib/assemble.ts and bin/merge.ts.

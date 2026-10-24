@@ -207,28 +207,32 @@ ESA classifies the sea inside its coastal 3° tiles as permanent water, and its 
 download therefore also fetches [OSM's water polygons](https://osmdata.openstreetmap.de/data/water-polygons.html)
 (`water-polygons-split-3857`, ~930 MB, updated daily from OSM's coastline) — the file planetiler-shortbread
 builds Shortbread's `ocean` layer from — and converts them to a FlatGeobuf with a spatial index,
-`data/0_download/water-polygons-3857.fgb`. Every block burns them into its window as no-data
-(`lib/ocean.ts`). The result:
+`data/0_download/water-polygons-3857.fgb`.
 
-- The land cover ends at OSM's coastline, within about one source pixel, so it neither overlaps OSM's ocean
-  nor leaves a gap before it.
+It then rasterizes them once into a **sea-share pyramid**, `data/0_download/seashare-3857.tif` (`lib/ocean.ts`):
+the source raster's own grid, each base pixel 100 (sea) or 0 (land) — the polygons simplified to half a pixel,
+pixel centres inside count — and average overviews down to z0, so every level holds the true sea share of its
+pixels. It is built in 16384² px tiles in parallel, mosaicked and stamped with the polygon file it came from;
+an interrupted run resumes from the tiles already done.
+
+Every block reads its window of the pyramid at its own zoom, the way it reads the classes from the source: a
+block's grid lines up with one level, so a small VRT points at that level and the window's rectangle in it, and
+the class index reads it as a second input. A pixel whose sea share is at least `SEA_SHARE_MIN` = 50 % becomes
+no-data. The result:
+
+- The land cover ends at OSM's coastline. At z10 the mask is the burn itself; below, a pixel is sea when most
+  of it is, which keeps the sea's area within ±0.2 % of an exact burn at that zoom and moves the coastline by
+  single pixels (0.1–0.2 % of a coastal block's pixels). So it neither overlaps OSM's ocean nor leaves a gap.
 - ESA's coastal sea is gone at every zoom, also from `water` at z0–3 and from the container on its own.
 - Lakes stay: they are not in OSM's sea. Neither is ESA sea inside OSM's land (a harbour, a recently
   reclaimed coast), which stays as `water`; a merge drops that from z4 along with the rest of ESA's water.
 - ESA classes seaward of OSM's coastline are dropped, e.g. salt marsh on the outer tidal flats.
 
-It costs little: a block first clips the polygons to its window through the spatial index (`ogr2ogr -spat`,
-simplified to half a raster pixel), then rasterizes the clip (`gdal_rasterize`). That takes ~0.2 s inland,
-~0.5 s on a coastal z10 block and ~100 s for the world-sized blocks of z0–3. The mask is part of the
-cache fingerprint, so a build without it is not mixed with one with it. Its date is not, so a newer coastline
-doesn't invalidate a cache: delete the file and re-run `npm run download` to refresh it.
-
-The download also rasterizes the polygons once into a **sea-share pyramid**, `data/0_download/seashare-3857.tif`:
-the source raster's own grid, with each base pixel 100 (sea) or 0 (land), burned like a z10 block burns its
-window (polygons simplified to half a pixel, pixel centres inside count), and average overviews down to z0, so
-every level holds the true sea share of its pixels. It is built in 16384² px tiles in parallel, mosaicked and
-stamped with the polygon file it came from, so refreshing the polygons rebuilds it; an interrupted run resumes
-from the tiles already done.
+Per block it costs next to nothing: the class index reads the share window alongside, about 0.03 s. Burning
+the polygons into every block instead cost up to a minute on a complex coast below z10 (Scandinavia, z6–9) and
+~100 s for the world-sized blocks of z0–3. The mask and its threshold are part of the cache fingerprint. The
+polygons' date is not, so a newer coastline doesn't invalidate a cache: delete the polygon file and re-run
+`npm run download` to refresh it; the sea share follows.
 
 ### Coverage index
 
@@ -241,10 +245,10 @@ it never skips a block that overlaps land.
 
 `lib/block.ts` turns one block at one zoom into `land`/`water_polygons` fragments. It reads the block's window
 plus a margin from the source (`gdalwarp -r mode`, which picks the matching overview level, so a low-zoom block
-reads ≈100× less), masks out OSM's sea (see [ocean mask](#ocean-mask)), then:
+reads ≈100× less) and the matching window of the sea share (see [ocean mask](#ocean-mask)), then:
 
-1. **Classify** — one `gdal_calc.py` call maps each pixel's ESA code to its class index. ESA's no-data and
-   every inactive class fold into the no-data class. Each pixel keeps its own class: there is no smoothing
+1. **Classify** — one `gdal_calc.py` call maps each pixel's ESA code to its class index. ESA's no-data,
+   every inactive class and OSM's sea fold into the no-data class. Each pixel keeps its own class: there is no smoothing
    before the sieve, because a blur cost accuracy (see [doc/TUNING.md](doc/TUNING.md)).
 2. **Sieve** — `gdal raster sieve` merges patches smaller than `SIEVE_RENDERED` = 1.77 rendered px²
    (`SIEVE_THRESHOLD` = round(1.77·4²) = 28 px) into their largest neighbour.
@@ -265,11 +269,13 @@ seam; the tile-exact crop and `--preserve-boundary` give neighbouring blocks an 
 Each kind is active up to its cutoff (`maxZoom` in `config.ts`, z10 for every kind today). Above it, a class
 folds into no-data.
 
-**Fast paths.** A histogram of the window (`gdalinfo -hist`) says which ESA values occur. Only the kinds present
-get a class index, which is exact, not an approximation. If the whole window is a single kind,
-the block is emitted directly as one rectangle of that kind. ⚠️ GDAL leaves no-data pixels out of the
-histogram, so "a single value" also requires the histogram to count every pixel of the window; otherwise a
-coastal block with one land class would be painted over the ocean too.
+**Fast paths.** Histograms of the window and its sea share (`gdalinfo -hist`) say which ESA values occur and
+how much of the window is sea. A block that is all sea is empty. Only the kinds present get a class index, which
+is exact, not an approximation. If the whole window is a single kind and none of it is sea, the block is emitted
+directly as one rectangle of that kind. ⚠️ The sea is not burned into the window, so ESA's histogram still counts
+what lies under it — ESA's own sea is class 80 inside its coastal tiles — and an open-sea block would look like
+one class of water without the sea count. GDAL also leaves no-data out of the histogram, so "a single value"
+requires the histogram to count every pixel of the window as well.
 
 ### Per-zoom tiling
 

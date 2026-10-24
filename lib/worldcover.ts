@@ -89,17 +89,23 @@ export type BandValues = {
 };
 
 export async function presentValues(tif: string): Promise<BandValues> {
-	const info = JSON.parse(await runCapture('gdalinfo', ['-json', '-hist'], tif));
-	const buckets: number[] = info.bands?.[0]?.histogram?.buckets ?? [];
+	const { buckets, pixels } = await histogram(tif);
 	const values = new Set<number>();
 	let counted = 0;
 	for (let v = 0; v < buckets.length; v++) {
 		counted += buckets[v];
 		if (buckets[v] > 0) values.add(v);
 	}
+	return { values, counted, pixels };
+}
+
+// the raw histogram of a single-band Byte raster (bucket i counts the pixels of value i, no-data left out)
+// and its pixel count. Same caveats as presentValues: one full read, and a `.aux.xml` sidecar.
+export async function histogram(tif: string): Promise<{ buckets: number[]; pixels: number }> {
+	const info = JSON.parse(await runCapture('gdalinfo', ['-json', '-hist'], tif));
 	if (!Array.isArray(info.size)) throw new Error(`gdalinfo reported no raster size for ${tif}`);
 	const [width, height] = info.size as [number, number];
-	return { values, counted, pixels: width * height };
+	return { buckets: info.bands?.[0]?.histogram?.buckets ?? [], pixels: width * height };
 }
 
 // describe a non-zero child exit; a null code means it was terminated by a signal

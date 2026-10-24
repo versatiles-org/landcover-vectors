@@ -1,10 +1,14 @@
-// The ocean mask: OSM's sea polygons, blanked out of every ESA window before it is classified.
+// The ocean mask: OSM's sea, blanked out of every ESA window as it is classified.
 //
 // ESA classifies the sea inside its coastal 3° tiles as permanent water (class 80), so without a mask the
 // container's `water` reaches out to the tile edge, and ESA's land runs past OSM's coastline wherever the two
 // disagree. Shortbread's `ocean` layer is built from OSM's water polygons (OCEAN_URL), so burning those very
 // polygons into the window as ESA's no-data (0) makes the land cover end where the OSM base's sea begins.
 // Lakes are not in those polygons and stay; ESA sea inside OSM's land (a harbour, reclaimed coast) stays too.
+//
+// The download rasterizes the polygons once into a sea-share pyramid (buildSeaShare, below), and a block reads
+// its window of that (seaShareWindow). maskOcean burns the polygons into one raster directly: an exact burn,
+// for references that are not on the pyramid's grid (lib/native.ts).
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -13,7 +17,7 @@ import { existsSync } from 'node:fs';
 
 import { run, runQuiet, atomic, pMap } from './worldcover.ts';
 import { progress } from './progress.ts';
-import type { Values } from './fingerprint.ts';
+import { readStamp, type Values } from './fingerprint.ts';
 import { dir, file, OCEAN_URL, MERC, FULL_PX, MAXLEVEL, CPU_CORES, type Rect } from '../config.ts';
 
 const LAYER = 'ocean';
@@ -36,7 +40,7 @@ export async function downloadOcean(): Promise<void> {
 }
 
 // Burn OSM's sea into `tif` (an EPSG:3857 Byte raster covering `extent` with `widthPx` columns) as no-data,
-// in place. Two steps on purpose: gdal_rasterize straight from the full file costs ~1.5 GB of memory per call
+// in place — the way every block did before the sea-share pyramid. Two steps on purpose: gdal_rasterize straight from the full file costs ~1.5 GB of memory per call
 // even when nothing touches the window, while clipping first with ogr2ogr (through the spatial index) keeps
 // both under ~150 MB. The clip is simplified to half a raster pixel, which changes almost no pixel centre
 // (0.002 % of the sea pixels of a z10 block) but turns a world-sized low-zoom window from minutes of
@@ -207,4 +211,78 @@ export async function buildSeaShare(out: string, opts: SeaShareOpts): Promise<vo
 		);
 	});
 	await fs.rm(tilesDir, { recursive: true, force: true });
+}
+
+// fail early, before a long run, when the sea share is missing or was built for another grid
+export async function requireSeaShare(): Promise<void> {
+	if (!existsSync(file.seaShare))
+		throw new Error(
+			`missing ${file.seaShare} — run "npm run download" (it keeps a source raster and polygons that are already there)`,
+		);
+	const stamp = await readStamp(dir.source, SEA_SHARE_STAMP);
+	const builtFor = stamp?.values?.fullPx;
+	if (builtFor !== undefined && builtFor !== FULL_PX)
+		throw new Error(`${file.seaShare} was built for FULL_PX ${builtFor}, not ${FULL_PX} — re-run "npm run download"`);
+}
+
+// Where a window sits in the sea-share pyramid: the overview whose pixels are the window's (null = the base)
+// and the window's offset in it. A block's grid always lines up with one level (its inner edge is tile-aligned,
+// its margin a whole number of pixels), so the offset is a whole number of pixels — anything else is an error,
+// not something to resample.
+export function shareLevel(
+	rect: Rect,
+	width: number,
+	height: number,
+	fullPx = FULL_PX,
+): { overview: number | null; xOff: number; yOff: number } {
+	const base = (2 * MERC) / fullPx;
+	const px = (rect.maxx - rect.minx) / width;
+	const factor = px / base;
+	const n = Math.round(Math.log2(factor));
+	const whole = (v: number, what: string) => {
+		const r = Math.round(v);
+		if (Math.abs(v - r) > 1e-6)
+			throw new Error(`sea share: the window's ${what} (${v}) is not on the pyramid's grid`);
+		return r;
+	};
+	if (n < 0 || n > Math.log2(fullPx) || Math.abs(factor / 2 ** n - 1) > 1e-6)
+		throw new Error(`sea share: no pyramid level has ${px} m pixels`);
+	if (Math.abs((rect.maxy - rect.miny) / height / px - 1) > 1e-6)
+		throw new Error('sea share: the window has no square pixels');
+	return {
+		overview: n === 0 ? null : n - 1,
+		xOff: whole((rect.minx + MERC) / px, 'x offset'),
+		yOff: whole((MERC - rect.maxy) / px, 'y offset'),
+	};
+}
+
+// Write a VRT that reads a window straight out of the sea-share pyramid, at its own level: no warp, no
+// temporary raster. gdal_calc reads it as a second input next to the window (lib/block.ts).
+export async function seaShareWindow(
+	out: string,
+	rect: Rect,
+	width: number,
+	height: number,
+	src = file.seaShare,
+	fullPx = FULL_PX,
+): Promise<void> {
+	const { overview, xOff, yOff } = shareLevel(rect, width, height, fullPx);
+	const px = (rect.maxx - rect.minx) / width;
+	const open = overview === null ? '' : `<OpenOptions><OOI key="OVERVIEW_LEVEL">${overview}</OOI></OpenOptions>`;
+	await fs.writeFile(
+		out,
+		`<VRTDataset rasterXSize="${width}" rasterYSize="${height}">
+  <SRS>EPSG:3857</SRS>
+  <GeoTransform>${rect.minx}, ${px}, 0, ${rect.maxy}, 0, ${-px}</GeoTransform>
+  <VRTRasterBand dataType="Byte" band="1">
+    <SimpleSource>
+      <SourceFilename relativeToVRT="0">${path.resolve(src)}</SourceFilename>${open}
+      <SourceBand>1</SourceBand>
+      <SrcRect xOff="${xOff}" yOff="${yOff}" xSize="${width}" ySize="${height}"/>
+      <DstRect xOff="0" yOff="0" xSize="${width}" ySize="${height}"/>
+    </SimpleSource>
+  </VRTRasterBand>
+</VRTDataset>
+`,
+	);
 }

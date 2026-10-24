@@ -7,9 +7,17 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 
-import { runQuiet, atomic, presentValues } from './worldcover.ts';
-import { maskOcean } from './ocean.ts';
-import { channels, blockWindow, SIEVE_THRESHOLD, simplifyForLevel, type Rect, type Channel } from '../config.ts';
+import { runQuiet, atomic, presentValues, histogram } from './worldcover.ts';
+import { seaShareWindow } from './ocean.ts';
+import {
+	channels,
+	blockWindow,
+	SIEVE_THRESHOLD,
+	SEA_SHARE_MIN,
+	simplifyForLevel,
+	type Rect,
+	type Channel,
+} from '../config.ts';
 
 export type BlockCtx = {
 	src: string;
@@ -32,6 +40,7 @@ export const LOG_HEADER = [
 	'water_bytes',
 	'present', // distinct ESA values in the window — no-data excluded, see presentValues()
 	'nodata_px', // ... which is exactly why this column exists: no-data pixels in the window
+	'sea_px', // pixels of OSM's sea in the window (sea share ≥ SEA_SHARE_MIN), whatever ESA has under them
 	'channels',
 	'kind',
 	'note', // error message on a `failed` row
@@ -41,6 +50,33 @@ export const LOG_HEADER = [
 const isAny = (esa: number[]) => `(${esa.map((c) => `(A==${c})`).join('|')})`;
 // creation options for the warp (legacy gdalwarp uses single-dash -co)
 const co = ['-co', 'COMPRESS=DEFLATE', '-co', 'TILED=YES', '-co', 'BIGTIFF=YES'];
+
+// what a window holds, from its histograms: ESA's classes, and OSM's sea on top of them
+export type WindowContent = {
+	present: Set<number>; // distinct ESA values, no-data excluded (see presentValues)
+	counted: number; // pixels the ESA histogram covers, i.e. all but ESA's no-data
+	pixels: number;
+	sea: number; // pixels whose sea share reaches SEA_SHARE_MIN
+};
+export type FastPath =
+	{ branch: 'empty' } | { branch: 'uniform'; kind: Channel } | { branch: 'full'; classes: Channel[] };
+
+// Which way a block goes, decided on its window's histograms before any raster work:
+//   empty   — all sea, or no active kind anywhere: nothing to emit
+//   uniform — one active kind fills the whole window and none of it is sea: emit the inner rectangle
+//   full    — the chain, with a class index only for the kinds present (exact: an absent kind has no pixel)
+// The sea is not burned into the window, so the ESA histogram still counts what lies under it: ESA's own
+// sea is class 80 inside its coastal 3° tiles. Without the sea count, an open-sea block there would look
+// like one class and go out as a water rectangle; with it, a block that is all sea is empty and one with
+// any sea is never uniform.
+export function fastPath(c: WindowContent, active: Channel[]): FastPath {
+	if (c.sea === c.pixels) return { branch: 'empty' };
+	const classes = active.filter((ch) => ch.esa.some((v) => c.present.has(v)));
+	if (classes.length === 0) return { branch: 'empty' };
+	// `counted === pixels`: the histogram accounted for every pixel, so there is no ESA no-data either
+	if (c.sea === 0 && c.present.size === 1 && c.counted === c.pixels) return { branch: 'uniform', kind: classes[0] };
+	return { branch: 'full', classes };
+}
 
 // process block (bx,by) at zoom z → its land/water FlatGeobuf fragments (or nulls if the
 // block is empty / a layer has no active kinds at this zoom). Fragments are written atomically
@@ -58,7 +94,14 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 	const finish = async (
 		branch: Branch,
 		frags: BlockFragments,
-		opts: { present?: number[]; nodata?: number; channels?: number; kind?: string | null; note?: string } = {},
+		opts: {
+			present?: number[];
+			nodata?: number;
+			sea?: number;
+			channels?: number;
+			kind?: string | null;
+			note?: string;
+		} = {},
 	) => {
 		if (ctx.logFile) {
 			const sizeOf = (f: string | null) =>
@@ -78,6 +121,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 				waterBytes ?? '',
 				opts.present?.join(',') ?? '',
 				opts.nodata ?? '',
+				opts.sea ?? '',
 				opts.channels ?? '',
 				opts.kind ?? '',
 				opts.note?.replace(/\s+/g, ' ').trim().slice(0, 300) ?? '', // keep it one TSV row
@@ -129,21 +173,21 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		);
 		scratch.push(window + '.aux.xml'); // gdalinfo -hist (below) leaves a PAM sidecar — clean it up too
 
-		// 1b. blank OSM's sea out of the window (→ no-data), so the land cover ends at OSM's coastline and
-		//     ESA's coastal sea never becomes `water`. Before the histogram, so the fast paths see the masked
-		//     window: an all-sea block turns empty, and a coastal block is no longer mistaken for uniform.
-		await maskOcean(window, w, px.width, tmp('sea.fgb'));
+		// 1b. OSM's sea over the same window, read straight out of the sea-share pyramid at this zoom's level
+		//     (lib/ocean.ts): a VRT, no raster is written. Pixels whose share reaches SEA_SHARE_MIN become no-data
+		//     in the class index (2), so the land cover ends at OSM's coastline and ESA's coastal sea never
+		//     becomes `water`.
+		const share = tmp('share.vrt');
+		await seaShareWindow(share, w, px.width, px.height);
+		scratch.push(share + '.aux.xml');
 
-		// Histogram-gate the work: which active kinds actually occur in this window (incl. margin,
-		// which the sieve near the inner edge sees)? Two short-circuits avoid the
-		// classify→sieve→polygonize→simplify chain for low-diversity blocks (common at high zoom):
-		//   A) no active kind present → the block is all no-data → empty fragments
-		//   B) one value fills the whole window, no-data included → emit the inner rectangle as one polygon
-		// Otherwise only the present kinds get a class index. Pruning is exact: an absent kind has no
-		// pixel to classify.
+		// Histogram-gate the work (see fastPath): which active kinds occur in this window (incl. margin, which
+		// the sieve near the inner edge sees), and how much of it is sea?
 		const { values: present, counted, pixels } = await presentValues(window);
-		const nodataPx = pixels - counted;
-		const activePresent = active.filter((c) => c.esa.some((v) => present.has(v)));
+		const { buckets } = await histogram(share);
+		const sea = buckets.slice(SEA_SHARE_MIN).reduce((n, v) => n + v, 0);
+		const content = { present: [...present], nodata: pixels - counted, sea };
+		const route = fastPath({ present, counted, pixels, sea }, active);
 
 		// write fragments directly from the inner rectangle (EPSG:4326 = win.innerLonLat): the
 		// rectangle tagged `kind` for a uniform block's layer, an empty layer for everything else
@@ -185,27 +229,26 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			if (hasWater) await writeLayer(waterFrag, 'water_polygons');
 		};
 
-		if (activePresent.length === 0) {
-			await emit(null); // A: nothing but no-data
-			return finish('empty', frags, { present: [...present], nodata: nodataPx });
+		if (route.branch === 'empty') {
+			await emit(null); // all sea, or nothing but no-data
+			return finish('empty', frags, content);
 		}
-		// `counted === pixels` is what makes this safe: the histogram accounted for every pixel, so the
-		// window really is one single class. GDAL omits no-data from the histogram, so without that test a
-		// mostly-ocean coastal block whose only land class is, say, grassland would look uniform here and
-		// get its entire inner rectangle — ocean included — emitted as grassland.
-		if (present.size === 1 && counted === pixels) {
-			await emit(activePresent[0]); // B: one kind fills the block
-			return finish('uniform', frags, { present: [...present], nodata: nodataPx, kind: activePresent[0].kind });
+		if (route.branch === 'uniform') {
+			await emit(route.kind); // one kind fills the block
+			return finish('uniform', frags, { ...content, kind: route.kind.kind });
 		}
+		const activePresent = route.classes;
 
-		// 2. class index per pixel: 1 = no-data, 2.. = activePresent[j]. Each pixel keeps its own class; only the
-		// sieve below generalizes. The codes of different classes are disjoint, so at most one term is set.
+		// 2. class index per pixel: 1 = no-data (ESA's, inactive kinds, and OSM's sea from B), 2.. =
+		// activePresent[j]. Each pixel keeps its own class; only the sieve below generalizes. The codes of
+		// different classes are disjoint, so at most one term is set.
 		const index = tmp('index.tif');
-		const expr = ['1', ...activePresent.map((c, j) => `${j + 1}*${isAny(c.esa)}`)].join('+');
+		const classes = activePresent.map((c, j) => `${j + 1}*${isAny(c.esa)}`).join('+');
 		await runQuiet(
 			'gdal_calc.py',
 			['-A', window],
-			['--calc', expr],
+			['-B', share],
+			['--calc', `1+(B<${SEA_SHARE_MIN})*(${classes})`],
 			['--type', 'Byte'],
 			'--hideNoData',
 			['--co', 'COMPRESS=DEFLATE'],
@@ -304,7 +347,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			);
 		if (hasLand) await atomic(landFrag, (out) => split(out, 'land', codesFor('land')));
 		if (hasWater) await atomic(waterFrag, (out) => split(out, 'water_polygons', codesFor('water_polygons')));
-		return finish('full', frags, { present: [...present], nodata: nodataPx, channels: activePresent.length });
+		return finish('full', frags, { ...content, channels: activePresent.length });
 	} catch (err) {
 		// leave a row behind, then let the caller decide: bin/build.ts collects every failed block of a
 		// zoom and reports them together, so one bad block no longer discards the whole zoom's work

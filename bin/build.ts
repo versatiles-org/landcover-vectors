@@ -9,7 +9,7 @@
 import fs from 'node:fs/promises';
 
 import { requireCommands } from '../lib/worldcover.ts';
-import { requireOcean } from '../lib/ocean.ts';
+import { requireSeaShare } from '../lib/ocean.ts';
 import { progress } from '../lib/progress.ts';
 import { buildCoverage } from '../lib/coverage.ts';
 import { planBlocks, countBlocks } from '../lib/plan.ts';
@@ -34,7 +34,6 @@ await requireCommands([
 	'gdal_translate',
 	'gdal_calc.py',
 	'gdalinfo', // lib/block.ts reads the window histogram through it
-	'gdal_rasterize', // lib/ocean.ts burns OSM's sea into each window
 	'ogr2ogr',
 	'tippecanoe',
 	'tile-join',
@@ -48,7 +47,7 @@ const haveSource = await fs.stat(file.source).then(
 	() => false,
 );
 if (!haveSource) throw new Error(`missing ${file.source} — run "npm run download" first`);
-await requireOcean();
+await requireSeaShare();
 
 // The source raster is built for one specific FULL_PX; a stamped mismatch means it was produced by a
 // different config and every block would read the wrong resolution. Sources from before stamping

@@ -17,7 +17,7 @@ import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
 import { requireCommands, commandExists, runCapture } from '../lib/worldcover.ts';
-import { requireOcean } from '../lib/ocean.ts';
+import { requireSeaShare } from '../lib/ocean.ts';
 import { buildCoverage } from '../lib/coverage.ts';
 import { planBlocks, countBlocks } from '../lib/plan.ts';
 import { runZooms } from '../lib/pipeline.ts';
@@ -114,13 +114,12 @@ async function build(): Promise<void> {
 		'gdal_translate',
 		'gdal_calc.py',
 		'gdalinfo',
-		'gdal_rasterize',
 		'ogr2ogr',
 		'tippecanoe',
 		'tile-join',
 	]);
 	if (!(await exists(file.source))) throw new Error(`missing ${file.source} — run "npm run download" first`);
-	await requireOcean();
+	await requireSeaShare();
 
 	const dirs = previewPaths(current.previewDir, spec);
 	await fs.rm(dirs.tmp, { recursive: true, force: true });
