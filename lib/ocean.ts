@@ -15,7 +15,7 @@ import path from 'node:path';
 
 import { existsSync } from 'node:fs';
 
-import { run, runQuiet, atomic, pMap } from './worldcover.ts';
+import { run, runQuiet, runCapture, atomic, pMap } from './worldcover.ts';
 import { progress } from './progress.ts';
 import { readStamp, type Values } from './fingerprint.ts';
 import { dir, file, OCEAN_URL, MERC, FULL_PX, MAXLEVEL, CPU_CORES, type Rect } from '../config.ts';
@@ -84,12 +84,15 @@ export async function requireOcean(): Promise<void> {
 // up to a minute per block on a complex coast below z10, and is now paid once per download.
 //
 // The base is burned exactly the way a z10 block burned its window: the polygons simplified to half a
-// pixel, pixel centres inside → sea. Each coarser level is the average of the one below, so a zoom-z
+// pixel, pixel centres inside → sea. Each polygon is simplified once, in parallel chunks, before any tile is
+// burned: selecting per tile picks whole features, so simplifying per tile simplified a large one again for
+// every tile it touches (4.6× the work on the Europe test region, for the same pixels). Each coarser level is the average of the one below, so a zoom-z
 // pixel's value is its true sea share at z10 resolution, which a block thresholds (lib/block.ts).
 
 export const SEA = 100; // the base value of a sea pixel: the share is in percent
 const SHARE_TILES = 64; // tiles per axis for the rasterization: 16384² px each at TILE_PX 1024
-const CLIP_ATTEMPTS = 3;
+const SIMPLIFY_CHUNK = 64; // features per simplify job: small, because heavy coasts cluster in feature order
+const SIMPLIFY_ATTEMPTS = 3;
 export const SEA_SHARE_STAMP = '.fingerprint-seashare'; // its stamp, next to the source raster's own
 
 // what the sea share was built from and how: a changed polygon file (a refreshed download) rebuilds it
@@ -108,6 +111,7 @@ export type SeaShareOpts = {
 	polygons?: string; // the sea polygons (default: the downloaded mask)
 	fullPx?: number; // side of the base level (default: the source raster's)
 	tiles?: number; // tiles per axis for the rasterization
+	chunk?: number; // features per simplify job
 	levels?: number; // overview levels (default: down to z0)
 	concurrency?: number;
 };
@@ -121,11 +125,21 @@ export async function buildSeaShare(out: string, opts: SeaShareOpts): Promise<vo
 	const tolerance = (2 * MERC) / fullPx / 2; // half a base pixel, as a z10 block simplified its clip
 	await fs.mkdir(tilesDir, { recursive: true });
 
+	const concurrency = opts.concurrency ?? CPU_CORES;
+	const simplified = path.join(tilesDir, 'simplified.fgb');
+	if (!existsSync(simplified))
+		await simplifyOnce(polygons, simplified, tolerance, {
+			dir: tilesDir,
+			chunk: opts.chunk ?? SIMPLIFY_CHUNK,
+			concurrency,
+		});
+
+	// each tile selects its simplified polygons through the spatial index and burns them
 	const jobs: [number, number][] = [];
 	for (let y = 0; y < tiles; y++) for (let x = 0; x < tiles; x++) jobs.push([x, y]);
 	const tilePath = ([x, y]: [number, number]) => path.join(tilesDir, `${x}_${y}.tif`);
 	const bar = progress(jobs.length, 'sea share');
-	await pMap(jobs, opts.concurrency ?? CPU_CORES, async (job) => {
+	await pMap(jobs, concurrency, async (job) => {
 		const tif = tilePath(job);
 		if (!existsSync(tif)) {
 			const [x, y] = job;
@@ -136,30 +150,17 @@ export async function buildSeaShare(out: string, opts: SeaShareOpts): Promise<vo
 				miny: MERC - (y + 1) * span,
 			};
 			const clip = tif + '.fgb';
-			// GEOS's topology-preserving simplify (ogr2ogr -simplify) has segfaulted once in ~1700 tiles under full
-			// load, and never again on the same tile, alone or 14 at a time. A clip that succeeds is deterministic,
-			// so a failed one is retried rather than ending a two-hour run.
-			for (let attempt = 1; ; attempt++) {
-				await fs.rm(clip, { force: true });
-				try {
-					await runQuiet(
-						'ogr2ogr',
-						['-spat', r.minx, r.miny, r.maxx, r.maxy],
-						['-simplify', tolerance],
-						['-f', 'FlatGeobuf'],
-						['-lco', 'SPATIAL_INDEX=NO'], // read once, sequentially
-						['-nln', LAYER],
-						['-nlt', 'PROMOTE_TO_MULTI'],
-						clip,
-						polygons,
-						LAYER,
-					);
-					break;
-				} catch (err) {
-					if (attempt >= CLIP_ATTEMPTS) throw err;
-					console.error('! sea share tile %d_%d: %s — retrying', x, y, err instanceof Error ? err.message : err);
-				}
-			}
+			await fs.rm(clip, { force: true });
+			await runQuiet(
+				'ogr2ogr',
+				['-spat', r.minx, r.miny, r.maxx, r.maxy],
+				['-f', 'FlatGeobuf'],
+				['-lco', 'SPATIAL_INDEX=NO'], // read once, sequentially
+				['-nln', LAYER],
+				clip,
+				simplified,
+				LAYER,
+			);
 			await atomic(tif, (tmp) =>
 				runQuiet(
 					'gdal_rasterize',
@@ -223,6 +224,68 @@ export async function buildSeaShare(out: string, opts: SeaShareOpts): Promise<vo
 		);
 	});
 	await fs.rm(tilesDir, { recursive: true, force: true });
+}
+
+// Simplify every polygon once, `chunk` features per job in parallel, into one FlatGeobuf with a spatial index.
+// The result is what simplifying per tile gave (it works feature by feature at the same tolerance), but each
+// feature is done once. Chunks are kept until the merge, so an interrupted run resumes.
+async function simplifyOnce(
+	polygons: string,
+	out: string,
+	tolerance: number,
+	opts: { dir: string; chunk: number; concurrency: number },
+): Promise<void> {
+	const info = JSON.parse(await runCapture('ogrinfo', '-so', '-json', polygons, LAYER));
+	const count: number = info.layers?.[0]?.featureCount ?? 0;
+	const chunks = Array.from({ length: Math.ceil(count / opts.chunk) }, (_, i) => i);
+	const chunkPath = (i: number) => path.join(opts.dir, `simplified-${i}.fgb`);
+	const bar = progress(chunks.length, 'simplify');
+	await pMap(chunks, opts.concurrency, async (i) => {
+		const part = chunkPath(i);
+		if (!existsSync(part)) {
+			// GEOS's topology-preserving simplify (ogr2ogr -simplify) has segfaulted once in ~1700 runs under full
+			// load, and never again on the same input, alone or 14 at a time. A run that succeeds is deterministic,
+			// so a failed one is retried rather than ending the whole build.
+			for (let attempt = 1; ; attempt++) {
+				try {
+					await atomic(part, (tmp) =>
+						runQuiet(
+							'ogr2ogr',
+							['-where', `FID >= ${i * opts.chunk} AND FID < ${(i + 1) * opts.chunk}`], // FlatGeobuf seeks to them
+							['-simplify', tolerance],
+							['-f', 'FlatGeobuf'],
+							['-lco', 'SPATIAL_INDEX=NO'], // merged below, which builds the index
+							['-nln', LAYER],
+							['-nlt', 'PROMOTE_TO_MULTI'], // simplifying can turn a MultiPolygon into a Polygon
+							tmp,
+							polygons,
+							LAYER,
+						),
+					);
+					break;
+				} catch (err) {
+					if (attempt >= SIMPLIFY_ATTEMPTS) throw err;
+					console.error('! simplify chunk %d: %s — retrying', i, err instanceof Error ? err.message : err);
+				}
+			}
+		}
+		bar.tick();
+	});
+	bar.done();
+
+	const vrt = path.join(opts.dir, 'simplified.vrt');
+	await fs.writeFile(
+		vrt,
+		`<OGRVRTDataSource>\n  <OGRVRTUnionLayer name="${LAYER}">\n` +
+			chunks
+				.map((i) => `    <OGRVRTLayer name="${LAYER}"><SrcDataSource>${chunkPath(i)}</SrcDataSource></OGRVRTLayer>`)
+				.join('\n') +
+			`\n  </OGRVRTUnionLayer>\n</OGRVRTDataSource>\n`,
+	);
+	await atomic(out, (tmp) =>
+		runQuiet('ogr2ogr', ['-f', 'FlatGeobuf'], ['-nln', LAYER], ['-nlt', 'MULTIPOLYGON'], tmp, vrt),
+	);
+	await Promise.all([vrt, ...chunks.map(chunkPath)].map((f) => fs.rm(f, { force: true })));
 }
 
 // fail early, before a long run, when the sea share is missing or was built for another grid

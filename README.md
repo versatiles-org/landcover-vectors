@@ -212,8 +212,10 @@ builds Shortbread's `ocean` layer from — and converts them to a FlatGeobuf wit
 It then rasterizes them once into a **sea-share pyramid**, `data/0_download/seashare-3857.tif` (`lib/ocean.ts`):
 the source raster's own grid, each base pixel 100 (sea) or 0 (land) — the polygons simplified to half a pixel,
 pixel centres inside count — and average overviews down to z0, so every level holds the true sea share of its
-pixels. It is built in 16384² px tiles in parallel, mosaicked and stamped with the polygon file it came from;
-an interrupted run resumes from the tiles already done. It takes ~25 minutes on 14 cores and ~385 MB.
+pixels. Every polygon is simplified once, in parallel chunks (~1 minute), then the world is burned in 16384² px
+tiles in parallel, mosaicked and stamped with the polygon file it came from; an interrupted run resumes from the
+chunks and tiles already done. Simplifying per tile instead re-simplified every large polygon once per tile it
+touches. It takes under 25 minutes on 14 cores and ~385 MB.
 
 Every block reads its window of the pyramid at its own zoom, the way it reads the classes from the source: a
 block's grid lines up with one level, so a small VRT points at that level and the window's rectangle in it, and
