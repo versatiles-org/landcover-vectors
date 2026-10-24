@@ -17,6 +17,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // number of logical CPU cores available to this process (respects CPU affinity)
 export const CPU_CORES = os.availableParallelism();
 
+// blocks the build and the preview process at once: one per core, each with one GDAL thread (setGdalThreads in
+// lib/worldcover.ts). Every block holds its ~8224² px window and its polygons in memory, so LANDCOVER_CONCURRENCY
+// lowers it where memory, not CPU, is the limit. Not part of the fingerprint: it never changes the output.
+export const BLOCK_CONCURRENCY = Math.floor(numberFromEnv('LANDCOVER_CONCURRENCY', CPU_CORES, { atLeast: 1 }));
+
 // Base directory for everything the pipeline downloads and generates. LANDCOVER_DATA_DIR relocates
 // the whole cache — a preview or a parameter experiment wants its own, so it neither pollutes nor is
 // polluted by the production build. LANDCOVER_SOURCE_DIR points the download mirror somewhere else,
@@ -107,7 +112,7 @@ export const MARGIN_PX = Math.ceil(3 * Math.sqrt(SIEVE_THRESHOLD)); // 16
 export const DETAIL_PX = numberFromEnv('LANDCOVER_DETAIL_PX', 1, { above: 0 });
 
 // A numeric setting a sweep may override through the environment (LANDCOVER_DETAIL_PX,
-// LANDCOVER_SIEVE_RENDERED). An unparsable or out-of-range value is an error,
+// LANDCOVER_SIEVE_RENDERED, and LANDCOVER_CONCURRENCY, which is no output setting). An unparsable or out-of-range value is an error,
 // never a silent fallback, because it changes the output. Empty counts as unset.
 function numberFromEnv(name: string, fallback: number, bound: { above?: number; atLeast?: number }): number {
 	const raw = process.env[name];

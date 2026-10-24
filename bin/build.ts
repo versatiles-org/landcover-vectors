@@ -8,7 +8,7 @@
 
 import fs from 'node:fs/promises';
 
-import { requireCommands } from '../lib/worldcover.ts';
+import { requireCommands, setGdalThreads } from '../lib/worldcover.ts';
 import { requireSeaShare } from '../lib/ocean.ts';
 import { progress } from '../lib/progress.ts';
 import { buildCoverage } from '../lib/coverage.ts';
@@ -18,12 +18,7 @@ import { cacheValues, sourceValues, readStamp, writeStamp, stampMismatch } from 
 import { LOG_HEADER } from '../lib/block.ts';
 import { readRunSummary, formatSummary } from '../lib/summary.ts';
 import { pack } from '../lib/assemble.ts';
-import { datadir, dir, file, MAXLEVEL, CPU_CORES } from '../config.ts';
-
-// run this many blocks at once; each block already fans GTiff (de)compression across cores
-// via GDAL_NUM_THREADS, so keep block-level parallelism below the core count to avoid
-// pathological oversubscription
-const BLOCK_CONCURRENCY = Math.max(1, Math.floor(CPU_CORES / 1.5));
+import { datadir, dir, file, MAXLEVEL, BLOCK_CONCURRENCY } from '../config.ts';
 
 // fail fast (before the long build) if any external tool is missing
 const started = Date.now();
@@ -99,6 +94,8 @@ const plan = planBlocks(coverage);
 // one progress bar (with ETA) across every non-empty block; cached zooms tick through at once
 const bar = progress(countBlocks(plan), 'blocks');
 
+// one block per core (BLOCK_CONCURRENCY), so each block's GDAL calls get one thread instead of all cores
+setGdalThreads(1);
 const zMbtiles = await runZooms(plan, {
 	src: file.source,
 	tmpdir: dir.tmp,

@@ -182,6 +182,28 @@ describe('the resolution knobs', () => {
 		}
 	});
 
+	test('LANDCOVER_CONCURRENCY sets the blocks at once, one per core by default', () => {
+		const read = (env: Record<string, string>) =>
+			spawnSync(
+				process.execPath,
+				[
+					'--input-type=module',
+					'-e',
+					"import('./config.ts').then((c) => console.log(c.BLOCK_CONCURRENCY, c.CPU_CORES))",
+				],
+				{ cwd: repoRoot, encoding: 'utf8', env: { ...process.env, LANDCOVER_CONCURRENCY: '', ...env } },
+			);
+		const [blocks, cores] = read({}).stdout.trim().split(' ').map(Number);
+		assert.equal(blocks, cores);
+		assert.equal(read({ LANDCOVER_CONCURRENCY: '4' }).stdout.trim().split(' ')[0], '4');
+		assert.equal(read({ LANDCOVER_CONCURRENCY: '2.7' }).stdout.trim().split(' ')[0], '2');
+		for (const bad of ['0', 'abc']) {
+			const r = read({ LANDCOVER_CONCURRENCY: bad });
+			assert.equal(r.status, 1, `LANDCOVER_CONCURRENCY=${bad} was accepted`);
+			assert.match(r.stderr, new RegExp(`bad LANDCOVER_CONCURRENCY "${bad}"`));
+		}
+	});
+
 	test('DETAIL_PX scales the tolerance inversely', () => {
 		assert.equal(DETAIL_PX, 1, 'the committed default; a sweep overrides it per run');
 		for (let z = 0; z <= MAXLEVEL; z++) {

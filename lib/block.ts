@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 
-import { runQuiet, atomic, presentValues, histogram } from './worldcover.ts';
+import { runQuiet, atomic, presentValues, histogram, gdalEnv } from './worldcover.ts';
 import { seaShareWindow } from './ocean.ts';
 import {
 	channels,
@@ -164,8 +164,9 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			['-r', 'mode'],
 			['-ot', 'Byte'],
 			['-of', 'GTiff'],
-			'-multi', // multithreaded warp
-			['-wo', 'NUM_THREADS=ALL_CPUS'],
+			// as many warp threads as GDAL gets (setGdalThreads): one in the build, which runs a block per core
+			gdalEnv.GDAL_NUM_THREADS === '1' ? [] : '-multi',
+			['-wo', `NUM_THREADS=${gdalEnv.GDAL_NUM_THREADS}`],
 			co,
 			'-overwrite',
 			ctx.src,

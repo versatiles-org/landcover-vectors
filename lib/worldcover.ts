@@ -15,7 +15,8 @@ export const PREFIX = 'v200/2021/map/';
 export const gdalEnv: NodeJS.ProcessEnv = {
 	...process.env,
 	// multithread GTiff block (de)compression on reads and writes, and any operation that
-	// honours GDAL_NUM_THREADS (warp, etc.) — applies to all gdal/ogr2ogr/gdal_*.py calls
+	// honours GDAL_NUM_THREADS (warp, etc.) — applies to all gdal/ogr2ogr/gdal_*.py calls.
+	// Right for the download's long steps, which run one at a time; the build sets 1 (setGdalThreads).
 	GDAL_NUM_THREADS: 'ALL_CPUS',
 	// let GDAL read the public bucket anonymously over /vsicurl
 	AWS_NO_SIGN_REQUEST: 'YES',
@@ -24,6 +25,13 @@ export const gdalEnv: NodeJS.ProcessEnv = {
 	GDAL_HTTP_MAX_RETRY: '5',
 	GDAL_HTTP_RETRY_DELAY: '2',
 };
+
+// Threads for every GDAL call from here on. The build runs one block per core, so its GDAL calls get one thread
+// each: with ALL_CPUS on top, 9 parallel blocks spent 900 CPU-s on a 42-block sample where one thread each
+// took 509 (and 14 blocks in parallel cut the wall time by 25 %), for byte-identical fragments.
+export function setGdalThreads(threads: number | 'ALL_CPUS'): void {
+	gdalEnv.GDAL_NUM_THREADS = String(threads);
+}
 
 // A command argument: a single token (string or number), or a group of tokens (e.g. a flag and
 // its value) kept together at the call site for readability. Numbers are stringified and groups

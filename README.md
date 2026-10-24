@@ -169,6 +169,11 @@ npm run merge      # optional: merge with OSM → data/combined.versatiles
 Everything reads and writes under `data/`; `LANDCOVER_DATA_DIR` moves it, and `LANDCOVER_SOURCE_DIR` lets
 several data dirs share one source raster. All parameters live in `config.ts`.
 
+The build processes one block per core, each with a single GDAL thread (more threads per block only cost CPU:
+on a 42-block sample, 9 blocks with all cores each took 25 % longer than 14 blocks with one thread each, for
+identical fragments). Every block holds its window and polygons in memory, so where memory runs short,
+`LANDCOVER_CONCURRENCY` sets fewer blocks at once.
+
 The build is **resumable**. Every per-block fragment (`data/1_results`) and per-zoom tileset (`data/2_tiles`) is
 written atomically and skipped on a re-run, so an interrupted build continues where it stopped. The caches are
 stamped with a fingerprint of the parameters they were built with: after a change in `config.ts` the build

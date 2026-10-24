@@ -16,7 +16,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
-import { requireCommands, commandExists, runCapture } from '../lib/worldcover.ts';
+import { requireCommands, commandExists, runCapture, setGdalThreads } from '../lib/worldcover.ts';
 import { requireSeaShare } from '../lib/ocean.ts';
 import { buildCoverage } from '../lib/coverage.ts';
 import { planBlocks, countBlocks } from '../lib/plan.ts';
@@ -33,7 +33,7 @@ import {
 	datadir,
 	file,
 	MAXLEVEL,
-	CPU_CORES,
+	BLOCK_CONCURRENCY,
 	TILE_PX,
 	BLOCK,
 	SIEVE_THRESHOLD,
@@ -74,6 +74,7 @@ if (opt.help) {
 			'  --no-osm               do not mount the remote OSM Shortbread container',
 			'  --no-open              do not open a browser',
 			'  --build-only           build, then exit',
+			'  --concurrency <n>      blocks at once (default: one per core, or LANDCOVER_CONCURRENCY)',
 		].join('\n'),
 	);
 	process.exit(0);
@@ -141,13 +142,14 @@ async function build(): Promise<void> {
 	);
 
 	const bar = progress(total, 'blocks');
+	setGdalThreads(1); // one block per core, one GDAL thread each — as in the build
 	const zMbtiles = await runZooms(plan, {
 		src: file.source,
 		tmpdir: dirs.tmp,
 		resultsdir: dirs.results,
 		tilesdir: dirs.tiles,
 		logFile: dirs.log,
-		concurrency: Number(opt.concurrency ?? Math.max(1, Math.floor(CPU_CORES / 1.5))),
+		concurrency: Number(opt.concurrency ?? BLOCK_CONCURRENCY),
 		bar,
 		label: (z) => `zoom ${z}/${maxZoom}`,
 	});
