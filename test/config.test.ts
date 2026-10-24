@@ -157,20 +157,23 @@ describe('the resolution knobs', () => {
 				[
 					'--input-type=module',
 					'-e',
-					"import('./config.ts').then((c) => console.log(JSON.stringify([c.SIEVE_THRESHOLD, c.MARGIN_PX])))",
+					"import('./config.ts').then((c) => console.log(JSON.stringify([c.SIEVE_THRESHOLD, c.MARGIN_PX, c.SIEVE_STAGES])))",
 				],
 				{ cwd: repoRoot, encoding: 'utf8', env: { ...process.env, ...env } },
 			);
 			return { status: r.status, stderr: r.stderr, values: r.status === 0 ? JSON.parse(r.stdout) : null };
 		};
 
-		assert.deepEqual(read({}).values, [28, 16]);
-		// a sieve override moves the threshold, and the margin grows to cover it
-		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '4' }).values, [64, 24]);
+		// two passes: a quarter of the threshold, then the threshold
+		assert.deepEqual(read({}).values, [28, 16, [7, 28]]);
+		// a sieve override moves the threshold and its passes, and the margin grows to cover it
+		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '4' }).values, [64, 24, [16, 64]]);
+		// a threshold too small to split runs once
+		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '0.25' }).values, [4, 6, [4]]);
 		// 0 switches the sieve off, and with it the margin
-		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '0' }).values, [0, 0]);
+		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '0' }).values, [0, 0, []]);
 		// empty means unset
-		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '' }).values, [28, 16]);
+		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '' }).values, [28, 16, [7, 28]]);
 
 		for (const [name, bad] of [
 			['LANDCOVER_SIEVE_RENDERED', '-1'],

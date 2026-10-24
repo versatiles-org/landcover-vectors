@@ -13,7 +13,7 @@ import { timed } from './timing.ts';
 import {
 	channels,
 	blockWindow,
-	SIEVE_THRESHOLD,
+	SIEVE_STAGES,
 	SEA_SHARE_MIN,
 	simplifyForLevel,
 	type Rect,
@@ -265,20 +265,24 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			),
 		);
 
-		// 3. sieve specks
-		const sieved = tmp('sieved.tif');
-		await timed('sieve', () =>
-			runQuiet(
-				'gdal',
-				['raster', 'sieve'],
-				['--size-threshold', SIEVE_THRESHOLD],
-				['--co', 'COMPRESS=DEFLATE'],
-				['--co', 'TILED=YES'],
-				'--overwrite',
-				['-i', index],
-				['-o', sieved],
-			),
-		);
+		// 3. sieve specks, in passes of growing size (SIEVE_STAGES)
+		let sieved = index;
+		await timed('sieve', async () => {
+			for (const [stage, size] of SIEVE_STAGES.entries()) {
+				const out = tmp(`sieved-${stage}.tif`);
+				await runQuiet(
+					'gdal',
+					['raster', 'sieve'],
+					['--size-threshold', size],
+					['--co', 'COMPRESS=DEFLATE'],
+					['--co', 'TILED=YES'],
+					'--overwrite',
+					['-i', sieved],
+					['-o', out],
+				);
+				sieved = out;
+			}
+		});
 
 		// 4. crop the classified raster to the block's exact inner BLOCK×BLOCK rectangle in EPSG:3857.
 		// Block pixel grids are aligned (same pixel size; the inner offset is a whole number of margin

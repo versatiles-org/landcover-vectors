@@ -257,7 +257,9 @@ reads ≈100× less) and the matching window of the sea share (see [ocean mask](
    every inactive class and OSM's sea fold into the no-data class. Each pixel keeps its own class: there is no smoothing
    before the sieve, because a blur cost accuracy (see [doc/TUNING.md](doc/TUNING.md)).
 2. **Sieve** — `gdal raster sieve` merges patches smaller than `SIEVE_RENDERED` = 1.77 rendered px²
-   (`SIEVE_THRESHOLD` = round(1.77·4²) = 28 px) into their largest neighbour.
+   (`SIEVE_THRESHOLD` = round(1.77·4²) = 28 px) into their largest neighbour, in two passes (`SIEVE_STAGES`):
+   first at a quarter of that, 7 px, then at 28 px. A single pass leaves much of a fragmented mosaic untouched,
+   because most neighbours of a small patch are small too (see [doc/TUNING.md](doc/TUNING.md)).
 3. **Crop** — cut the raster to the block's exact 8×8-tile rectangle, discarding the margin. Cropping the
    raster rather than clipping vectors keeps the edge pixel-exact.
 4. **Polygonize** — `gdal raster polygonize`, giving a gap-free coverage of the block, **no-data included**.
@@ -350,7 +352,7 @@ offered. `?style=versatiles` in the URL opens it directly.
 
 | stage  | knob                                                         | what it changes                                                                                      | override                   |
 | ------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | -------------------------- |
-| raster | `SIEVE_RENDERED` (1.77 rendered px²)                         | the smallest patch kept; the main lever on feature count; 0 turns it off                             | `LANDCOVER_SIEVE_RENDERED` |
+| raster | `SIEVE_RENDERED` (1.77 rendered px²)                         | the smallest patch kept, sieved in two passes; the main lever on feature count; 0 turns it off       | `LANDCOVER_SIEVE_RENDERED` |
 | vector | `DETAIL_PX` (1)                                              | the simplify tolerance — how precisely outlines follow the result                                    | `LANDCOVER_DETAIL_PX`      |
 | raster | `TILE_PX` (1024 → 38 m/px at z10, against ESA's native 10 m) | the resolution the source is classified at; 4× source raster and CPU per doubling, and a re-download | — (edit, then re-download) |
 

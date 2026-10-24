@@ -695,6 +695,134 @@
 					}
 				}
 			]
+		},
+		"hudson-bay@sieve1.77": {
+			"fingerprint": "47c249ea",
+			"input": "data/preview/47c249ea/preview-hudson_bay-z8-10.mbtiles",
+			"written": "2026-10-24T20:06:22.792Z",
+			"note": "sweep: LANDCOVER_SIEVE_RENDERED=1.77, area hudson-bay, z8-10",
+			"zooms": [
+				{
+					"z": 8,
+					"tiles": 245,
+					"bytes": 9709003,
+					"avg": 39628.58367346939,
+					"p50": 35581,
+					"p95": 99175,
+					"p99": 112617,
+					"max": 119867,
+					"worst": {
+						"z": 8,
+						"x": 67,
+						"y": 83,
+						"bytes": 119867
+					}
+				},
+				{
+					"z": 9,
+					"tiles": 518,
+					"bytes": 22621054,
+					"avg": 43669.98841698842,
+					"p50": 34580,
+					"p95": 100538,
+					"p99": 113309,
+					"max": 116585,
+					"worst": {
+						"z": 9,
+						"x": 132,
+						"y": 160,
+						"bytes": 116585
+					}
+				},
+				{
+					"z": 10,
+					"tiles": 927,
+					"bytes": 49714413,
+					"avg": 53629.355987055016,
+					"p50": 55436,
+					"p95": 100293,
+					"p99": 109599,
+					"max": 116163,
+					"worst": {
+						"z": 10,
+						"x": 266,
+						"y": 321,
+						"bytes": 116163
+					}
+				}
+			]
+		},
+		"hudson-bay@sieve3": {
+			"fingerprint": "22f6863a",
+			"input": "data/preview/22f6863a/preview-hudson_bay-z6-6.mbtiles",
+			"written": "2026-10-24T19:34:31.234Z",
+			"note": "sweep: LANDCOVER_SIEVE_RENDERED=3, area hudson-bay, z6-6",
+			"zooms": [
+				{
+					"z": 6,
+					"tiles": 151,
+					"bytes": 2541763,
+					"avg": 16832.867549668874,
+					"p50": 16253,
+					"p95": 40725,
+					"p99": 57438,
+					"max": 59748,
+					"worst": {
+						"z": 6,
+						"x": 9,
+						"y": 17,
+						"bytes": 59748
+					}
+				}
+			]
+		},
+		"hudson-bay@sieve5": {
+			"fingerprint": "c8e72cc2",
+			"input": "data/preview/c8e72cc2/preview-hudson_bay-z6-6.mbtiles",
+			"written": "2026-10-24T19:34:31.234Z",
+			"note": "sweep: LANDCOVER_SIEVE_RENDERED=5, area hudson-bay, z6-6",
+			"zooms": [
+				{
+					"z": 6,
+					"tiles": 151,
+					"bytes": 1932838,
+					"avg": 12800.25165562914,
+					"p50": 12188,
+					"p95": 30477,
+					"p99": 45214,
+					"max": 47725,
+					"worst": {
+						"z": 6,
+						"x": 9,
+						"y": 17,
+						"bytes": 47725
+					}
+				}
+			]
+		},
+		"hudson-bay@sieve8": {
+			"fingerprint": "38054f03",
+			"input": "data/preview/38054f03/preview-hudson_bay-z6-6.mbtiles",
+			"written": "2026-10-24T19:34:31.234Z",
+			"note": "sweep: LANDCOVER_SIEVE_RENDERED=8, area hudson-bay, z6-6",
+			"zooms": [
+				{
+					"z": 6,
+					"tiles": 151,
+					"bytes": 1541558,
+					"avg": 10208.993377483444,
+					"p50": 9592,
+					"p95": 23994,
+					"p99": 36632,
+					"max": 38733,
+					"worst": {
+						"z": 6,
+						"x": 9,
+						"y": 17,
+						"bytes": 38733
+					}
+				}
+			]
 		}
 	}
 }

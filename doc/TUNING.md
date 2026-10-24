@@ -63,6 +63,38 @@ blobs, for 1.3–1.4× the bytes, well inside the budget. The blur was removed, 
 argmax from every block (the slowest raster step) and libvips from the requirements. The sieve is now the only
 raster generalization, and with that the knob to turn when tiles grow too big.
 
+### Why the sieve runs in two passes
+
+GDAL's sieve merges a patch smaller than the threshold into its largest neighbour. In a fragmented mosaic most
+neighbours of a small patch are small too, so a single pass leaves much of it as it is, and the more, the larger
+the threshold. With one pass, the Hudson Bay worst z6 tile (6/16/20, 11 936 features, 133 KB) only grew with the
+sieve: 133, 215, 329 and 447 KB at 1.77, 3, 5 and 8 px². Polygons left on that z6 block's raster:
+
+| sieve              | polygons  |
+| ------------------ | --------- |
+| none               | 2 543 700 |
+| one pass, 28 px    | 51 842    |
+| one pass, 128 px   | 123 578   |
+| 7 → 28 px          | 41 035    |
+| 4 → 8 → 16 → 28 px | 41 762    |
+| 28 → 28 px         | 30 508    |
+| 4 → 8 → … → 128 px | 8 298     |
+
+A small first pass merges the specks into their neighbours, so the full pass finds large ones for what is left.
+The build sieves at 7 → 28 px (`SIEVE_STAGES` in `config.ts`), against one pass (`hudson-bay`, sieve 1.77 px²):
+
+|                                         | one pass              | 7 → 28 px            | 28 → 28 px           |
+| --------------------------------------- | --------------------- | -------------------- | -------------------- |
+| worst tile z6 / z8 / z9 / z10, KB       | 133 / 102 / 101 / 110 | 83 / 116 / 114 / 113 | 67 / 100 / 101 / 110 |
+| agreement at 256 px, worst z6 / z8 tile | 69.7 / 74.1 %         | 75.1 / 76.7 %        | 68.6 / 74.1 %        |
+| area on the wrong class, z6 / z8        | 17.4 / 7.0 %          | 15.0 / 6.1 %         | 18.0 / 7.0 %         |
+
+The two passes are more accurate at every zoom checked, and take the z6 outlier down by 38 %; z8–10 tiles grow by
+up to 14 %. Sieving twice at the full size gives the smallest tiles but is a little less accurate than one pass;
+doubling sizes 4 → 8 → 16 → 28 matches 7 → 28 at twice the passes. The extra pass costs about 2.5 s on a
+fragmented block (7.0 s against 4.6 s). In passes, the sieve size behaves as expected again: with doubling
+sizes, the worst z6 tile shrank to 58, 47 and 38 KB at 3, 5 and 8 px², losing accuracy step by step.
+
 ## Sweeps and `inspect`
 
 ```sh

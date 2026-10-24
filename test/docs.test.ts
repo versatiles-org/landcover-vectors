@@ -15,6 +15,7 @@ import {
 	BLOCK,
 	SIEVE_RENDERED,
 	SIEVE_THRESHOLD,
+	SIEVE_STAGES,
 	OVERSAMPLE,
 	MARGIN_PX,
 	FULL_PX,
@@ -59,6 +60,12 @@ describe('README numbers match config.ts', () => {
 		assert.equal(Number(grab(readme, /round\([\d.]+·\d+²\) = (\d+) px/, 'README sieve px')), SIEVE_THRESHOLD);
 		assert.equal(Number(grab(readme, /round\(([\d.]+)·\d+²\)/, 'README sieve formula')), SIEVE_RENDERED);
 		assert.equal(Number(grab(readme, /round\([\d.]+·(\d+)²\)/, 'README oversample')), OVERSAMPLE);
+	});
+
+	test('sieve passes', () => {
+		const m = readme.match(/first at a quarter of that, (\d+) px, then at (\d+) px/);
+		assert.ok(m, 'README sieve passes: nothing matched');
+		assert.deepEqual([Number(m[1]), Number(m[2])], SIEVE_STAGES);
 	});
 
 	test('margin', () => {

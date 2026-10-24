@@ -21,6 +21,7 @@ import {
 	TILE_PX,
 	BLOCK,
 	SIEVE_THRESHOLD,
+	SIEVE_STAGES,
 	MARGIN_PX,
 	FULL_PX,
 	OCEAN_URL,
@@ -40,6 +41,7 @@ export function cacheValues(): Values {
 		tilePx: TILE_PX,
 		block: BLOCK,
 		sieveThreshold: SIEVE_THRESHOLD,
+		sieveStages: SIEVE_STAGES, // the sieve's passes, in raw pixels
 		marginPx: MARGIN_PX,
 		// what matters is the tolerance per zoom, not how it is written: sample the function
 		simplify: Array.from({ length: MAXLEVEL + 1 }, (_, z) => simplifyForLevel(z)),

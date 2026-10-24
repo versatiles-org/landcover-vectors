@@ -95,6 +95,20 @@ export const FULL_PX = TILE_PX * Math.pow(2, MAXLEVEL);
 
 // sieve threshold in raw pixels (see SIEVE_RENDERED)
 export const SIEVE_THRESHOLD = Math.round(SIEVE_RENDERED * OVERSAMPLE * OVERSAMPLE); // 28
+// The sieve's passes, in raw pixels: a quarter of the threshold first, then the threshold. GDAL's sieve merges a
+// small patch into a neighbour, but in a fragmented mosaic most neighbours are small too, so a single pass leaves
+// much of it as it is — and the more, the larger the size. The small first pass merges the specks into their
+// neighbours, so the full pass finds large ones for what is left. On the Hudson Bay worst z6 tile: 132.9 → 82.5 KB,
+// with better agreement at every zoom (z8: 64.5 → 66.6 %); z8–10 tiles grow by up to 14 % (worst 117 KB). A second
+// pass at the full size instead shrinks the tiles more but is less accurate; doubling sizes 4→8→16→28 matches
+// this one at twice the passes. See doc/TUNING.md.
+export const SIEVE_STAGES =
+	SIEVE_THRESHOLD >= 8
+		? [Math.round(SIEVE_THRESHOLD / 4), SIEVE_THRESHOLD]
+		: SIEVE_THRESHOLD > 0
+			? [SIEVE_THRESHOLD]
+			: [];
+
 // processing margin (px) around a block so the sieve at the inner edge matches neighbours
 export const MARGIN_PX = Math.ceil(3 * Math.sqrt(SIEVE_THRESHOLD)); // 16
 
