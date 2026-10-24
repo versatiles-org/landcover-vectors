@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
+    "@versatiles/style": "^7.0.1",
     "npm-check-updates": "^22.2.9",
     "prettier": "^3.9.4",
     "typescript": "^6.0.3"

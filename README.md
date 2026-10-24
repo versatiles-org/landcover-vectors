@@ -137,7 +137,7 @@ so they follow any change of a cutoff.
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`) — `tippecanoe-decode`, which ships with it, is used by `npm run stats -- --attribute`
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install) ≥ 4.15.0
 - `curl`, for the ocean mask and the OSM base
-- for `npm run preview`: a browser, and internet access for MapLibre GL from a CDN (the tiles themselves are served locally)
+- for `npm run preview`: a browser, and internet access for MapLibre GL from a CDN, the OSM container and versatiles-style's fonts and icons (the land cover tiles themselves are served locally)
 
 ### Run
 
@@ -296,6 +296,13 @@ data. OSM's `ocean` sits under the land cover, so no-data holes show up as ocean
 block-grid overlay, a legend with per-kind toggles, click-to-inspect, and the config fingerprint in the header,
 so a screenshot documents itself. The position is in the URL hash (`#z/lat/lon`), which is what
 `npm run stats -- --worst` prints.
+
+It has two styles. **debug** colours each land cover kind distinctly, so you can tell them apart and toggle
+them. **versatiles-style** is the real map: versatiles-style's colorful style (`@versatiles/style`, with its
+`landcover` feature on) over the actual merge, which the preview serves filtered exactly like `npm run merge`.
+It shows versatiles-style's draw order, OSM's other kinds, roads and labels — what users will see. It needs
+versatiles ≥ 4.15.0 for the merge filter; with an older version, or `--no-osm`, only the debug style is
+offered. `?style=versatiles` in the URL opens it directly.
 
 ### Tuning
 

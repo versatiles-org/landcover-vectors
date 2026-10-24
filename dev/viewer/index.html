@@ -107,15 +107,27 @@
 			.maplibregl-popup-tip {
 				border-top-color: var(--panel) !important;
 			}
+			label:has(input:disabled) {
+				color: var(--dim);
+				cursor: not-allowed;
+			}
+			[hidden] {
+				display: none !important;
+			}
 		</style>
 	</head>
 	<body>
 		<div id="map"></div>
 		<div id="head" class="panel">loading…</div>
 		<div id="opts" class="panel">
-			<h4>view</h4>
-			<label><input type="checkbox" id="t-landcover" checked /> landcover</label>
-			<label><input type="checkbox" id="t-osm" checked /> OSM shortbread</label>
+			<h4>style</h4>
+			<label><input type="radio" name="style" value="debug" checked /> debug</label>
+			<label><input type="radio" name="style" value="versatiles" /> versatiles-style</label>
+			<h4 style="margin-top: 8px">view</h4>
+			<div id="debug-opts">
+				<label><input type="checkbox" id="t-landcover" checked /> landcover</label>
+				<label><input type="checkbox" id="t-osm" checked /> OSM shortbread</label>
+			</div>
 			<label><input type="checkbox" id="t-blocks" /> block grid</label>
 			<label><input type="checkbox" id="t-tiles" /> tile boundaries</label>
 		</div>
@@ -126,14 +138,41 @@
 			const state = await fetch('/gen/state.json').then((r) => r.json());
 			const style = await fetch('/gen/style.json').then((r) => r.json());
 			const kinds = style.metadata['landcover:kinds'];
+			// versatiles-style's colorful map over the merge, filtered like `npm run merge` (preview serves it when it can)
+			const realStyle = state.versatilesStyle
+				? await fetch('/gen/style-versatiles.json').then((r) => r.json())
+				: null;
+
+			// which style is shown: the debug one, or the real map; ?style= picks it for a link, else it is
+			// remembered per browser
+			const STYLE_KEY = 'landcover-preview-style';
+			const remembered = (() => {
+				try {
+					return localStorage.getItem(STYLE_KEY);
+				} catch {
+					return null;
+				}
+			})();
+			const wanted = new URLSearchParams(location.search).get('style') ?? remembered;
+			let mode = wanted === 'versatiles' && realStyle ? 'versatiles' : 'debug';
+			const realRadio = document.querySelector('input[name=style][value=versatiles]');
+			if (!realStyle) {
+				realRadio.disabled = true;
+				realRadio.parentElement.title = state.osm
+					? 'needs versatiles ≥ 4.15.0 to serve the filtered merge'
+					: 'needs the OSM container (started with --no-osm)';
+			}
+			document.querySelector(`input[name=style][value=${mode}]`).checked = true;
 
 			// position lives in the hash (#z/lat/lon) so stats.ts can deep-link to an offending tile
 			const hash = location.hash.match(/^#(\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)/);
 			const bbox = state.bbox;
 			const map = new maplibregl.Map({
 				container: 'map',
-				style,
+				style: mode === 'versatiles' ? realStyle : style,
 				hash: true,
+				// versatiles 5 lists its tiles as /tiles/… paths, which MapLibre cannot fetch from its workers
+				transformRequest: (url) => (url.startsWith('/') ? { url: location.origin + url } : undefined),
 				center: hash
 					? [+hash[3], +hash[2]]
 					: bbox
@@ -195,7 +234,15 @@
 				setVisible(['osm-ocean', 'osm-boundaries'], $('t-osm').checked);
 			};
 
-			map.on('load', () => {
+			// legend and source toggles only mean something in the debug style
+			const showMode = () => {
+				$('legend').hidden = mode !== 'debug';
+				$('debug-opts').hidden = mode !== 'debug';
+			};
+			showMode();
+
+			// runs for the first style and after every switch: setStyle() drops the overlays with the old style
+			map.on('style.load', () => {
 				// the real block grid, straight from blockWindow() — so a seam can be blamed on a boundary
 				map.addSource('blocks', { type: 'geojson', data: '/gen/blocks.geojson' });
 				map.addLayer({
@@ -212,9 +259,23 @@
 					paint: { 'line-color': '#ff5c5c', 'line-width': 3, 'line-opacity': 0.15 },
 					layout: { visibility: 'none' },
 				});
-				apply();
+				setVisible(['blocks', 'blocks-label'], $('t-blocks').checked);
+				if (mode === 'debug') apply();
 				refreshStatus();
 			});
+
+			for (const radio of document.querySelectorAll('input[name=style]')) {
+				radio.addEventListener('change', () => {
+					mode = radio.value;
+					try {
+						localStorage.setItem(STYLE_KEY, mode);
+					} catch {
+						/* private mode: the choice just isn't remembered */
+					}
+					showMode();
+					map.setStyle(mode === 'versatiles' ? realStyle : style, { diff: false });
+				});
+			}
 
 			// only the blocks of the zoom being looked at, or the grid is unreadable
 			const filterBlocks = () => {
@@ -240,11 +301,14 @@
 				map.showTileBoundaries = e.target.checked;
 			});
 
-			// click to see what a polygon actually is — kind, layer, and which source it came from
+			// click to see what a polygon actually is — kind, layer, and which source it came from. In the
+			// versatiles-style view both sources are one merged source, so the style layer is shown instead.
 			map.on('click', (e) => {
 				const hits = map
 					.queryRenderedFeatures(e.point)
-					.filter((f) => f.layer.metadata?.kind || f.layer.id.startsWith('osm-'));
+					.filter((f) =>
+						mode === 'debug' ? f.layer.metadata?.kind || f.layer.id.startsWith('osm-') : f.sourceLayer,
+					);
 				if (!hits.length) return;
 				new maplibregl.Popup({ closeButton: false })
 					.setLngLat(e.lngLat)
@@ -253,7 +317,7 @@
 							.slice(0, 6)
 							.map(
 								(f) =>
-									`<div><b>${f.layer.metadata?.source ?? 'osm'}</b> ${f.sourceLayer}` +
+									`<div><b>${mode === 'debug' ? (f.layer.metadata?.source ?? 'osm') : f.layer.id}</b> ${f.sourceLayer}` +
 									`${f.properties.kind ? ` · ${f.properties.kind}` : ''}</div>`,
 							)
 							.join(''),

@@ -13,6 +13,7 @@ import {
 	landcoverKeepExpr,
 	osmFilter,
 	landcoverFilter,
+	mergePipeline,
 	versionAtLeast,
 	MIN_VERSATILES,
 } from '../lib/handover.ts';
@@ -56,6 +57,14 @@ test('the README shows the filters the code generates', () => {
 	const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
 	for (const step of [...osmFilter().split(' | '), ...landcoverFilter().split(' | ')])
 		assert.ok(readme.includes(step), `README is missing: ${step}`);
+});
+
+test('the merge pipeline filters each source with its own filter', () => {
+	assert.equal(
+		mergePipeline('osm.versatiles', 'lc.mbtiles'),
+		`from_merged_vector [ from_container filename="osm.versatiles" | ${osmFilter()}, ` +
+			`from_container filename="lc.mbtiles" | ${landcoverFilter()} ]`,
+	);
 });
 
 test('the version gate', () => {

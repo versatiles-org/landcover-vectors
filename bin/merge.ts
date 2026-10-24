@@ -12,7 +12,7 @@
 import fs from 'node:fs/promises';
 
 import { run, runCapture, requireCommands } from '../lib/worldcover.ts';
-import { osmFilter, landcoverFilter, versionAtLeast, MIN_VERSATILES } from '../lib/handover.ts';
+import { mergePipeline, versionAtLeast, MIN_VERSATILES } from '../lib/handover.ts';
 import { file, OSM_URL, SCHEMA } from '../config.ts';
 
 const exists = (p: string): Promise<boolean> =>
@@ -66,11 +66,7 @@ if (await exists(file.osm)) {
 // source's copies of the kinds the other supplies at that zoom (osmFilter / landcoverFilter, which need
 // versatiles ≥ 4.15). The result is still Shortbread — only fuller — so it says so; from_merged_vector
 // concatenates the two attributions by itself, which is what CC BY requires.
-const filtered = (filename: string, filter: string): string =>
-	`from_container filename="${filename}"` + (filter ? ` | ${filter}` : '');
-const pipeline =
-	`[,vpl](from_merged_vector [ ${filtered(file.osm, osmFilter())}, ${filtered(file.container, landcoverFilter())} ]` +
-	` | meta_update schema="${SCHEMA}")`;
+const pipeline = `[,vpl](${mergePipeline(file.osm, file.container)} | meta_update schema="${SCHEMA}")`;
 
 console.error('Merging → %s …', file.merged);
 await fs.rm(file.merged, { force: true });

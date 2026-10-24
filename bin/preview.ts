@@ -16,7 +16,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
-import { requireCommands, commandExists } from '../lib/worldcover.ts';
+import { requireCommands, commandExists, runCapture } from '../lib/worldcover.ts';
 import { requireOcean } from '../lib/ocean.ts';
 import { buildCoverage } from '../lib/coverage.ts';
 import { planBlocks, countBlocks } from '../lib/plan.ts';
@@ -25,6 +25,8 @@ import { joinZooms } from '../lib/assemble.ts';
 import { progress } from '../lib/progress.ts';
 import { resolveArea, parseZoomRange, areaSlug, previewPaths, AREAS } from '../lib/areas.ts';
 import { maplibreStyle } from '../lib/style-spec.ts';
+import { versatilesStyle } from '../lib/style-versatiles.ts';
+import { mergePipeline, versionAtLeast, MIN_VERSATILES } from '../lib/handover.ts';
 import { cacheValues, fingerprint, writeStamp } from '../lib/fingerprint.ts';
 import { blockWindow } from '../config.ts';
 import {
@@ -79,6 +81,8 @@ if (opt.help) {
 }
 
 const useOsm = !opt['no-osm']; // mounting the real OSM container is what makes the handover visible
+// whether the filtered merge is served too, for the viewer's versatiles-style view (decided before serving)
+let serveMerged = false;
 const openBrowser = !opt['no-open'];
 const spec = opt.bbox ?? opt.area;
 const bbox = spec ? resolveArea(spec) : undefined;
@@ -200,6 +204,7 @@ async function writeState(): Promise<void> {
 		zoom: { min: minZoom, max: maxZoom },
 		tileset: path.relative(root, current.tileset),
 		osm: useOsm,
+		versatilesStyle: serveMerged,
 		params: {
 			TILE_PX,
 			BLOCK,
@@ -218,6 +223,10 @@ async function writeState(): Promise<void> {
 		fingerprint: current.fingerprint,
 	});
 	await fs.writeFile(path.join(current.genDir, 'style.json'), JSON.stringify(style, null, '\t'));
+	if (serveMerged) {
+		const real = versatilesStyle(`/tiles/merged/tiles.json?v=${current.fingerprint}`);
+		await fs.writeFile(path.join(current.genDir, 'style-versatiles.json'), JSON.stringify(real, null, '\t'));
+	}
 }
 
 const exists = (p: string): Promise<boolean> =>
@@ -230,6 +239,8 @@ const exists = (p: string): Promise<boolean> =>
 function serve(): ChildProcess {
 	const mounts = [`[landcover]${current.tileset}`];
 	if (useOsm) mounts.push(`[osm]${OSM_URL}`);
+	// the real merge, filtered exactly like `npm run merge`, for the versatiles-style view
+	if (serveMerged) mounts.push(`[merged,vpl](${mergePipeline(OSM_URL, current.tileset)})`);
 	const args = [
 		'serve',
 		['-p', String(opt.port)],
@@ -254,6 +265,16 @@ if (opt['build-only']) process.exit(0);
 if (!(await exists(current.tileset))) throw new Error(`no tileset at ${current.tileset}`);
 
 await requireCommands(['versatiles']);
+if (useOsm) {
+	const version = (await runCapture('versatiles', '--version')).trim();
+	serveMerged = versionAtLeast(version, MIN_VERSATILES);
+	if (!serveMerged)
+		console.error(
+			'! %s: the versatiles-style view needs the merge filter, i.e. versatiles ≥ %s — showing the debug view only',
+			version || 'versatiles',
+			MIN_VERSATILES,
+		);
+}
 await writeBlockGrid();
 await writeState();
 let server = serve();

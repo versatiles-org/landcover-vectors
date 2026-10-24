@@ -1,6 +1,6 @@
-// MapLibre style for the preview, generated from the same `channels` table as the tiles and the QGIS
-// style — so what the browser shows is what the pipeline produced, and a recoloured channel needs no
-// second edit anywhere.
+// The preview's debug style (the other one, the real map, is lib/style-versatiles.ts), generated from the
+// same `channels` table as the tiles and the QGIS style — so what the browser shows is what the pipeline
+// produced, and a recoloured channel needs no second edit anywhere.
 //
 // The interesting thing to look at is the handover: each kind stops at its `maxZoom` and OSM takes over
 // above it. Mounting the real OSM Shortbread container alongside makes that visible. The OSM fills start

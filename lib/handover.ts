@@ -60,6 +60,14 @@ export const osmFilter = (): string => steps(osmDrops(), '<=');
 // the VPL steps that remove the landcover's copies of the kinds OSM supplies
 export const landcoverFilter = (): string => steps(landcoverDrops(), '>=');
 
+// the whole merge as one VPL source: both containers (paths or URLs), each filtered — what `npm run merge`
+// converts and what the preview serves for versatiles-style
+export function mergePipeline(osm: string, landcover: string): string {
+	const filtered = (filename: string, filter: string): string =>
+		`from_container filename="${filename}"` + (filter ? ` | ${filter}` : '');
+	return `from_merged_vector [ ${filtered(osm, osmFilter())}, ${filtered(landcover, landcoverFilter())} ]`;
+}
+
 // Older versatiles do not fail on `zoom`: 4.14.0 silently drops every feature of a filtered layer, at
 // every zoom. So the merge refuses to run below this instead of shipping tiles without land cover.
 export const MIN_VERSATILES = '4.15.0';
