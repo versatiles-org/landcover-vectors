@@ -17,6 +17,7 @@ import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
 import { requireCommands, commandExists, runCapture, setGdalThreads } from '../lib/worldcover.ts';
+import { startTimingLog, timed } from '../lib/timing.ts';
 import { requireSeaShare } from '../lib/ocean.ts';
 import { buildCoverage } from '../lib/coverage.ts';
 import { planBlocks, countBlocks } from '../lib/plan.ts';
@@ -126,6 +127,10 @@ async function build(): Promise<void> {
 	await fs.rm(dirs.tmp, { recursive: true, force: true });
 	for (const d of [dirs.tmp, dirs.results, dirs.tiles, current.genDir]) await fs.mkdir(d, { recursive: true });
 	await writeStamp(current.previewDir, cacheValues());
+	startTimingLog(path.join(current.previewDir, 'timings.jsonl'), 'preview', {
+		area: spec ?? 'world',
+		zoom: `${minZoom}-${maxZoom}`,
+	});
 
 	const coverage = await buildCoverage();
 	const plan = planBlocks(coverage, { minZoom, maxZoom, bbox });
@@ -143,16 +148,18 @@ async function build(): Promise<void> {
 
 	const bar = progress(total, 'blocks');
 	setGdalThreads(1); // one block per core, one GDAL thread each — as in the build
-	const zMbtiles = await runZooms(plan, {
-		src: file.source,
-		tmpdir: dirs.tmp,
-		resultsdir: dirs.results,
-		tilesdir: dirs.tiles,
-		logFile: dirs.log,
-		concurrency: Number(opt.concurrency ?? BLOCK_CONCURRENCY),
-		bar,
-		label: (z) => `zoom ${z}/${maxZoom}`,
-	});
+	const zMbtiles = await timed('preview', () =>
+		runZooms(plan, {
+			src: file.source,
+			tmpdir: dirs.tmp,
+			resultsdir: dirs.results,
+			tilesdir: dirs.tiles,
+			logFile: dirs.log,
+			concurrency: Number(opt.concurrency ?? BLOCK_CONCURRENCY),
+			bar,
+			label: (z) => `zoom ${z}/${maxZoom}`,
+		}),
+	);
 	bar.done();
 
 	await joinZooms(zMbtiles, current.tileset);

@@ -2,11 +2,12 @@
 // Open Data. Source: https://registry.opendata.aws/esa-worldcover-vito/ (s3://esa-worldcover)
 // Data paths live in config.ts.
 
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess, type StdioOptions } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { progress } from './progress.ts';
+import { commandStarted } from './timing.ts';
 
 export const BUCKET = 'https://esa-worldcover.s3.eu-central-1.amazonaws.com';
 export const PREFIX = 'v200/2021/map/';
@@ -44,12 +45,26 @@ function toArgv(args: Arg[]): string[] {
 	return args.flat().map(String);
 }
 
+// spawn a command with the GDAL environment, and log its wall time to the timing log (lib/timing.ts)
+function spawnTimed(cmd: string, argv: string[], stdio: StdioOptions): ChildProcess {
+	const done = commandStarted(cmd, argv);
+	const child = spawn(cmd, argv, { stdio, env: gdalEnv });
+	let logged = false;
+	const finish = (ok: boolean) => {
+		if (!logged) done(ok);
+		logged = true;
+	};
+	child.on('error', () => finish(false));
+	child.on('exit', (code) => finish(code === 0));
+	return child;
+}
+
 // run a child process, inheriting stdio, rejecting on non-zero exit
 export function run(cmd: string, ...args: Arg[]): Promise<void> {
 	const argv = toArgv(args);
 	return new Promise<void>((resolve, reject) => {
 		console.error('$ %s %s', cmd, argv.join(' '));
-		const child = spawn(cmd, argv, { stdio: 'inherit', env: gdalEnv });
+		const child = spawnTimed(cmd, argv, 'inherit');
 		child.on('error', reject);
 		child.on('exit', (code, signal) => (code === 0 ? resolve() : reject(new Error(exitMessage(cmd, code, signal)))));
 	});
@@ -66,7 +81,7 @@ export function runProgress(label: string, cmd: string, ...args: Arg[]): Promise
 		const bar = progress(GDAL_PROGRESS_STEPS, label);
 		let out = '';
 		let shown = 0;
-		const child = spawn(cmd, argv, { stdio: ['ignore', 'pipe', 'inherit'], env: gdalEnv });
+		const child = spawnTimed(cmd, argv, ['ignore', 'pipe', 'inherit']);
 		child.stdout?.on('data', (d) => {
 			out += d;
 			const steps = gdalProgressSteps(out);
@@ -99,7 +114,7 @@ export function gdalProgressSteps(stdout: string): number {
 export function runQuiet(cmd: string, ...args: Arg[]): Promise<void> {
 	const argv = toArgv(args);
 	return new Promise<void>((resolve, reject) => {
-		const child = spawn(cmd, argv, { stdio: ['ignore', 'ignore', 'pipe'], env: gdalEnv });
+		const child = spawnTimed(cmd, argv, ['ignore', 'ignore', 'pipe']);
 		let stderr = '';
 		child.stderr?.on('data', (d) => (stderr += d));
 		child.on('error', reject);
@@ -113,7 +128,7 @@ export function runQuiet(cmd: string, ...args: Arg[]): Promise<void> {
 export function runCapture(cmd: string, ...args: Arg[]): Promise<string> {
 	const argv = toArgv(args);
 	return new Promise<string>((resolve, reject) => {
-		const child = spawn(cmd, argv, { stdio: ['ignore', 'pipe', 'pipe'], env: gdalEnv });
+		const child = spawnTimed(cmd, argv, ['ignore', 'pipe', 'pipe']);
 		let stdout = '';
 		let stderr = '';
 		child.stdout?.on('data', (d) => (stdout += d));

@@ -9,6 +9,7 @@
 import fs from 'node:fs/promises';
 
 import { requireCommands, setGdalThreads } from '../lib/worldcover.ts';
+import { startTimingLog, timed } from '../lib/timing.ts';
 import { requireSeaShare } from '../lib/ocean.ts';
 import { progress } from '../lib/progress.ts';
 import { buildCoverage } from '../lib/coverage.ts';
@@ -18,7 +19,7 @@ import { cacheValues, sourceValues, readStamp, writeStamp, stampMismatch } from 
 import { LOG_HEADER } from '../lib/block.ts';
 import { readRunSummary, formatSummary } from '../lib/summary.ts';
 import { pack } from '../lib/assemble.ts';
-import { datadir, dir, file, MAXLEVEL, BLOCK_CONCURRENCY } from '../config.ts';
+import { datadir, dir, file, MAXLEVEL, BLOCK_CONCURRENCY, CPU_CORES } from '../config.ts';
 
 // fail fast (before the long build) if any external tool is missing
 const started = Date.now();
@@ -81,6 +82,7 @@ await fs.mkdir(dir.results, { recursive: true });
 await fs.mkdir(dir.tiles, { recursive: true });
 await fs.appendFile(file.log, LOG_HEADER + '\n'); // header row marks the start of this run; rows appended per block
 const fp = await writeStamp(datadir, cacheValues());
+startTimingLog(file.timings, 'build', { fingerprint: fp, cores: CPU_CORES, concurrency: BLOCK_CONCURRENCY });
 console.error('Config fingerprint: %s — data dir: %s', fp, datadir);
 console.error('Per-block log: %s', file.log);
 
@@ -96,19 +98,21 @@ const bar = progress(countBlocks(plan), 'blocks');
 
 // one block per core (BLOCK_CONCURRENCY), so each block's GDAL calls get one thread instead of all cores
 setGdalThreads(1);
-const zMbtiles = await runZooms(plan, {
-	src: file.source,
-	tmpdir: dir.tmp,
-	resultsdir: dir.results,
-	tilesdir: dir.tiles,
-	logFile: file.log,
-	concurrency: BLOCK_CONCURRENCY,
-	bar,
-	label: (z) => `zoom ${z}/${MAXLEVEL}`,
-});
+const zMbtiles = await timed('build', () =>
+	runZooms(plan, {
+		src: file.source,
+		tmpdir: dir.tmp,
+		resultsdir: dir.results,
+		tilesdir: dir.tiles,
+		logFile: file.log,
+		concurrency: BLOCK_CONCURRENCY,
+		bar,
+		label: (z) => `zoom ${z}/${MAXLEVEL}`,
+	}),
+);
 bar.done();
 
-await pack(zMbtiles);
+await timed('pack', () => pack(zMbtiles));
 await fs.rm(dir.tmp, { recursive: true, force: true }); // scratch no longer needed
 
 // what actually happened, from the log this run appended — branch counts included, so a fast path that

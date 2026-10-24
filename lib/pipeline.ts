@@ -10,6 +10,7 @@ import path from 'node:path';
 import { pMap } from './worldcover.ts';
 import { processBlock, type BlockFragments } from './block.ts';
 import { tileZoom } from './assemble.ts';
+import { timed } from './timing.ts';
 import type { ZoomBlocks } from './plan.ts';
 import type { Progress } from './progress.ts';
 
@@ -43,23 +44,41 @@ export async function runZooms(plan: ZoomBlocks[], ctx: PipelineCtx, deps: Pipel
 			continue;
 		}
 
-		// collect by block index, not by completion order: this order is the order the fragments are
-		// unioned in and handed to tippecanoe, so keeping it stable makes two runs of the same config
-		// produce identical tiles
-		const collected: (BlockFragments | null)[] = blocks.map(() => null);
-		const failed: { id: string; err: unknown }[] = [];
-		await pMap(
+		// the zoom's blocks, then its tiling, each a step of the timing log (lib/timing.ts)
+		const mb = await timed(`z${z}`, () => runZoom(z, blocks, ctx, deps));
+		if (mb) zMbtiles.push(mb);
+	}
+
+	return zMbtiles;
+}
+
+// one zoom: process its blocks, then tile them; returns the zoom's tileset, if it has one
+async function runZoom(
+	z: number,
+	blocks: [number, number][],
+	ctx: PipelineCtx,
+	deps: PipelineDeps,
+): Promise<string | null> {
+	// collect by block index, not by completion order: this order is the order the fragments are
+	// unioned in and handed to tippecanoe, so keeping it stable makes two runs of the same config
+	// produce identical tiles
+	const collected: (BlockFragments | null)[] = blocks.map(() => null);
+	const failed: { id: string; err: unknown }[] = [];
+	await timed('blocks', () =>
+		pMap(
 			blocks.map((_, i) => i),
 			ctx.concurrency,
 			async (i) => {
 				const [bx, by] = blocks[i];
 				try {
-					const f = await deps.processBlock(z, bx, by, {
-						src: ctx.src,
-						tmpdir: ctx.tmpdir,
-						resultsdir: ctx.resultsdir,
-						logFile: ctx.logFile,
-					});
+					const block = () =>
+						deps.processBlock(z, bx, by, {
+							src: ctx.src,
+							tmpdir: ctx.tmpdir,
+							resultsdir: ctx.resultsdir,
+							logFile: ctx.logFile,
+						});
+					const f = await timed('block', block, `z${z}_${bx}_${by}`);
 					if (f.land || f.water) collected[i] = f;
 				} catch (err) {
 					// one bad block must not discard the zoom's other few thousand: every finished block is
@@ -68,23 +87,20 @@ export async function runZooms(plan: ZoomBlocks[], ctx: PipelineCtx, deps: Pipel
 				}
 				ctx.bar?.tick();
 			},
+		),
+	);
+
+	// a partial zoom must never be tiled — report every failure of this zoom at once and stop here
+	if (failed.length) {
+		const ids = failed.slice(0, 8).map((f) => f.id);
+		throw new AggregateError(
+			failed.map((f) => f.err),
+			`zoom ${z}: ${failed.length} of ${blocks.length} blocks failed (${ids.join(', ')}` +
+				`${failed.length > ids.length ? ', …' : ''})${ctx.logFile ? ` — see ${ctx.logFile}` : ''}; ` +
+				`finished blocks are cached, so rerunning retries only the failures`,
 		);
-
-		// a partial zoom must never be tiled — report every failure of this zoom at once and stop here
-		if (failed.length) {
-			const ids = failed.slice(0, 8).map((f) => f.id);
-			throw new AggregateError(
-				failed.map((f) => f.err),
-				`zoom ${z}: ${failed.length} of ${blocks.length} blocks failed (${ids.join(', ')}` +
-					`${failed.length > ids.length ? ', …' : ''})${ctx.logFile ? ` — see ${ctx.logFile}` : ''}; ` +
-					`finished blocks are cached, so rerunning retries only the failures`,
-			);
-		}
-
-		const fragments = collected.filter((f): f is BlockFragments => f !== null);
-		const mb = await deps.tileZoom(z, fragments, { tmp: ctx.tmpdir, tiles: ctx.tilesdir });
-		if (mb) zMbtiles.push(mb);
 	}
 
-	return zMbtiles;
+	const fragments = collected.filter((f): f is BlockFragments => f !== null);
+	return timed('tiling', () => deps.tileZoom(z, fragments, { tmp: ctx.tmpdir, tiles: ctx.tilesdir }));
 }

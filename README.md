@@ -304,11 +304,21 @@ Shortbread style fits. The build ends with a per-zoom tally of how its blocks we
 | ----------------- | ------------------------------------------------------------------------------------ |
 | `npm run preview` | build one area, serve it next to real OSM data and open a viewer                     |
 | `npm run stats`   | tile size distribution, worst tiles, and a baseline to diff builds against           |
+| `npm run timings` | where a download or build spent its time, per step and per command                   |
 | `npm run sweep`   | build an area once per parameter value and compare size and quality                  |
 | `npm run inspect` | compare one tile pixel by pixel with what it should show, as numbers and a PNG       |
 | `npm run style`   | write a QGIS vector-tiles style (`landcover.qml`) that colours both layers by `kind` |
 | `npm run clean`   | delete the build caches (keeps the download)                                         |
 | `npm run check`   | typecheck, formatting and tests                                                      |
+
+### Timings
+
+Download, build and preview log how long every step and every external command took, to `data/timings.jsonl`
+(a preview to its own directory). Each command knows its step and, inside the build, its block, e.g.
+`build/z10/blocks/block/sieve` for `z10_33_39`. `npm run timings` sums up the last run: per step, per command
+(with the average number of commands running at the same time, which wall times under load have to be read
+against) and the slowest single commands with their block or sea-share tile. `--zooms` keeps the zooms apart,
+`--runs` lists earlier runs and `--run <id>` picks one.
 
 ### Preview
 

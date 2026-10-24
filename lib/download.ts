@@ -21,6 +21,7 @@ import path from 'node:path';
 import { runProgress, atomic, listSourceKeys, BUCKET } from './worldcover.ts';
 import { writeStamp, readStamp, stampMismatch, sourceValues, fingerprint, type Values } from './fingerprint.ts';
 import { downloadOcean, buildSeaShare, seaShareValues, SEA_SHARE_STAMP } from './ocean.ts';
+import { timed } from './timing.ts';
 import { dir, file, MERC, FULL_PX } from '../config.ts';
 
 const exists = (p: string): Promise<boolean> =>
@@ -37,17 +38,17 @@ export async function download(): Promise<void> {
 	const stamp = await readStamp(dir.source);
 	const current = (await exists(file.source)) && !(stamp && stampMismatch(stamp, sourceValues()));
 	if (current) console.error('Source raster present: %s (delete it to rebuild)', file.source);
-	else await downloadSource();
+	else await timed('source', downloadSource);
 
 	if (await exists(file.ocean)) console.error('Ocean mask present: %s (delete it to refresh)', file.ocean);
-	else await downloadOcean();
+	else await timed('ocean', downloadOcean);
 
 	// the sea share follows the polygons: a refreshed polygon file no longer matches its stamp
 	const share = await seaShareValues();
 	const shareStamp = await readStamp(dir.source, SEA_SHARE_STAMP);
 	if ((await exists(file.seaShare)) && shareStamp && !stampMismatch(shareStamp, share))
 		console.error('Sea share present: %s', file.seaShare);
-	else await downloadSeaShare(share);
+	else await timed('seashare', () => downloadSeaShare(share));
 }
 
 async function downloadSeaShare(values: Values): Promise<void> {
@@ -62,7 +63,7 @@ async function downloadSeaShare(values: Values): Promise<void> {
 async function downloadSource(): Promise<void> {
 	// list the remote tiles and record them (skip-empty reads this list at build time)
 	console.error('Listing source tiles from s3://esa-worldcover …');
-	const keys = await listSourceKeys();
+	const keys = await timed('list', listSourceKeys);
 	console.error('Found %d source tiles', keys.length);
 	await fs.writeFile(file.sourceList, keys.join('\n') + '\n');
 

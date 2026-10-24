@@ -9,6 +9,7 @@ import { performance } from 'node:perf_hooks';
 
 import { runQuiet, atomic, presentValues, histogram, gdalEnv } from './worldcover.ts';
 import { seaShareWindow } from './ocean.ts';
+import { timed } from './timing.ts';
 import {
 	channels,
 	blockWindow,
@@ -156,21 +157,23 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		//    uncovered pixels stay 0 = no-data)
 		const window = tmp('window.tif');
 		const { window3857: w, windowPx: px } = win;
-		await runQuiet(
-			'gdalwarp',
-			['-t_srs', 'EPSG:3857'],
-			['-te', w.minx, w.miny, w.maxx, w.maxy],
-			['-ts', px.width, px.height],
-			['-r', 'mode'],
-			['-ot', 'Byte'],
-			['-of', 'GTiff'],
-			// as many warp threads as GDAL gets (setGdalThreads): one in the build, which runs a block per core
-			gdalEnv.GDAL_NUM_THREADS === '1' ? [] : '-multi',
-			['-wo', `NUM_THREADS=${gdalEnv.GDAL_NUM_THREADS}`],
-			co,
-			'-overwrite',
-			ctx.src,
-			window,
+		await timed('read', () =>
+			runQuiet(
+				'gdalwarp',
+				['-t_srs', 'EPSG:3857'],
+				['-te', w.minx, w.miny, w.maxx, w.maxy],
+				['-ts', px.width, px.height],
+				['-r', 'mode'],
+				['-ot', 'Byte'],
+				['-of', 'GTiff'],
+				// as many warp threads as GDAL gets (setGdalThreads): one in the build, which runs a block per core
+				gdalEnv.GDAL_NUM_THREADS === '1' ? [] : '-multi',
+				['-wo', `NUM_THREADS=${gdalEnv.GDAL_NUM_THREADS}`],
+				co,
+				'-overwrite',
+				ctx.src,
+				window,
+			),
 		);
 		scratch.push(window + '.aux.xml'); // gdalinfo -hist (below) leaves a PAM sidecar — clean it up too
 
@@ -184,8 +187,9 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 
 		// Histogram-gate the work (see fastPath): which active kinds occur in this window (incl. margin, which
 		// the sieve near the inner edge sees), and how much of it is sea?
-		const { values: present, counted, pixels } = await presentValues(window);
-		const { buckets } = await histogram(share);
+		const [{ values: present, counted, pixels }, { buckets }] = await timed('histogram', () =>
+			Promise.all([presentValues(window), histogram(share)]),
+		);
 		const sea = buckets.slice(SEA_SHARE_MIN).reduce((n, v) => n + v, 0);
 		const content = { present: [...present], nodata: pixels - counted, sea };
 		const route = fastPath({ present, counted, pixels, sea }, active);
@@ -231,11 +235,11 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		};
 
 		if (route.branch === 'empty') {
-			await emit(null); // all sea, or nothing but no-data
+			await timed('emit', () => emit(null)); // all sea, or nothing but no-data
 			return finish('empty', frags, content);
 		}
 		if (route.branch === 'uniform') {
-			await emit(route.kind); // one kind fills the block
+			await timed('emit', () => emit(route.kind)); // one kind fills the block
 			return finish('uniform', frags, { ...content, kind: route.kind.kind });
 		}
 		const activePresent = route.classes;
@@ -245,31 +249,35 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		// different classes are disjoint, so at most one term is set.
 		const index = tmp('index.tif');
 		const classes = activePresent.map((c, j) => `${j + 1}*${isAny(c.esa)}`).join('+');
-		await runQuiet(
-			'gdal_calc.py',
-			['-A', window],
-			['-B', share],
-			['--calc', `1+(B<${SEA_SHARE_MIN})*(${classes})`],
-			['--type', 'Byte'],
-			'--hideNoData',
-			['--co', 'COMPRESS=DEFLATE'],
-			['--co', 'TILED=YES'],
-			'--overwrite',
-			'--quiet',
-			['--outfile', index],
+		await timed('classify', () =>
+			runQuiet(
+				'gdal_calc.py',
+				['-A', window],
+				['-B', share],
+				['--calc', `1+(B<${SEA_SHARE_MIN})*(${classes})`],
+				['--type', 'Byte'],
+				'--hideNoData',
+				['--co', 'COMPRESS=DEFLATE'],
+				['--co', 'TILED=YES'],
+				'--overwrite',
+				'--quiet',
+				['--outfile', index],
+			),
 		);
 
 		// 3. sieve specks
 		const sieved = tmp('sieved.tif');
-		await runQuiet(
-			'gdal',
-			['raster', 'sieve'],
-			['--size-threshold', SIEVE_THRESHOLD],
-			['--co', 'COMPRESS=DEFLATE'],
-			['--co', 'TILED=YES'],
-			'--overwrite',
-			['-i', index],
-			['-o', sieved],
+		await timed('sieve', () =>
+			runQuiet(
+				'gdal',
+				['raster', 'sieve'],
+				['--size-threshold', SIEVE_THRESHOLD],
+				['--co', 'COMPRESS=DEFLATE'],
+				['--co', 'TILED=YES'],
+				'--overwrite',
+				['-i', index],
+				['-o', sieved],
+			),
 		);
 
 		// 4. crop the classified raster to the block's exact inner BLOCK×BLOCK rectangle in EPSG:3857.
@@ -278,30 +286,34 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		// the GeometryCollection slivers a vector clip can produce along the boundary.
 		const r: Rect = win.inner3857;
 		const cropped = tmp('cropped.tif');
-		await runQuiet(
-			'gdal_translate',
-			'-q',
-			['-projwin', r.minx, r.maxy, r.maxx, r.miny],
-			['-co', 'COMPRESS=DEFLATE'],
-			['-co', 'TILED=YES'],
-			sieved,
-			cropped,
+		await timed('crop', () =>
+			runQuiet(
+				'gdal_translate',
+				'-q',
+				['-projwin', r.minx, r.maxy, r.maxx, r.miny],
+				['-co', 'COMPRESS=DEFLATE'],
+				['-co', 'TILED=YES'],
+				sieved,
+				cropped,
+			),
 		);
 
 		// 5. polygonize (field `code` = channel index) → a gap-free coverage of the whole block,
 		// INCLUDING the no-data class (code 1). It must stay 100% filled for the next step.
 		const poly = tmp('poly.fgb');
 		await fs.rm(poly, { force: true });
-		await runQuiet(
-			'gdal',
-			['raster', 'polygonize'],
-			['-i', cropped],
-			['-o', poly],
-			['-f', 'FlatGeobuf'],
-			['--lco', 'SPATIAL_INDEX=NO'], // read sequentially by simplify-coverage; no index needed
-			['--attribute-name', 'code'],
-			['--output-layer', 'data'],
-			'--overwrite',
+		await timed('polygonize', () =>
+			runQuiet(
+				'gdal',
+				['raster', 'polygonize'],
+				['-i', cropped],
+				['-o', poly],
+				['-f', 'FlatGeobuf'],
+				['--lco', 'SPATIAL_INDEX=NO'], // read sequentially by simplify-coverage; no index needed
+				['--attribute-name', 'code'],
+				['--output-layer', 'data'],
+				'--overwrite',
+			),
 		);
 
 		// 6. coverage-simplify. simplify-coverage only simplifies the *interior* edges shared between
@@ -311,16 +323,18 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		// simplify the full polygonized coverage here and drop the no-data class only afterwards (7).
 		const simplified = tmp('simplified.fgb');
 		await fs.rm(simplified, { force: true });
-		await runQuiet(
-			'gdal',
-			['vector', 'simplify-coverage'],
-			'--overwrite',
-			'--preserve-boundary',
-			['--lco', 'SPATIAL_INDEX=NO'], // read sequentially by the split step; no index needed
-			['--output-layer', 'data'],
-			['-i', poly],
-			['-o', simplified],
-			simplifyForLevel(z),
+		await timed('simplify', () =>
+			runQuiet(
+				'gdal',
+				['vector', 'simplify-coverage'],
+				'--overwrite',
+				'--preserve-boundary',
+				['--lco', 'SPATIAL_INDEX=NO'], // read sequentially by the split step; no index needed
+				['--output-layer', 'data'],
+				['-i', poly],
+				['-o', simplified],
+				simplifyForLevel(z),
+			),
 		);
 
 		// 7. now drop the no-data class, tag each polygon's Shortbread `kind`, reproject to EPSG:4326
@@ -346,8 +360,10 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 				out,
 				simplified,
 			);
-		if (hasLand) await atomic(landFrag, (out) => split(out, 'land', codesFor('land')));
-		if (hasWater) await atomic(waterFrag, (out) => split(out, 'water_polygons', codesFor('water_polygons')));
+		await timed('split', async () => {
+			if (hasLand) await atomic(landFrag, (out) => split(out, 'land', codesFor('land')));
+			if (hasWater) await atomic(waterFrag, (out) => split(out, 'water_polygons', codesFor('water_polygons')));
+		});
 		return finish('full', frags, { ...content, channels: activePresent.length });
 	} catch (err) {
 		// leave a row behind, then let the caller decide: bin/build.ts collects every failed block of a

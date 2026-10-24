@@ -47,6 +47,7 @@ export const file = {
 	sourceList: path.join(sourcedir, '_source-tiles.txt'), // remote tile list, read for skip-empty (download)
 	ocean: path.join(sourcedir, 'water-polygons-3857.fgb'), // OSM's sea polygons, rasterized into seaShare (download)
 	log: path.join(datadir, 'blocks.log'), // per-block processing log (TSV), one row per block (build)
+	timings: path.join(datadir, 'timings.jsonl'), // how long every step and command took (download, build)
 	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid (pack)
 	container: path.join(datadir, 'landcover.versatiles'), // brotli versatiles (pack)
 	osm: path.join(datadir, 'osm.versatiles'), // OSM Shortbread base, downloaded on demand (merge)

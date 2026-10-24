@@ -17,6 +17,7 @@ import { existsSync } from 'node:fs';
 
 import { run, runQuiet, runProgress, atomic, pMap } from './worldcover.ts';
 import { progress } from './progress.ts';
+import { timed } from './timing.ts';
 import { readStamp, type Values } from './fingerprint.ts';
 import { dir, file, OCEAN_URL, MERC, FULL_PX, MAXLEVEL, CPU_CORES, type Rect } from '../config.ts';
 
@@ -138,64 +139,76 @@ export async function buildSeaShare(out: string, opts: SeaShareOpts): Promise<vo
 	// GDAL call, see gdalEnv) gives each of them its own compression threads on top. On 320 tiles that took 3.6×
 	// the wall time and CPU (68 s / 790 CPU-s against 19 s / 219 CPU-s).
 	const oneThread = ['--config', 'GDAL_NUM_THREADS', 1];
-	await pMap(jobs, opts.concurrency ?? CPU_CORES, async (job) => {
-		const tif = tilePath(job);
-		if (!existsSync(tif)) {
-			const [x, y] = job;
-			const r: Rect = {
-				minx: -MERC + x * span,
-				maxx: -MERC + (x + 1) * span,
-				maxy: MERC - y * span,
-				miny: MERC - (y + 1) * span,
-			};
-			const clip = tif + '.fgb';
-			// GEOS's topology-preserving simplify (ogr2ogr -simplify) has segfaulted once in ~1700 tiles under full
-			// load, and never again on the same tile, alone or 14 at a time. A clip that succeeds is deterministic,
-			// so a failed one is retried rather than ending a two-hour run.
-			for (let attempt = 1; ; attempt++) {
-				await fs.rm(clip, { force: true });
-				try {
-					await runQuiet(
-						'ogr2ogr',
-						oneThread,
-						['-spat', r.minx, r.miny, r.maxx, r.maxy],
-						['-simplify', tolerance],
-						['-f', 'FlatGeobuf'],
-						['-lco', 'SPATIAL_INDEX=NO'], // read once, sequentially
-						['-nln', LAYER],
-						['-nlt', 'PROMOTE_TO_MULTI'],
-						clip,
-						polygons,
-						LAYER,
-					);
-					break;
-				} catch (err) {
-					if (attempt >= CLIP_ATTEMPTS) throw err;
-					console.error('! sea share tile %d_%d: %s — retrying', x, y, err instanceof Error ? err.message : err);
-				}
-			}
-			await atomic(tif, (tmp) =>
-				runQuiet(
-					'gdal_rasterize',
-					'-q',
-					oneThread,
-					['-burn', SEA],
-					['-init', 0],
-					['-l', LAYER],
-					['-a_srs', 'EPSG:3857'],
-					['-te', r.minx, r.miny, r.maxx, r.maxy],
-					['-ts', tilePx, tilePx],
-					['-ot', 'Byte'],
-					['-co', 'TILED=YES'],
-					['-co', 'COMPRESS=ZSTD'],
-					clip,
-					tmp,
-				),
-			);
-			await fs.rm(clip, { force: true });
-		}
-		bar.tick();
-	});
+	await timed('tiles', () =>
+		pMap(jobs, opts.concurrency ?? CPU_CORES, async (job) => {
+			const tif = tilePath(job);
+			if (!existsSync(tif))
+				await timed(
+					'tile',
+					async () => {
+						const [x, y] = job;
+						const r: Rect = {
+							minx: -MERC + x * span,
+							maxx: -MERC + (x + 1) * span,
+							maxy: MERC - y * span,
+							miny: MERC - (y + 1) * span,
+						};
+						const clip = tif + '.fgb';
+						// GEOS's topology-preserving simplify (ogr2ogr -simplify) has segfaulted once in ~1700 tiles under full
+						// load, and never again on the same tile, alone or 14 at a time. A clip that succeeds is deterministic,
+						// so a failed one is retried rather than ending a two-hour run.
+						for (let attempt = 1; ; attempt++) {
+							await fs.rm(clip, { force: true });
+							try {
+								await runQuiet(
+									'ogr2ogr',
+									oneThread,
+									['-spat', r.minx, r.miny, r.maxx, r.maxy],
+									['-simplify', tolerance],
+									['-f', 'FlatGeobuf'],
+									['-lco', 'SPATIAL_INDEX=NO'], // read once, sequentially
+									['-nln', LAYER],
+									['-nlt', 'PROMOTE_TO_MULTI'],
+									clip,
+									polygons,
+									LAYER,
+								);
+								break;
+							} catch (err) {
+								if (attempt >= CLIP_ATTEMPTS) throw err;
+								console.error(
+									'! sea share tile %d_%d: %s — retrying',
+									x,
+									y,
+									err instanceof Error ? err.message : err,
+								);
+							}
+						}
+						await atomic(tif, (tmp) =>
+							runQuiet(
+								'gdal_rasterize',
+								'-q',
+								oneThread,
+								['-burn', SEA],
+								['-init', 0],
+								['-l', LAYER],
+								['-a_srs', 'EPSG:3857'],
+								['-te', r.minx, r.miny, r.maxx, r.maxy],
+								['-ts', tilePx, tilePx],
+								['-ot', 'Byte'],
+								['-co', 'TILED=YES'],
+								['-co', 'COMPRESS=ZSTD'],
+								clip,
+								tmp,
+							),
+						);
+						await fs.rm(clip, { force: true });
+					},
+					`${job[0]}_${job[1]}`,
+				);
+			bar.tick();
+		}),
+	);
 	bar.done();
 
 	const list = path.join(tilesDir, 'tiles.txt');

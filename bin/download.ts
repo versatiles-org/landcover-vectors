@@ -5,6 +5,9 @@
 
 import { download } from '../lib/download.ts';
 import { requireCommands } from '../lib/worldcover.ts';
+import { startTimingLog, timed } from '../lib/timing.ts';
+import { file, CPU_CORES } from '../config.ts';
 
 await requireCommands(['gdalbuildvrt', 'gdalwarp', 'gdaladdo', 'gdal_translate', 'gdal_rasterize', 'ogr2ogr', 'curl']);
-await download();
+startTimingLog(file.timings, 'download', { cores: CPU_CORES });
+await timed('download', download);

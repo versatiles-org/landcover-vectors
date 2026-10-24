@@ -18,6 +18,7 @@
     "preview": "node bin/preview.ts",
     "style": "node bin/style.ts",
     "stats": "node --disable-warning=ExperimentalWarning bin/stats.ts",
+    "timings": "node bin/timings.ts",
     "sweep": "node --disable-warning=ExperimentalWarning bin/sweep.ts",
     "clean": "node bin/clean.ts",
     "test": "node --disable-warning=ExperimentalWarning --test",
