@@ -89,6 +89,7 @@ export async function requireOcean(): Promise<void> {
 
 export const SEA = 100; // the base value of a sea pixel: the share is in percent
 const SHARE_TILES = 64; // tiles per axis for the rasterization: 16384² px each at TILE_PX 1024
+const CLIP_ATTEMPTS = 3;
 export const SEA_SHARE_STAMP = '.fingerprint-seashare'; // its stamp, next to the source raster's own
 
 // what the sea share was built from and how: a changed polygon file (a refreshed download) rebuilds it
@@ -135,19 +136,30 @@ export async function buildSeaShare(out: string, opts: SeaShareOpts): Promise<vo
 				miny: MERC - (y + 1) * span,
 			};
 			const clip = tif + '.fgb';
-			await fs.rm(clip, { force: true });
-			await runQuiet(
-				'ogr2ogr',
-				['-spat', r.minx, r.miny, r.maxx, r.maxy],
-				['-simplify', tolerance],
-				['-f', 'FlatGeobuf'],
-				['-lco', 'SPATIAL_INDEX=NO'], // read once, sequentially
-				['-nln', LAYER],
-				['-nlt', 'PROMOTE_TO_MULTI'],
-				clip,
-				polygons,
-				LAYER,
-			);
+			// GEOS's topology-preserving simplify (ogr2ogr -simplify) has segfaulted once in ~1700 tiles under full
+			// load, and never again on the same tile, alone or 14 at a time. A clip that succeeds is deterministic,
+			// so a failed one is retried rather than ending a two-hour run.
+			for (let attempt = 1; ; attempt++) {
+				await fs.rm(clip, { force: true });
+				try {
+					await runQuiet(
+						'ogr2ogr',
+						['-spat', r.minx, r.miny, r.maxx, r.maxy],
+						['-simplify', tolerance],
+						['-f', 'FlatGeobuf'],
+						['-lco', 'SPATIAL_INDEX=NO'], // read once, sequentially
+						['-nln', LAYER],
+						['-nlt', 'PROMOTE_TO_MULTI'],
+						clip,
+						polygons,
+						LAYER,
+					);
+					break;
+				} catch (err) {
+					if (attempt >= CLIP_ATTEMPTS) throw err;
+					console.error('! sea share tile %d_%d: %s — retrying', x, y, err instanceof Error ? err.message : err);
+				}
+			}
 			await atomic(tif, (tmp) =>
 				runQuiet(
 					'gdal_rasterize',
