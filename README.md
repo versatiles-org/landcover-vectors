@@ -157,7 +157,7 @@ so they follow any change of a cutoff.
 ### Run
 
 ```sh
-npm run download   # once: build the EPSG:3857 source raster from ESA's remote tiles, fetch the ocean mask
+npm run download   # once: build the EPSG:3857 source raster from ESA's remote tiles, fetch and rasterize the ocean mask
 npm run build      # everything else → data/landcover.versatiles
 npm run merge      # optional: merge with OSM → data/combined.versatiles
 ```
@@ -222,6 +222,13 @@ simplified to half a raster pixel), then rasterizes the clip (`gdal_rasterize`).
 ~0.5 s on a coastal z10 block and ~100 s for the world-sized blocks of z0–3. The mask is part of the
 cache fingerprint, so a build without it is not mixed with one with it. Its date is not, so a newer coastline
 doesn't invalidate a cache: delete the file and re-run `npm run download` to refresh it.
+
+The download also rasterizes the polygons once into a **sea-share pyramid**, `data/0_download/seashare-3857.tif`:
+the source raster's own grid, with each base pixel 100 (sea) or 0 (land), burned like a z10 block burns its
+window (polygons simplified to half a pixel, pixel centres inside count), and average overviews down to z0, so
+every level holds the true sea share of its pixels. It is built in 16384² px tiles in parallel, mosaicked and
+stamped with the polygon file it came from, so refreshing the polygons rebuilds it; an interrupted run resumes
+from the tiles already done.
 
 ### Coverage index
 

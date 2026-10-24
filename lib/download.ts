@@ -10,15 +10,17 @@
 // GeoTIFF is tiled with ZSTD, BigTIFF, and sparse (all-nodata ocean blocks aren't
 // stored). The remote tile list is recorded next to it for the build's skip-empty step.
 //
-// Next to it goes the ocean mask (lib/ocean.ts). Each of the two is only built when it is missing (or, for the
-// raster, stamped for another FULL_PX), so adding the mask to an existing download costs ~1 GB, not a re-warp.
+// Next to it go the ocean mask (lib/ocean.ts): OSM's sea polygons, and the sea-share pyramid rasterized from
+// them onto the source's grid, which the blocks read. Each is only built when it is missing or stamped for
+// other inputs (the raster for another FULL_PX, the sea share for other polygons), so adding or refreshing
+// the mask costs the polygons and their rasterization, not a re-warp.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { run, atomic, listSourceKeys, BUCKET } from './worldcover.ts';
-import { writeStamp, readStamp, stampMismatch, sourceValues } from './fingerprint.ts';
-import { downloadOcean } from './ocean.ts';
+import { writeStamp, readStamp, stampMismatch, sourceValues, fingerprint, type Values } from './fingerprint.ts';
+import { downloadOcean, buildSeaShare, seaShareValues, SEA_SHARE_STAMP } from './ocean.ts';
 import { dir, file, MERC, FULL_PX } from '../config.ts';
 
 const exists = (p: string): Promise<boolean> =>
@@ -39,6 +41,22 @@ export async function download(): Promise<void> {
 
 	if (await exists(file.ocean)) console.error('Ocean mask present: %s (delete it to refresh)', file.ocean);
 	else await downloadOcean();
+
+	// the sea share follows the polygons: a refreshed polygon file no longer matches its stamp
+	const share = await seaShareValues();
+	const shareStamp = await readStamp(dir.source, SEA_SHARE_STAMP);
+	if ((await exists(file.seaShare)) && shareStamp && !stampMismatch(shareStamp, share))
+		console.error('Sea share present: %s', file.seaShare);
+	else await downloadSeaShare(share);
+}
+
+async function downloadSeaShare(values: Values): Promise<void> {
+	console.error("Rasterizing OSM's sea → %s (%d×%d px, average overviews) …", file.seaShare, FULL_PX, FULL_PX);
+	// per-tile rasters resume an interrupted run, but only one for the same inputs
+	const tilesDir = path.join(dir.tmp, `seashare-${fingerprint(values)}`);
+	await buildSeaShare(file.seaShare, { tilesDir });
+	await writeStamp(dir.source, values, SEA_SHARE_STAMP);
+	console.error('✓ sea share ready: %s', file.seaShare);
 }
 
 async function downloadSource(): Promise<void> {

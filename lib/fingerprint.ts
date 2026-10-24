@@ -56,17 +56,18 @@ export function fingerprint(values: unknown): string {
 	return createHash('sha256').update(JSON.stringify(values)).digest('hex').slice(0, 8);
 }
 
-export async function readStamp(dirPath: string): Promise<Stamp | null> {
+// `name` picks one of several stamps in a directory (the source dir stamps the raster and the sea share)
+export async function readStamp(dirPath: string, name = STAMP): Promise<Stamp | null> {
 	return fs
-		.readFile(path.join(dirPath, STAMP), 'utf8')
+		.readFile(path.join(dirPath, name), 'utf8')
 		.then((s) => JSON.parse(s) as Stamp)
 		.catch(() => null);
 }
 
-export async function writeStamp(dirPath: string, values: Values): Promise<string> {
+export async function writeStamp(dirPath: string, values: Values, name = STAMP): Promise<string> {
 	const stamp: Stamp = { fingerprint: fingerprint(values), written: new Date().toISOString(), values };
 	await fs.mkdir(dirPath, { recursive: true });
-	await fs.writeFile(path.join(dirPath, STAMP), JSON.stringify(stamp, null, '\t') + '\n');
+	await fs.writeFile(path.join(dirPath, name), JSON.stringify(stamp, null, '\t') + '\n');
 	return stamp.fingerprint;
 }
 

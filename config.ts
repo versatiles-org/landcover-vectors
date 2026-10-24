@@ -38,6 +38,7 @@ export const dir = {
 
 export const file = {
 	source: path.join(sourcedir, 'worldcover-3857.tif'), // single EPSG:3857 source + overviews (download)
+	seaShare: path.join(sourcedir, 'seashare-3857.tif'), // OSM's sea share on the source's grid + overviews (download)
 	sourceList: path.join(sourcedir, '_source-tiles.txt'), // remote tile list, read for skip-empty (download)
 	ocean: path.join(sourcedir, 'water-polygons-3857.fgb'), // OSM's sea polygons, masked out of every block (download)
 	log: path.join(datadir, 'blocks.log'), // per-block processing log (TSV), one row per block (build)

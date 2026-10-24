@@ -9,8 +9,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { run, runQuiet, atomic } from './worldcover.ts';
-import { dir, file, OCEAN_URL, type Rect } from '../config.ts';
+import { existsSync } from 'node:fs';
+
+import { run, runQuiet, atomic, pMap } from './worldcover.ts';
+import { progress } from './progress.ts';
+import type { Values } from './fingerprint.ts';
+import { dir, file, OCEAN_URL, MERC, FULL_PX, MAXLEVEL, CPU_CORES, type Rect } from '../config.ts';
 
 const LAYER = 'ocean';
 
@@ -65,4 +69,142 @@ export async function requireOcean(): Promise<void> {
 		throw new Error(
 			`missing ${file.ocean} — run "npm run download" (it keeps a source raster that is already there)`,
 		);
+}
+
+// ---------------------------------------------------------------- the sea-share pyramid
+//
+// OSM's sea rasterized once, onto the source raster's own grid (FULL_PX², EPSG:3857), as the share of each
+// pixel that is sea: SEA (100) or 0 at the base, and average overviews down to z0, so every level holds the
+// exact sea share of its pixels. A block reads its window at its own zoom from this pyramid like it reads
+// the classes from the source, instead of clipping, simplifying and burning the polygons itself — which cost
+// up to a minute per block on a complex coast below z10, and is now paid once per download.
+//
+// The base is burned exactly the way a z10 block burned its window: the polygons simplified to half a
+// pixel, pixel centres inside → sea. Each coarser level is the average of the one below, so a zoom-z
+// pixel's value is its true sea share at z10 resolution, which a block thresholds (lib/block.ts).
+
+export const SEA = 100; // the base value of a sea pixel: the share is in percent
+const SHARE_TILES = 64; // tiles per axis for the rasterization: 16384² px each at TILE_PX 1024
+export const SEA_SHARE_STAMP = '.fingerprint-seashare'; // its stamp, next to the source raster's own
+
+// what the sea share was built from and how: a changed polygon file (a refreshed download) rebuilds it
+export async function seaShareValues(polygons = file.ocean): Promise<Values> {
+	const s = await fs.stat(polygons);
+	return {
+		fullPx: FULL_PX,
+		levels: MAXLEVEL,
+		method: `burn ${SEA} at half-pixel simplify, average overviews`,
+		polygons: { bytes: s.size, modified: s.mtime.toISOString() },
+	};
+}
+
+export type SeaShareOpts = {
+	tilesDir: string; // per-tile rasters; kept across an interrupted run, so a rerun resumes
+	polygons?: string; // the sea polygons (default: the downloaded mask)
+	fullPx?: number; // side of the base level (default: the source raster's)
+	tiles?: number; // tiles per axis for the rasterization
+	levels?: number; // overview levels (default: down to z0)
+	concurrency?: number;
+};
+
+// build the sea-share pyramid into `out` (atomically): rasterize tile by tile in parallel, mosaic, overviews
+export async function buildSeaShare(out: string, opts: SeaShareOpts): Promise<void> {
+	const { tilesDir, polygons = file.ocean, fullPx = FULL_PX, tiles = SHARE_TILES, levels = MAXLEVEL } = opts;
+	if (fullPx % tiles !== 0) throw new Error(`sea share: ${fullPx} px do not split into ${tiles} tiles`);
+	const tilePx = fullPx / tiles;
+	const span = (2 * MERC) / tiles; // metres per tile
+	const tolerance = (2 * MERC) / fullPx / 2; // half a base pixel, as a z10 block simplified its clip
+	await fs.mkdir(tilesDir, { recursive: true });
+
+	const jobs: [number, number][] = [];
+	for (let y = 0; y < tiles; y++) for (let x = 0; x < tiles; x++) jobs.push([x, y]);
+	const tilePath = ([x, y]: [number, number]) => path.join(tilesDir, `${x}_${y}.tif`);
+	const bar = progress(jobs.length, 'sea share');
+	await pMap(jobs, opts.concurrency ?? CPU_CORES, async (job) => {
+		const tif = tilePath(job);
+		if (!existsSync(tif)) {
+			const [x, y] = job;
+			const r: Rect = {
+				minx: -MERC + x * span,
+				maxx: -MERC + (x + 1) * span,
+				maxy: MERC - y * span,
+				miny: MERC - (y + 1) * span,
+			};
+			const clip = tif + '.fgb';
+			await fs.rm(clip, { force: true });
+			await runQuiet(
+				'ogr2ogr',
+				['-spat', r.minx, r.miny, r.maxx, r.maxy],
+				['-simplify', tolerance],
+				['-f', 'FlatGeobuf'],
+				['-lco', 'SPATIAL_INDEX=NO'], // read once, sequentially
+				['-nln', LAYER],
+				['-nlt', 'PROMOTE_TO_MULTI'],
+				clip,
+				polygons,
+				LAYER,
+			);
+			await atomic(tif, (tmp) =>
+				runQuiet(
+					'gdal_rasterize',
+					'-q',
+					['-burn', SEA],
+					['-init', 0],
+					['-l', LAYER],
+					['-a_srs', 'EPSG:3857'],
+					['-te', r.minx, r.miny, r.maxx, r.maxy],
+					['-ts', tilePx, tilePx],
+					['-ot', 'Byte'],
+					['-co', 'TILED=YES'],
+					['-co', 'COMPRESS=ZSTD'],
+					clip,
+					tmp,
+				),
+			);
+			await fs.rm(clip, { force: true });
+		}
+		bar.tick();
+	});
+	bar.done();
+
+	const list = path.join(tilesDir, 'tiles.txt');
+	const vrt = path.join(tilesDir, 'mosaic.vrt');
+	await fs.writeFile(list, jobs.map(tilePath).join('\n') + '\n');
+	// gdal_rasterize marks 0 as no-data on what it creates; here 0 is land and has to count in the averages
+	await runQuiet(
+		'gdalbuildvrt',
+		'-q',
+		'-overwrite',
+		['-srcnodata', 'None'],
+		['-vrtnodata', 'None'],
+		['-input_file_list', list],
+		vrt,
+	);
+	await atomic(out, async (tmp) => {
+		await run(
+			'gdal_translate',
+			'-q',
+			['-a_nodata', 'none'],
+			['-co', 'TILED=YES'],
+			['-co', 'BLOCKXSIZE=512'],
+			['-co', 'BLOCKYSIZE=512'],
+			['-co', 'COMPRESS=ZSTD'],
+			['-co', 'BIGTIFF=YES'],
+			['-co', 'SPARSE_OK=TRUE'], // land (0) blocks are not stored
+			['-co', 'NUM_THREADS=ALL_CPUS'],
+			vrt,
+			tmp,
+		);
+		await run(
+			'gdaladdo',
+			'-q',
+			['-r', 'average'], // every level holds the true sea share of its pixels
+			['--config', 'COMPRESS_OVERVIEW', 'ZSTD'],
+			['--config', 'SPARSE_OK_OVERVIEW', 'ON'],
+			['--config', 'GDAL_NUM_THREADS', 'ALL_CPUS'],
+			tmp,
+			Array.from({ length: levels }, (_, i) => 2 ** (i + 1)),
+		);
+	});
+	await fs.rm(tilesDir, { recursive: true, force: true });
 }
