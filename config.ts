@@ -206,7 +206,8 @@ export function blockWindow(z: number, bx: number, by: number): BlockWindow {
 // is the highest zoom this pipeline emits the kind — up to there the merge drops OSM's features of
 // that kind, above it OSM owns it (lib/handover.ts); `osmFrom`, if set, turns that around for a kind
 // OSM maps better: from that zoom on the merge keeps OSM's features and drops this container's instead;
-// `color` is the fill used by the generated QGIS styles.
+// `color` is the kind's fill in the preview's debug style, picked to tell kinds apart (the QGIS style uses
+// versatiles-style's colours instead, lib/style-qgis.ts).
 // At a given zoom z, channels with maxZoom < z are folded into the no-data class (lib/block.ts).
 export type Channel = {
 	esa: number[];

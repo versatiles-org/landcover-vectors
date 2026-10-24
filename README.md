@@ -300,16 +300,16 @@ Shortbread style fits. The build ends with a per-zoom tally of how its blocks we
 
 ## Development
 
-| command           | what it does                                                                         |
-| ----------------- | ------------------------------------------------------------------------------------ |
-| `npm run preview` | build one area, serve it next to real OSM data and open a viewer                     |
-| `npm run stats`   | tile size distribution, worst tiles, and a baseline to diff builds against           |
-| `npm run timings` | where a download or build spent its time, per step and per command                   |
-| `npm run sweep`   | build an area once per parameter value and compare size and quality                  |
-| `npm run inspect` | compare one tile pixel by pixel with what it should show, as numbers and a PNG       |
-| `npm run style`   | write a QGIS vector-tiles style (`landcover.qml`) that colours both layers by `kind` |
-| `npm run clean`   | delete the build caches (keeps the download)                                         |
-| `npm run check`   | typecheck, formatting and tests                                                      |
+| command           | what it does                                                                    |
+| ----------------- | ------------------------------------------------------------------------------- |
+| `npm run preview` | build one area, serve it next to real OSM data and open a viewer                |
+| `npm run stats`   | tile size distribution, worst tiles, and a baseline to diff builds against      |
+| `npm run timings` | where a download or build spent its time, per step and per command              |
+| `npm run sweep`   | build an area once per parameter value and compare size and quality             |
+| `npm run inspect` | compare one tile pixel by pixel with what it should show, as numbers and a PNG  |
+| `npm run style`   | write a QGIS vector-tiles style (`landcover.qml`) in versatiles-style's colours |
+| `npm run clean`   | delete the build caches (keeps the download)                                    |
+| `npm run check`   | typecheck, formatting and tests                                                 |
 
 ### Timings
 

@@ -1,5 +1,5 @@
 // Generate a QGIS vector-tiles style (.qml) for the generated tileset, colouring each
-// Shortbread `kind` with its per-channel colour from config.ts (solid fill, no stroke).
+// Shortbread `kind` the way versatiles-style's colorful map does (solid fill, no stroke).
 //
 // The output tileset has two sub-layers — `land` and `water_polygons` — so each channel
 // emits one rule scoped to its layer and filtered on `kind`. Open data/landcover.mbtiles

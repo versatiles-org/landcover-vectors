@@ -1,8 +1,34 @@
-// QGIS vector-tiles style (.qml) generation: one solid fill per Shortbread `kind`, coloured from the
-// per-channel `color` in config.ts. Kept separate from bin/style.ts so the generator can be tested
-// without writing a file, and so a second renderer (MapLibre) can share the same channel filtering.
+// QGIS vector-tiles style (.qml) generation: one solid fill per Shortbread `kind`, coloured like
+// versatiles-style's colorful map draws it. Kept separate from bin/style.ts so the generator can be tested
+// without writing a file.
+
+import { osm, Color } from '@versatiles/style';
 
 import { channels, type Channel } from '../config.ts';
+
+// versatiles-style's colorful fills per Shortbread layer and kind, as it draws them over a merge with this
+// container (its `landcover` feature), keyed "layer:kind" → "#RRGGBB" ("#RRGGBBAA" where translucent). Read
+// from the installed package, so the QGIS style follows a versatiles-style update without a copy to maintain.
+export function versatilesFills(): Map<string, string> {
+	const fills = new Map<string, string>();
+	for (const layer of osm({ features: { landcover: true } }).layers) {
+		if (layer.type !== 'fill' || !layer['source-layer']) continue;
+		const color = layer.paint?.['fill-color'];
+		if (typeof color !== 'string') continue; // a zoom- or data-driven colour has no single value
+		for (const kind of filterKinds(layer.filter))
+			fills.set(`${layer['source-layer']}:${kind}`, Color.parse(color).asHex());
+	}
+	return fills;
+}
+
+// the kinds a versatiles-style filter selects: ["==", ["get","kind"], k] or ["in", ["get","kind"], ["literal", […]]]
+export function filterKinds(filter: unknown): string[] {
+	if (!Array.isArray(filter) || JSON.stringify(filter[1]) !== '["get","kind"]') return [];
+	if (filter[0] === '==' && typeof filter[2] === 'string') return [filter[2]];
+	if (filter[0] === 'in' && Array.isArray(filter[2]) && filter[2][0] === 'literal' && Array.isArray(filter[2][1]))
+		return filter[2][1].filter((k: unknown): k is string => typeof k === 'string');
+	return [];
+}
 
 // "#RRGGBB" or "#RRGGBBAA" → QGIS "R,G,B,A,rgb:r,g,b,a" (0-255 ints plus 0-1 floats)
 export function qgisColor(hex: string): string {
@@ -47,10 +73,17 @@ function mapFillSymbol(color: string): string {
           </symbol>`;
 }
 
-// channels that end up in the output: those with a target layer, kind and colour (no-data is dropped)
+// channels that end up in the output (no-data is dropped), each with versatiles-style's fill for its kind. A
+// kind versatiles-style does not fill is an error, not an unstyled layer nobody notices.
 export type Styled = Channel & { layer: 'land' | 'water_polygons'; kind: string; color: string };
-export const styledChannels = (list: Channel[] = channels): Styled[] =>
-	list.filter((c): c is Styled => Boolean(c.layer && c.kind && c.color));
+export function styledChannels(list: Channel[] = channels, fills = versatilesFills()): Styled[] {
+	return list.flatMap((c) => {
+		if (!c.layer || !c.kind) return [];
+		const color = fills.get(`${c.layer}:${c.kind}`);
+		if (!color) throw new Error(`versatiles-style has no fill for kind "${c.kind}" in layer "${c.layer}"`);
+		return [{ ...c, layer: c.layer, kind: c.kind, color }];
+	});
+}
 
 // vector-tiles renderer (native mbtiles/versatiles "Vector Tiles" layer): one fill style per
 // kind, scoped to its sub-layer and filtered on `kind`. Schema matches what QGIS 3.40 writes.
@@ -88,6 +121,4 @@ ${mapFillSymbol(qgisColor(c.color))}
   <layerOpacity>1</layerOpacity>
 </qgis>
 `;
-
-	// the repo root, resolved from this file — not from datadir, which LANDCOVER_DATA_DIR can move away
 }

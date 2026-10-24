@@ -1,10 +1,10 @@
-// The QGIS style is generated from the same channel table as the tiles, so a channel without a colour
-// or a malformed colour conversion silently produces an unstyled layer.
+// The QGIS style is generated from the same channel table as the tiles, coloured from versatiles-style, so a
+// kind versatiles-style does not fill or a malformed colour conversion would silently produce an unstyled layer.
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { qgisColor, qgisVectorTileStyle, styledChannels } from '../lib/style-qgis.ts';
+import { qgisColor, qgisVectorTileStyle, styledChannels, versatilesFills, filterKinds } from '../lib/style-qgis.ts';
 import { channels } from '../config.ts';
 
 describe('qgisColor', () => {
@@ -26,12 +26,34 @@ describe('qgisColor', () => {
 	});
 });
 
+describe('filterKinds', () => {
+	test("reads the kinds of versatiles-style's two filter shapes", () => {
+		assert.deepEqual(filterKinds(['==', ['get', 'kind'], 'glacier']), ['glacier']);
+		assert.deepEqual(filterKinds(['in', ['get', 'kind'], ['literal', ['heath', 'scrub']]]), ['heath', 'scrub']);
+	});
+
+	test('ignores filters on anything else', () => {
+		assert.deepEqual(filterKinds(['==', ['get', 'type'], 'x']), []);
+		assert.deepEqual(filterKinds(undefined), []);
+	});
+});
+
 describe('styledChannels', () => {
 	test('is every emitting channel, and only those', () => {
 		const styled = styledChannels();
 		assert.equal(styled.length, channels.filter((c) => c.layer && c.kind).length);
 		assert.ok(styled.every((c) => c.color && c.kind && c.layer));
 		assert.ok(!styled.some((c) => c.layer === null));
+	});
+
+	test("takes each kind's colour from versatiles-style's colorful style, per layer", () => {
+		const fills = versatilesFills();
+		for (const c of styledChannels()) assert.equal(c.color, fills.get(`${c.layer}:${c.kind}`), c.kind);
+		assert.match(fills.get('land:forest') ?? '', /^#[0-9A-F]{6}$/i);
+	});
+
+	test('a kind versatiles-style does not fill is an error', () => {
+		assert.throws(() => styledChannels(channels, new Map()), /no fill for kind "forest" in layer "land"/);
 	});
 });
 
