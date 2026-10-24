@@ -53,7 +53,7 @@ import {
 	shares,
 } from '../lib/native.ts';
 import { requireCommands, listSourceKeys } from '../lib/worldcover.ts';
-import { requireOcean } from '../lib/ocean.ts';
+import { requireOcean, requireSeaShare } from '../lib/ocean.ts';
 import { channels, datadir, file, MAXLEVEL, MERC, TILE_PX } from '../config.ts';
 
 const { values: opt, positionals } = parseArgs({
@@ -170,7 +170,7 @@ else await inspectTarget();
 async function inspectTarget(): Promise<void> {
 	// ---------------------------------------------------------------- render and compare
 	await requireCommands(['gdalwarp', 'gdal_translate', 'gdal_rasterize', 'ogr2ogr', 'tippecanoe-decode']);
-	await requireOcean();
+	await requireSeaShare(); // the target is sea-masked like a block reads its window (lib/inspect.ts)
 	if (
 		!(await fs.stat(file.source).then(
 			() => true,

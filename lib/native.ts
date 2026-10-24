@@ -7,7 +7,8 @@
 // along with the tile. This module reads the remote ESA COGs directly instead, and replays the source's
 // resampling steps for one tile at any TILE_PX — so the loss per step and per resolution is measured
 // without downloading or rebuilding the 19 GB source raster. Every stage, the reference included, has OSM's
-// sea masked out the way a block does, so the comparison is about land cover, not about the coastline:
+// sea masked out — burned from the polygons, since these grids are not the sea-share pyramid's, which agrees
+// with a block's mask to single coast pixels — so the comparison is about land cover, not about the coastline:
 //
 //   native    ESA's base level, point-sampled (nearest, overviews off): unbiased area shares
 //   10 m mode the download's warp, but forced onto ESA's base level (-ovr NONE)
@@ -94,7 +95,7 @@ export async function esaMosaic(keys: string[], dir: string): Promise<string> {
 	return vrt;
 }
 
-// warp `src` onto the px×px EPSG:3857 grid of tile z/x/y, with OSM's sea masked out like a block's window
+// warp `src` onto the px×px EPSG:3857 grid of tile z/x/y, with OSM's sea burned out of it
 async function warpTile(src: string, out: string, z: number, x: number, y: number, px: number, ...args: Arg[]) {
 	const b = tileBounds3857(z, x, y);
 	await runQuiet(

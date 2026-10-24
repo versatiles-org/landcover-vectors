@@ -3,7 +3,7 @@
 //
 // "What it should show" is the *target*: the source resampled to this tile at the pipeline's own
 // working resolution (TILE_PX per tile, the same `-r mode` read a block does, OSM's sea masked out the
-// same way), with every class that is not active at this zoom turned into a hole. That is exactly the raster the sieve →
+// same way, from the sea-share pyramid), with every class that is not active at this zoom turned into a hole. That is exactly the raster the sieve →
 // polygonize → simplify chain sets out to reproduce. The tile is rasterised onto the same grid and the two are
 // compared pixel by pixel.
 //
@@ -16,10 +16,10 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { runQuiet, runCapture } from './worldcover.ts';
-import { maskOcean } from './ocean.ts';
+import { seaShareWindow } from './ocean.ts';
 import { countVertices, type GeoGeometry } from './stats.ts';
 import type { RGBImage } from './png.ts';
-import { channels, MERC, TILE_PX, type Rect } from '../config.ts';
+import { channels, MERC, TILE_PX, SEA_SHARE_MIN, type Rect } from '../config.ts';
 
 // ---------------------------------------------------------------- classes and colours
 
@@ -270,8 +270,11 @@ export async function renderSource(source: string, z: number, x: number, y: numb
 			source,
 			out,
 		);
-		await maskOcean(out, b, px, path.join(dir, 'sea.fgb'));
-		return await readBytes(out, dir, px);
+		// the tile's window of the sea share, at the same level a block reads (lib/block.ts)
+		const sea = path.join(dir, 'share.vrt');
+		await seaShareWindow(sea, b, px, px);
+		const [codes, share] = await Promise.all([readBytes(out, dir, px), readBytes(sea, dir, px)]);
+		return codes.map((c, i) => (share[i] >= SEA_SHARE_MIN ? 0 : c));
 	} finally {
 		await fs.rm(dir, { recursive: true, force: true });
 	}
