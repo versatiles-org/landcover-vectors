@@ -163,7 +163,7 @@ npm run merge      # optional: merge with OSM → data/combined.versatiles
 ```
 
 > **Resources.** A full z0–10 build needs roughly **150 GB** of disk under `data/` (the ~19 GB EPSG:3857 source,
-> the ~1.3 GB ocean mask, and the per-block / per-zoom caches) and on the order of **300 core-hours** of CPU. It's
+> the ~1.3 GB ocean polygons, the ~0.4 GB sea share, and the per-block / per-zoom caches) and on the order of **300 core-hours** of CPU. It's
 > heavily parallelised, but plan for a long run on a many-core machine with ample free disk.
 
 Everything reads and writes under `data/`; `LANDCOVER_DATA_DIR` moves it, and `LANDCOVER_SOURCE_DIR` lets
@@ -213,14 +213,15 @@ It then rasterizes them once into a **sea-share pyramid**, `data/0_download/seas
 the source raster's own grid, each base pixel 100 (sea) or 0 (land) — the polygons simplified to half a pixel,
 pixel centres inside count — and average overviews down to z0, so every level holds the true sea share of its
 pixels. It is built in 16384² px tiles in parallel, mosaicked and stamped with the polygon file it came from;
-an interrupted run resumes from the tiles already done.
+an interrupted run resumes from the tiles already done. It takes ~25 minutes on 14 cores and ~385 MB.
 
 Every block reads its window of the pyramid at its own zoom, the way it reads the classes from the source: a
 block's grid lines up with one level, so a small VRT points at that level and the window's rectangle in it, and
 the class index reads it as a second input. A pixel whose sea share is at least `SEA_SHARE_MIN` = 50 % becomes
 no-data. The result:
 
-- The land cover ends at OSM's coastline. At z10 the mask is the burn itself; below, a pixel is sea when most
+- The land cover ends at OSM's coastline. At z10 the mask is the burn itself (pixel-identical on the
+  coastal blocks checked); below, a pixel is sea when most
   of it is, which keeps the sea's area within ±0.2 % of an exact burn at that zoom and moves the coastline by
   single pixels (0.1–0.2 % of a coastal block's pixels). So it neither overlaps OSM's ocean nor leaves a gap.
 - ESA's coastal sea is gone at every zoom, also from `water` at z0–3 and from the container on its own.
