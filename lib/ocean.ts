@@ -125,6 +125,10 @@ export async function buildSeaShare(out: string, opts: SeaShareOpts): Promise<vo
 	for (let y = 0; y < tiles; y++) for (let x = 0; x < tiles; x++) jobs.push([x, y]);
 	const tilePath = ([x, y]: [number, number]) => path.join(tilesDir, `${x}_${y}.tif`);
 	const bar = progress(jobs.length, 'sea share');
+	// One GDAL thread per tile: the tiles already run one per core, and GDAL_NUM_THREADS=ALL_CPUS (set for every
+	// GDAL call, see gdalEnv) gives each of them its own compression threads on top. On 320 tiles that took 3.6×
+	// the wall time and CPU (68 s / 790 CPU-s against 19 s / 219 CPU-s).
+	const oneThread = ['--config', 'GDAL_NUM_THREADS', 1];
 	await pMap(jobs, opts.concurrency ?? CPU_CORES, async (job) => {
 		const tif = tilePath(job);
 		if (!existsSync(tif)) {
@@ -144,6 +148,7 @@ export async function buildSeaShare(out: string, opts: SeaShareOpts): Promise<vo
 				try {
 					await runQuiet(
 						'ogr2ogr',
+						oneThread,
 						['-spat', r.minx, r.miny, r.maxx, r.maxy],
 						['-simplify', tolerance],
 						['-f', 'FlatGeobuf'],
@@ -164,6 +169,7 @@ export async function buildSeaShare(out: string, opts: SeaShareOpts): Promise<vo
 				runQuiet(
 					'gdal_rasterize',
 					'-q',
+					oneThread,
 					['-burn', SEA],
 					['-init', 0],
 					['-l', LAYER],
