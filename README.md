@@ -250,8 +250,9 @@ it never skips a block that overlaps land.
 ### Per-block processing
 
 `lib/block.ts` turns one block at one zoom into `land`/`water_polygons` fragments. It reads the block's window
-plus a margin from the source (`gdalwarp -r mode`, which picks the matching overview level, so a low-zoom block
-reads ≈100× less) and the matching window of the sea share (see [ocean mask](#ocean-mask)), then:
+plus a margin from the source and the matching window of the sea share (see [ocean mask](#ocean-mask)), both
+straight from the pyramid level for its zoom (so a low-zoom block reads ≈100× less): a block's grid lines up with
+a level, so a small VRT points at the window's rectangle in it, with no warp and no resampling, then:
 
 1. **Classify** — one `gdal_calc.py` call maps each pixel's ESA code to its class index. ESA's no-data,
    every inactive class and OSM's sea fold into the no-data class. Each pixel keeps its own class: there is no smoothing

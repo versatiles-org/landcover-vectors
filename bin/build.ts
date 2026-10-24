@@ -26,7 +26,6 @@ const started = Date.now();
 
 await requireCommands([
 	'gdal',
-	'gdalwarp',
 	'gdal_translate',
 	'gdal_calc.py',
 	'gdalinfo', // lib/block.ts reads the window histogram through it

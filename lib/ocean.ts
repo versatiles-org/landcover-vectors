@@ -18,6 +18,7 @@ import { existsSync } from 'node:fs';
 import { run, runQuiet, runProgress, atomic, pMap } from './worldcover.ts';
 import { progress } from './progress.ts';
 import { timed } from './timing.ts';
+import { windowVrt } from './window.ts';
 import { readStamp, type Values } from './fingerprint.ts';
 import { dir, file, OCEAN_URL, MERC, FULL_PX, MAXLEVEL, CPU_CORES, type Rect } from '../config.ts';
 
@@ -265,40 +266,9 @@ export async function requireSeaShare(): Promise<void> {
 		throw new Error(`${file.seaShare} was built for FULL_PX ${builtFor}, not ${FULL_PX} — re-run "npm run download"`);
 }
 
-// Where a window sits in the sea-share pyramid: the overview whose pixels are the window's (null = the base)
-// and the window's offset in it. A block's grid always lines up with one level (its inner edge is tile-aligned,
-// its margin a whole number of pixels), so the offset is a whole number of pixels — anything else is an error,
-// not something to resample.
-export function shareLevel(
-	rect: Rect,
-	width: number,
-	height: number,
-	fullPx = FULL_PX,
-): { overview: number | null; xOff: number; yOff: number } {
-	const base = (2 * MERC) / fullPx;
-	const px = (rect.maxx - rect.minx) / width;
-	const factor = px / base;
-	const n = Math.round(Math.log2(factor));
-	const whole = (v: number, what: string) => {
-		const r = Math.round(v);
-		if (Math.abs(v - r) > 1e-6)
-			throw new Error(`sea share: the window's ${what} (${v}) is not on the pyramid's grid`);
-		return r;
-	};
-	if (n < 0 || n > Math.log2(fullPx) || Math.abs(factor / 2 ** n - 1) > 1e-6)
-		throw new Error(`sea share: no pyramid level has ${px} m pixels`);
-	if (Math.abs((rect.maxy - rect.miny) / height / px - 1) > 1e-6)
-		throw new Error('sea share: the window has no square pixels');
-	return {
-		overview: n === 0 ? null : n - 1,
-		xOff: whole((rect.minx + MERC) / px, 'x offset'),
-		yOff: whole((MERC - rect.maxy) / px, 'y offset'),
-	};
-}
-
-// Write a VRT that reads a window straight out of the sea-share pyramid, at its own level: no warp, no
-// temporary raster. gdal_calc reads it as a second input next to the window (lib/block.ts).
-export async function seaShareWindow(
+// Write a VRT that reads a window straight out of the sea-share pyramid, at its own level (lib/window.ts).
+// gdal_calc reads it as a second input next to the class window (lib/block.ts).
+export function seaShareWindow(
 	out: string,
 	rect: Rect,
 	width: number,
@@ -306,23 +276,5 @@ export async function seaShareWindow(
 	src = file.seaShare,
 	fullPx = FULL_PX,
 ): Promise<void> {
-	const { overview, xOff, yOff } = shareLevel(rect, width, height, fullPx);
-	const px = (rect.maxx - rect.minx) / width;
-	const open = overview === null ? '' : `<OpenOptions><OOI key="OVERVIEW_LEVEL">${overview}</OOI></OpenOptions>`;
-	await fs.writeFile(
-		out,
-		`<VRTDataset rasterXSize="${width}" rasterYSize="${height}">
-  <SRS>EPSG:3857</SRS>
-  <GeoTransform>${rect.minx}, ${px}, 0, ${rect.maxy}, 0, ${-px}</GeoTransform>
-  <VRTRasterBand dataType="Byte" band="1">
-    <SimpleSource>
-      <SourceFilename relativeToVRT="0">${path.resolve(src)}</SourceFilename>${open}
-      <SourceBand>1</SourceBand>
-      <SrcRect xOff="${xOff}" yOff="${yOff}" xSize="${width}" ySize="${height}"/>
-      <DstRect xOff="0" yOff="0" xSize="${width}" ySize="${height}"/>
-    </SimpleSource>
-  </VRTRasterBand>
-</VRTDataset>
-`,
-	);
+	return windowVrt(out, src, rect, width, height, { fullPx });
 }

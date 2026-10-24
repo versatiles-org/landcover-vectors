@@ -169,7 +169,7 @@ else await inspectTarget();
 // the default: the tile against its target, our own source read at TILE_PX
 async function inspectTarget(): Promise<void> {
 	// ---------------------------------------------------------------- render and compare
-	await requireCommands(['gdalwarp', 'gdal_translate', 'gdal_rasterize', 'ogr2ogr', 'tippecanoe-decode']);
+	await requireCommands(['gdal_translate', 'gdal_rasterize', 'ogr2ogr', 'tippecanoe-decode']);
 	await requireSeaShare(); // the target is sea-masked like a block reads its window (lib/inspect.ts)
 	if (
 		!(await fs.stat(file.source).then(
@@ -237,7 +237,7 @@ async function inspectTarget(): Promise<void> {
 			c.lon.toFixed(4),
 		);
 		console.error(
-			'target: the source at %d×%d px (TILE_PX, read with -r mode like a block), holes where z%d draws nothing%s',
+			'target: the source at %d×%d px (TILE_PX, read from its pyramid level like a block), holes where z%d draws nothing%s',
 			TILE_PX,
 			TILE_PX,
 			z,

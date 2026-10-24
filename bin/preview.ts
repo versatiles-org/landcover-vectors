@@ -110,16 +110,7 @@ let current = currentFor(fp);
 
 // ---------------------------------------------------------------- build
 async function build(): Promise<void> {
-	await requireCommands([
-		'gdal',
-		'gdalwarp',
-		'gdal_translate',
-		'gdal_calc.py',
-		'gdalinfo',
-		'ogr2ogr',
-		'tippecanoe',
-		'tile-join',
-	]);
+	await requireCommands(['gdal', 'gdal_translate', 'gdal_calc.py', 'gdalinfo', 'ogr2ogr', 'tippecanoe', 'tile-join']);
 	if (!(await exists(file.source))) throw new Error(`missing ${file.source} — run "npm run download" first`);
 	await requireSeaShare();
 

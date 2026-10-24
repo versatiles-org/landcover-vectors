@@ -12,7 +12,8 @@ const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'lcv-ocean-'));
 process.env.LANDCOVER_SOURCE_DIR = tmp; // config.ts reads it on import, so import everything after this
 
 const { runQuiet, commandExists } = await import('../lib/worldcover.ts');
-const { maskOcean, buildSeaShare, shareLevel, seaShareWindow, SEA } = await import('../lib/ocean.ts');
+const { maskOcean, buildSeaShare, seaShareWindow, SEA } = await import('../lib/ocean.ts');
+const { pyramidLevel } = await import('../lib/window.ts');
 const { readBytes } = await import('../lib/inspect.ts');
 const { file, MERC, MAXLEVEL, FULL_PX, blockWindow, blocksPerAxis } = await import('../config.ts');
 
@@ -155,7 +156,7 @@ describe('buildSeaShare', { skip: !haveGdal && 'GDAL is not on PATH' }, () => {
 	after(() => fs.rm(tmp, { recursive: true, force: true }));
 });
 
-describe('shareLevel', () => {
+describe('pyramidLevel', () => {
 	test('every block at every zoom sits on its level of the pyramid, at whole pixels', () => {
 		for (let z = 0; z <= MAXLEVEL; z++) {
 			const n = blocksPerAxis(z);
@@ -165,7 +166,7 @@ describe('shareLevel', () => {
 				[Math.floor(n / 2), Math.floor(n / 3)],
 			]) {
 				const { window3857: r, windowPx: w } = blockWindow(z, bx, by);
-				const { overview, xOff, yOff } = shareLevel(r, w.width, w.height);
+				const { overview, xOff, yOff } = pyramidLevel(r, w.width, w.height);
 				assert.equal(overview, z === MAXLEVEL ? null : MAXLEVEL - z - 1, `z${z} ${bx}/${by}`);
 				const size = FULL_PX / 2 ** (MAXLEVEL - z); // that level's side in pixels
 				assert.ok(xOff >= 0 && yOff >= 0 && xOff + w.width <= size && yOff + w.height <= size, `z${z} ${bx}/${by}`);
@@ -177,9 +178,9 @@ describe('shareLevel', () => {
 		const { window3857: r, windowPx: w } = blockWindow(9, 3, 3);
 		const half = (r.maxx - r.minx) / w.width / 2;
 		assert.throws(
-			() => shareLevel({ ...r, minx: r.minx + half, maxx: r.maxx + half }, w.width, w.height),
+			() => pyramidLevel({ ...r, minx: r.minx + half, maxx: r.maxx + half }, w.width, w.height),
 			/x offset/,
 		);
-		assert.throws(() => shareLevel(r, Math.round(w.width / 3), w.height), /no pyramid level/);
+		assert.throws(() => pyramidLevel(r, Math.round(w.width / 3), w.height), /no pyramid level/);
 	});
 });

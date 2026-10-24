@@ -7,9 +7,10 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 
-import { runQuiet, atomic, presentValues, histogram, gdalEnv } from './worldcover.ts';
+import { runQuiet, atomic, presentValues, histogram } from './worldcover.ts';
 import { seaShareWindow } from './ocean.ts';
 import { timed } from './timing.ts';
+import { windowVrt } from './window.ts';
 import {
 	channels,
 	blockWindow,
@@ -49,8 +50,6 @@ export const LOG_HEADER = [
 
 // gdal_calc expression: 1 where band A is one of the given ESA codes, else 0
 const isAny = (esa: number[]) => `(${esa.map((c) => `(A==${c})`).join('|')})`;
-// creation options for the warp (legacy gdalwarp uses single-dash -co)
-const co = ['-co', 'COMPRESS=DEFLATE', '-co', 'TILED=YES', '-co', 'BIGTIFF=YES'];
 
 // what a window holds, from its histograms: ESA's classes, and OSM's sea on top of them
 export type WindowContent = {
@@ -153,28 +152,12 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 	};
 
 	try {
-		// 1. read this block's window from the EPSG:3857 source (mode-resampled via its overviews;
-		//    uncovered pixels stay 0 = no-data)
-		const window = tmp('window.tif');
+		// 1. this block's window of the EPSG:3857 source, straight from the pyramid level for this zoom: a VRT
+		//    (lib/window.ts), read by the histogram and the class index below. ESA's 0 is no-data, as in the
+		//    source, and uncovered pixels read as 0 too.
+		const window = tmp('window.vrt');
 		const { window3857: w, windowPx: px } = win;
-		await timed('read', () =>
-			runQuiet(
-				'gdalwarp',
-				['-t_srs', 'EPSG:3857'],
-				['-te', w.minx, w.miny, w.maxx, w.maxy],
-				['-ts', px.width, px.height],
-				['-r', 'mode'],
-				['-ot', 'Byte'],
-				['-of', 'GTiff'],
-				// as many warp threads as GDAL gets (setGdalThreads): one in the build, which runs a block per core
-				gdalEnv.GDAL_NUM_THREADS === '1' ? [] : '-multi',
-				['-wo', `NUM_THREADS=${gdalEnv.GDAL_NUM_THREADS}`],
-				co,
-				'-overwrite',
-				ctx.src,
-				window,
-			),
-		);
+		await timed('read', () => windowVrt(window, ctx.src, w, px.width, px.height, { nodata: 0 }));
 		scratch.push(window + '.aux.xml'); // gdalinfo -hist (below) leaves a PAM sidecar — clean it up too
 
 		// 1b. OSM's sea over the same window, read straight out of the sea-share pyramid at this zoom's level

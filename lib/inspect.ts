@@ -2,7 +2,7 @@
 // size half in lib/stats.ts.
 //
 // "What it should show" is the *target*: the source resampled to this tile at the pipeline's own
-// working resolution (TILE_PX per tile, the same `-r mode` read a block does, OSM's sea masked out the
+// working resolution (TILE_PX per tile, read from the source pyramid like a block, OSM's sea masked out the
 // same way, from the sea-share pyramid), with every class that is not active at this zoom turned into a hole. That is exactly the raster the sieve →
 // polygonize → simplify chain sets out to reproduce. The tile is rasterised onto the same grid and the two are
 // compared pixel by pixel.
@@ -17,6 +17,7 @@ import path from 'node:path';
 
 import { runQuiet, runCapture } from './worldcover.ts';
 import { seaShareWindow } from './ocean.ts';
+import { windowVrt } from './window.ts';
 import { countVertices, type GeoGeometry } from './stats.ts';
 import type { RGBImage } from './png.ts';
 import { channels, MERC, TILE_PX, SEA_SHARE_MIN, type Rect } from '../config.ts';
@@ -259,18 +260,9 @@ export async function renderSource(source: string, z: number, x: number, y: numb
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lcv-inspect-'));
 	try {
 		const b = tileBounds3857(z, x, y);
-		const out = path.join(dir, 'source.tif');
-		await runQuiet(
-			'gdalwarp',
-			'-q',
-			['-te', b.minx, b.miny, b.maxx, b.maxy],
-			['-ts', px, px],
-			['-r', 'mode'],
-			['-ot', 'Byte'],
-			source,
-			out,
-		);
-		// the tile's window of the sea share, at the same level a block reads (lib/block.ts)
+		// the tile's windows of the source and the sea share, from the same pyramid levels a block reads
+		const out = path.join(dir, 'source.vrt');
+		await windowVrt(out, source, b, px, px);
 		const sea = path.join(dir, 'share.vrt');
 		await seaShareWindow(sea, b, px, px);
 		const [codes, share] = await Promise.all([readBytes(out, dir, px), readBytes(sea, dir, px)]);
