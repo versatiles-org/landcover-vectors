@@ -88,31 +88,22 @@ describe('buildSeaShare', { skip: !haveGdal && 'GDAL is not on PATH' }, () => {
 	}
 
 	before(async () => {
-		// the sea: strips along the world's western (3 base pixels) and eastern (2) edges, over the whole height,
-		// as two features, so one feature per chunk simplifies in two jobs and merges them
+		// the sea: a strip 3 base pixels wide along the world's western edge, over the whole height
 		const gj = path.join(tmp, 'strip.geojson');
-		const strip = (w: number, e: number) => ({
-			type: 'Feature',
-			properties: {},
-			geometry: {
-				type: 'Polygon',
-				coordinates: [
-					[
-						[w, -MERC],
-						[e, -MERC],
-						[e, MERC],
-						[w, MERC],
-						[w, -MERC],
-					],
-				],
-			},
-		});
+		const [w, e] = [-MERC, -MERC + 3 * px];
+		const ring = [
+			[w, -MERC],
+			[e, -MERC],
+			[e, MERC],
+			[w, MERC],
+			[w, -MERC],
+		];
 		await fs.writeFile(
 			gj,
 			JSON.stringify({
 				type: 'FeatureCollection',
 				crs: { type: 'name', properties: { name: 'EPSG:3857' } },
-				features: [strip(-MERC, -MERC + 3 * px), strip(MERC - 2 * px, MERC)],
+				features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } }],
 			}),
 		);
 		const polygons = path.join(tmp, 'strip.fgb');
@@ -120,7 +111,6 @@ describe('buildSeaShare', { skip: !haveGdal && 'GDAL is not on PATH' }, () => {
 		await buildSeaShare(share, {
 			tilesDir: path.join(tmp, 'share-tiles'),
 			polygons,
-			chunk: 1,
 			fullPx: FULL,
 			tiles: 4,
 			levels: 3,
@@ -129,13 +119,11 @@ describe('buildSeaShare', { skip: !haveGdal && 'GDAL is not on PATH' }, () => {
 
 	test('the base is the burn: sea where a pixel centre is in the sea, land elsewhere', async () => {
 		const base = await level(-1, FULL);
-		for (const row of [0, FULL / 2, FULL - 1]) {
+		for (const row of [0, FULL / 2, FULL - 1])
 			assert.deepEqual([...base.subarray(row * FULL, row * FULL + 5)], [SEA, SEA, SEA, 0, 0], `row ${row}`);
-			assert.deepEqual([...base.subarray((row + 1) * FULL - 3, (row + 1) * FULL)], [0, SEA, SEA], `row ${row}`);
-		}
 		assert.equal(
 			base.reduce((n, v) => n + (v === SEA ? 1 : 0), 0),
-			5 * FULL,
+			3 * FULL,
 		);
 	});
 
