@@ -147,9 +147,8 @@ so they follow any change of a cutoff.
 ### Requirements
 
 - `node` (or `bun`)
-- [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdaladdo`, `gdalwarp`, `gdalinfo`, `gdal_translate`, `gdal_calc.py`, `gdal_rasterize`, `ogr2ogr` and the `gdal raster` / `gdal vector` subcommands `calc`, `edit`, `sieve`, `polygonize` and `simplify-coverage` on `PATH`
-- Python 3 with `numpy` (used by `gdal_calc.py` for the per-class masks; both ship with the GDAL install)
-- [`libvips`](https://www.libvips.org/) (`vips`) — used for the Gaussian blur
+- [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdaladdo`, `gdalwarp`, `gdalinfo`, `gdal_translate`, `gdal_calc.py`, `gdal_rasterize`, `ogr2ogr` and the `gdal raster` / `gdal vector` subcommands `sieve`, `polygonize` and `simplify-coverage` on `PATH`
+- Python 3 with `numpy` (used by `gdal_calc.py` for the class index; both ship with the GDAL install)
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`) — `tippecanoe-decode`, which ships with it, is used by `npm run stats -- --attribute`
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install) ≥ 4.15.0
 - `curl`, for the ocean mask and the OSM base
@@ -185,7 +184,7 @@ names what changed and refuses to mix old and new. `npm run clean` clears them (
 A naïve pipeline renders one global EPSG:3857 raster per zoom level. At the resolution we want that reaches
 60000×60000 px and beyond, and a global coverage-simplify loads the whole thing into RAM and gets OOM-killed.
 Instead each zoom is processed in **blocks** of `BLOCK`×`BLOCK` = 8×8 tiles (`TILE_PX` = 1024 raw px per tile),
-so every raster/vector operation works on a ≤ ~8242² px window — bounded memory, feasible at every zoom. The
+so every raster/vector operation works on a ≤ ~8224² px window — bounded memory, feasible at every zoom. The
 blocks are stitched back into a seamless layer by a single per-zoom tippecanoe run.
 
 ### Source raster
@@ -237,32 +236,30 @@ it never skips a block that overlaps land.
 plus a margin from the source (`gdalwarp -r mode`, which picks the matching overview level, so a low-zoom block
 reads ≈100× less), masks out OSM's sea (see [ocean mask](#ocean-mask)), then:
 
-1. **Channels** — one 0/255 mask per class active at this zoom, all from one `gdal_calc.py` call. ESA's no-data
-   and every inactive class fold into the no-data channel.
-2. **Blur** — one `vips gaussblur` over all masks (σ = `BLUR_RADIUS` = 3 px, i.e. `BLUR_RENDERED` = 0.75
-   rendered px). This is what makes the boundaries **curved** instead of a pixel staircase.
-3. **Argmax** — the channel with the highest blurred value wins each pixel (`gdal raster calc`).
-4. **Sieve** — `gdal raster sieve` merges specks smaller than a circle of the blur radius
-   (`SIEVE_THRESHOLD` = round(π·r²) = 28 px) into their neighbours.
-5. **Crop** — cut the raster to the block's exact 8×8-tile rectangle, discarding the margin. Cropping the
+1. **Classify** — one `gdal_calc.py` call maps each pixel's ESA code to its class index. ESA's no-data and
+   every inactive class fold into the no-data class. Each pixel keeps its own class: there is no smoothing
+   before the sieve, because a blur cost accuracy (see [doc/TUNING.md](doc/TUNING.md)).
+2. **Sieve** — `gdal raster sieve` merges patches smaller than `SIEVE_RENDERED` = 1.77 rendered px²
+   (`SIEVE_THRESHOLD` = round(1.77·4²) = 28 px) into their largest neighbour.
+3. **Crop** — cut the raster to the block's exact 8×8-tile rectangle, discarding the margin. Cropping the
    raster rather than clipping vectors keeps the edge pixel-exact.
-6. **Polygonize** — `gdal raster polygonize`, giving a gap-free coverage of the block, **no-data included**.
-7. **Simplify** — `gdal vector simplify-coverage --preserve-boundary`, tolerance
+4. **Polygonize** — `gdal raster polygonize`, giving a gap-free coverage of the block, **no-data included**.
+5. **Simplify** — `gdal vector simplify-coverage --preserve-boundary`, tolerance
    `(2·MERC)/(256·DETAIL_PX·2^z)` ≈ 1 px at a 256·`DETAIL_PX` px tile (`DETAIL_PX` = 1 today).
    ⚠️ It simplifies only edges _shared_ between polygons, which is why no-data must still be there: without it,
    every coastline would be an outer edge and keep its pixel staircase.
-8. **Tag & split** — drop no-data, tag each polygon's Shortbread `kind`, reproject to EPSG:4326, and split into
+6. **Tag & split** — drop no-data, tag each polygon's Shortbread `kind`, reproject to EPSG:4326, and split into
    `land` and `water_polygons`.
 
-The **margin** (`MARGIN_PX` = ceil(3·`BLUR_RADIUS` + 3·√`SIEVE_THRESHOLD`) = 25 px) lets blur and sieve at
-the inner edge see the same neighbourhood as a global pass would, so a class never changes across a block
+The **margin** (`MARGIN_PX` = ceil(3·√`SIEVE_THRESHOLD`) = 16 px) lets the sieve at the inner edge see the
+same neighbourhood as a global pass would, so a class never changes across a block
 seam; the tile-exact crop and `--preserve-boundary` give neighbouring blocks an identical straight edge.
 
 Each kind is active up to its cutoff (`maxZoom` in `config.ts`, z10 for every kind today). Above it, a class
 folds into no-data.
 
-**Fast paths.** A histogram of the window (`gdalinfo -hist`) says which ESA values occur. Masks and blur are
-built only for the kinds present, which is exact, not an approximation. If the whole window is a single kind,
+**Fast paths.** A histogram of the window (`gdalinfo -hist`) says which ESA values occur. Only the kinds present
+get a class index, which is exact, not an approximation. If the whole window is a single kind,
 the block is emitted directly as one rectangle of that kind. ⚠️ GDAL leaves no-data pixels out of the
 histogram, so "a single value" also requires the histogram to count every pixel of the window; otherwise a
 coastal block with one land class would be painted over the ocean too.
@@ -324,13 +321,13 @@ offered. `?style=versatiles` in the URL opens it directly.
 
 | stage  | knob                                                         | what it changes                                                                                      | override                   |
 | ------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | -------------------------- |
-| raster | `BLUR_RENDERED` (0.75 rendered px)                           | the Gaussian σ before the per-pixel majority vote — **which class ends up where**                    | `LANDCOVER_BLUR_RENDERED`  |
-| raster | `SIEVE_RENDERED` (π·σ², so it follows the blur)              | the smallest patch kept; the main lever on feature count; 0 turns it off                             | `LANDCOVER_SIEVE_RENDERED` |
+| raster | `SIEVE_RENDERED` (1.77 rendered px²)                         | the smallest patch kept; the main lever on feature count; 0 turns it off                             | `LANDCOVER_SIEVE_RENDERED` |
 | vector | `DETAIL_PX` (1)                                              | the simplify tolerance — how precisely outlines follow the result                                    | `LANDCOVER_DETAIL_PX`      |
 | raster | `TILE_PX` (1024 → 38 m/px at z10, against ESA's native 10 m) | the resolution the source is classified at; 4× source raster and CPU per doubling, and a re-download | — (edit, then re-download) |
 
 The overrides are for sweeps; each value builds into its own cache, because all knobs are part of the config
-fingerprint. The worst tile of the z0–10 build is 60.5 KB, about 8× below tippecanoe's 500 000-byte limit. How
+fingerprint. The worst tile of the Hudson Bay probe (z8–10), where the largest tiles sit, is 110 KB, about 4.5×
+below tippecanoe's 500 000-byte limit. How
 to measure a change, and what the measurements so far say, is in [doc/TUNING.md](doc/TUNING.md).
 
 ## License

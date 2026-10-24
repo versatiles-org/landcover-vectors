@@ -201,10 +201,9 @@ describe('bin/inspect.ts and bin/sweep.ts argument handling', () => {
 
 	test('sweep: one knob at a time, and values each knob can take', () => {
 		assert.match(
-			run('bin/sweep.ts', ['--area', 'sahara', '--blur', '0.5', '--detail', '2']).stderr,
+			run('bin/sweep.ts', ['--area', 'sahara', '--sieve', '1', '--detail', '2']).stderr,
 			/one knob at a time/,
 		);
-		assert.match(run('bin/sweep.ts', ['--area', 'sahara', '--blur', '0']).stderr, /bad --blur "0"/);
 		assert.match(
 			run('bin/sweep.ts', ['--area', 'sahara', '--sieve=-1']).stderr,
 			/bad --sieve "-1" — expected numbers ≥ 0/,

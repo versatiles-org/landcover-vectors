@@ -3,8 +3,8 @@
 //
 // "What it should show" is the *target*: the source resampled to this tile at the pipeline's own
 // working resolution (TILE_PX per tile, the same `-r mode` read a block does, OSM's sea masked out the
-// same way), with every class that is not active at this zoom turned into a hole. That is exactly the raster the blur → argmax → sieve →
-// simplify chain sets out to reproduce. The tile is rasterised onto the same grid and the two are
+// same way), with every class that is not active at this zoom turned into a hole. That is exactly the raster the sieve →
+// polygonize → simplify chain sets out to reproduce. The tile is rasterised onto the same grid and the two are
 // compared pixel by pixel.
 //
 // The rasters are read as raw bytes, never through GDAL statistics: gdal_rasterize marks empty pixels as
@@ -140,7 +140,7 @@ export function compare(target: Uint8Array, rendered: Uint8Array): Comparison {
 }
 
 // Majority class of every factor×factor block. Comparing at full resolution also counts the pixel-level
-// mosaic of the source, which the blur removes on purpose; comparing the block majorities as well tells
+// mosaic of the source, which the sieve and the simplify remove on purpose; comparing the block majorities as well tells
 // structure (the pattern is wrong) apart from texture (the pattern is right, the speckle is gone).
 // Ties go to the lowest code, so the result does not depend on scan order.
 export function majority(codes: Uint8Array, size: number, factor: number): Uint8Array {

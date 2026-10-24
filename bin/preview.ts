@@ -36,7 +36,6 @@ import {
 	CPU_CORES,
 	TILE_PX,
 	BLOCK,
-	BLUR_RADIUS,
 	SIEVE_THRESHOLD,
 	MARGIN_PX,
 	simplifyForLevel,
@@ -117,7 +116,6 @@ async function build(): Promise<void> {
 		'gdalinfo',
 		'gdal_rasterize',
 		'ogr2ogr',
-		'vips',
 		'tippecanoe',
 		'tile-join',
 	]);
@@ -208,7 +206,6 @@ async function writeState(): Promise<void> {
 		params: {
 			TILE_PX,
 			BLOCK,
-			BLUR_RADIUS,
 			SIEVE_THRESHOLD,
 			MARGIN_PX,
 			MAXLEVEL,

@@ -16,8 +16,6 @@ import {
 	MARGIN_PX,
 	FULL_PX,
 	OVERSAMPLE,
-	BLUR_RENDERED,
-	BLUR_RADIUS,
 	SIEVE_RENDERED,
 	SIEVE_THRESHOLD,
 	DETAIL_PX,
@@ -144,43 +142,39 @@ describe('blockWindow', () => {
 });
 
 describe('the resolution knobs', () => {
-	test('smoothing is anchored to rendered pixels, so TILE_PX cannot change it by accident', () => {
+	test('the sieve is anchored to rendered pixels, so TILE_PX cannot change it by accident', () => {
 		assert.equal(OVERSAMPLE, TILE_PX / 256);
-		assert.equal(BLUR_RADIUS, BLUR_RENDERED * OVERSAMPLE);
-		// everything downstream of the blur is derived from it, so it scales along
+		assert.equal(SIEVE_RENDERED, 1.77, 'the committed default; a sweep overrides it per run');
+		// the raw-pixel values are derived from it, so they scale along
 		assert.equal(SIEVE_THRESHOLD, Math.round(SIEVE_RENDERED * OVERSAMPLE * OVERSAMPLE));
-		assert.equal(SIEVE_RENDERED, Math.PI * BLUR_RENDERED * BLUR_RENDERED, 'by default, a circle of the blur radius');
-		assert.equal(MARGIN_PX, Math.ceil(3 * BLUR_RADIUS + 3 * Math.sqrt(SIEVE_THRESHOLD)));
+		assert.equal(MARGIN_PX, Math.ceil(3 * Math.sqrt(SIEVE_THRESHOLD)));
 	});
 
-	test('LANDCOVER_BLUR_RENDERED and LANDCOVER_SIEVE_RENDERED override the raster stage', () => {
+	test('LANDCOVER_SIEVE_RENDERED overrides the raster stage', () => {
 		const read = (env: Record<string, string>) => {
 			const r = spawnSync(
 				process.execPath,
 				[
 					'--input-type=module',
 					'-e',
-					"import('./config.ts').then((c) => console.log(JSON.stringify([c.BLUR_RADIUS, c.SIEVE_THRESHOLD, c.MARGIN_PX])))",
+					"import('./config.ts').then((c) => console.log(JSON.stringify([c.SIEVE_THRESHOLD, c.MARGIN_PX])))",
 				],
 				{ cwd: repoRoot, encoding: 'utf8', env: { ...process.env, ...env } },
 			);
 			return { status: r.status, stderr: r.stderr, values: r.status === 0 ? JSON.parse(r.stdout) : null };
 		};
 
-		// a blur override drags the default sieve along (still a circle of the blur radius) and the margin
-		assert.deepEqual(read({ LANDCOVER_BLUR_RENDERED: '0.5' }).values, [2, 13, 17]);
-		// a sieve override is independent of the blur, and the margin still grows to cover it
-		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '4' }).values, [3, 64, 33]);
-		assert.deepEqual(read({ LANDCOVER_BLUR_RENDERED: '0.5', LANDCOVER_SIEVE_RENDERED: '1.77' }).values, [2, 28, 22]);
-		// 0 switches the sieve off; the margin then only has to cover the blur
-		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '0' }).values, [3, 0, 9]);
+		assert.deepEqual(read({}).values, [28, 16]);
+		// a sieve override moves the threshold, and the margin grows to cover it
+		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '4' }).values, [64, 24]);
+		// 0 switches the sieve off, and with it the margin
+		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '0' }).values, [0, 0]);
 		// empty means unset
-		assert.deepEqual(read({ LANDCOVER_BLUR_RENDERED: '' }).values, [3, 28, 25]);
+		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '' }).values, [28, 16]);
 
 		for (const [name, bad] of [
-			['LANDCOVER_BLUR_RENDERED', '0'],
-			['LANDCOVER_BLUR_RENDERED', 'abc'],
 			['LANDCOVER_SIEVE_RENDERED', '-1'],
+			['LANDCOVER_SIEVE_RENDERED', 'abc'],
 		]) {
 			const r = read({ [name]: bad });
 			assert.equal(r.status, 1, `${name}=${bad} was accepted`);

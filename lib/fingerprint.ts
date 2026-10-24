@@ -2,7 +2,7 @@
 // parameters is never silently reused.
 //
 // The per-block fragments (dir.results) and per-zoom tilesets (dir.tiles) are keyed on zoom + block
-// position only — nothing in their names says which blur radius or channel table produced them. A
+// position only — nothing in their names says which sieve or channel table produced them. A
 // stamp file in the directory closes that gap: build compares it, refuses to mix, and names what
 // changed. The source raster gets its own stamp because it is built for one specific FULL_PX.
 //
@@ -20,7 +20,6 @@ import {
 	MAXLEVEL,
 	TILE_PX,
 	BLOCK,
-	BLUR_RADIUS,
 	SIEVE_THRESHOLD,
 	MARGIN_PX,
 	FULL_PX,
@@ -39,7 +38,6 @@ export function cacheValues(): Values {
 		maxLevel: MAXLEVEL,
 		tilePx: TILE_PX,
 		block: BLOCK,
-		blurRadius: BLUR_RADIUS,
 		sieveThreshold: SIEVE_THRESHOLD,
 		marginPx: MARGIN_PX,
 		// what matters is the tolerance per zoom, not how it is written: sample the function

@@ -1,5 +1,5 @@
 // Documentation drift guard. Every derived constant in config.ts and every number the README quotes is
-// re-derived here from the modules, because the last BLUR_RADIUS change left five wrong figures behind
+// re-derived here from the modules, because a past blur radius change left five wrong figures behind
 // in comments and prose that nothing caught.
 
 import { test, describe } from 'node:test';
@@ -13,8 +13,9 @@ import {
 	MAXLEVEL,
 	TILE_PX,
 	BLOCK,
-	BLUR_RADIUS,
+	SIEVE_RENDERED,
 	SIEVE_THRESHOLD,
+	OVERSAMPLE,
 	MARGIN_PX,
 	FULL_PX,
 	channels,
@@ -46,20 +47,18 @@ describe('config.ts comments state the computed value', () => {
 	});
 
 	test('the derived values are internally consistent', () => {
-		// the default sieve is a circle of the blur radius; the README's "round(π·r²)" relies on that
-		assert.equal(SIEVE_THRESHOLD, Math.round(Math.PI * BLUR_RADIUS * BLUR_RADIUS));
-		assert.equal(MARGIN_PX, Math.ceil(3 * BLUR_RADIUS + 3 * Math.sqrt(SIEVE_THRESHOLD)));
+		assert.equal(SIEVE_THRESHOLD, Math.round(SIEVE_RENDERED * OVERSAMPLE * OVERSAMPLE));
+		assert.equal(MARGIN_PX, Math.ceil(3 * Math.sqrt(SIEVE_THRESHOLD)));
 		assert.equal(FULL_PX, TILE_PX * 2 ** MAXLEVEL);
 	});
 });
 
 describe('README numbers match config.ts', () => {
-	test('blur radius', () => {
-		assert.equal(Number(grab(readme, /σ = `BLUR_RADIUS` = (\d+) px/, 'README σ')), BLUR_RADIUS);
-	});
-
 	test('sieve threshold', () => {
-		assert.equal(Number(grab(readme, /round\(π·r²\) =\s*(\d+) px/, 'README sieve')), SIEVE_THRESHOLD);
+		assert.equal(Number(grab(readme, /`SIEVE_RENDERED` = ([\d.]+) rendered px²/, 'README sieve')), SIEVE_RENDERED);
+		assert.equal(Number(grab(readme, /round\([\d.]+·\d+²\) = (\d+) px/, 'README sieve px')), SIEVE_THRESHOLD);
+		assert.equal(Number(grab(readme, /round\(([\d.]+)·\d+²\)/, 'README sieve formula')), SIEVE_RENDERED);
+		assert.equal(Number(grab(readme, /round\([\d.]+·(\d+)²\)/, 'README oversample')), OVERSAMPLE);
 	});
 
 	test('margin', () => {

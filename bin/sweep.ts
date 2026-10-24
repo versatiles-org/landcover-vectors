@@ -1,7 +1,6 @@
 // Sweep one parameter over one area and report what it costs in bytes and what it buys in quality.
 //
-//   npm run sweep -- --area hudson-bay --zoom 9 --blur 0.5,0.75,1       # the raster stage: which class wins
-//   npm run sweep -- --area hudson-bay --zoom 9 --sieve 0,1.77,4        # smallest patch kept
+//   npm run sweep -- --area hudson-bay --zoom 9 --sieve 0,1.77,4        # the raster stage: smallest patch kept
 //   npm run sweep -- --area hudson-bay --zoom 8-10 --detail 1,2,4       # the vector stage: outline precision
 //
 // Each value is a separate preview build — its own cache directory, because every one of these knobs is
@@ -11,7 +10,7 @@
 // side, so size and quality come out of one run.
 //
 // Guessing is not a substitute: bytes against tolerance are far from 1/x (the Hudson Bay worst tile grew
-// 1.56×, not 4×, at DETAIL_PX 4), and blur trades texture against speckle in ways only the numbers show.
+// 1.56×, not 4×, at DETAIL_PX 4), and the sieve trades texture against speckle in ways only the numbers show.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -30,7 +29,6 @@ const KNOBS = {
 		zeroOk: false,
 		what: 'DETAIL_PX — simplify tolerance, 1 px of a (256·x)-px tile',
 	},
-	blur: { env: 'LANDCOVER_BLUR_RENDERED', zeroOk: false, what: 'BLUR_RENDERED — Gaussian σ in rendered px' },
 	sieve: { env: 'LANDCOVER_SIEVE_RENDERED', zeroOk: true, what: 'SIEVE_RENDERED — smallest patch kept, rendered px²' },
 } as const;
 type Knob = keyof typeof KNOBS;
@@ -40,7 +38,6 @@ const { values: opt } = parseArgs({
 		area: { type: 'string' },
 		zoom: { type: 'string' },
 		detail: { type: 'string' },
-		blur: { type: 'string' },
 		sieve: { type: 'string' },
 		tile: { type: 'string' }, // z/x/y to judge quality on
 		'no-inspect': { type: 'boolean', default: false },
@@ -54,14 +51,13 @@ const BASELINE = path.join(root, 'doc', 'size-baseline.json');
 if (opt.help || !opt.area) {
 	console.error(
 		[
-			'Usage: npm run sweep -- --area <name|w,s,e,n> [--zoom min-max] (--detail | --blur | --sieve) <v1,v2,…>',
+			'Usage: npm run sweep -- --area <name|w,s,e,n> [--zoom min-max] (--detail | --sieve) <v1,v2,…>',
 			'',
 			...Object.entries(KNOBS).map(([k, v]) => `  --${k.padEnd(7)} ${v.what}`),
 			'  --tile z/x/y     the tile to judge quality on (default: the largest tile of the first variant)',
 			'  --no-inspect     sizes only',
 			'',
-			'One knob per sweep; the others come from config.ts or the environment. Note that the sieve follows',
-			'the blur unless it is pinned: LANDCOVER_SIEVE_RENDERED=1.77 npm run sweep -- --blur 0.5,0.75,1',
+			'One knob per sweep; the others come from config.ts or the environment.',
 			'Without a knob, it sweeps --detail 1,2,4. Each variant keeps its own cache, so repeats are cheap.',
 		].join('\n'),
 	);

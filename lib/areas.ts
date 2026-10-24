@@ -1,7 +1,7 @@
 // Named areas of interest, for size probes (bin/stats.ts) and previews.
 //
 // The list is not arbitrary: `hudson-bay` is where the largest tiles of the z0–10 build actually sit
-// (the world's most fragmented wetland mosaic — a 60.5 KB z9 tile), and the rest are the shapes that
+// (the world's most fragmented wetland mosaic — a 110 KB z10 tile), and the rest are the shapes that
 // stress the pipeline differently. A parameter change is judged on these, because the global maximum is
 // what decides whether tiles stay under tippecanoe's limit.
 

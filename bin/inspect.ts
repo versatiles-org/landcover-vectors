@@ -116,11 +116,11 @@ async function previewInputs(area: string): Promise<string[]> {
 // a variant is best named by the parameters it was built with, which its directory's stamp records
 async function labelFor(tileset: string): Promise<string> {
 	const stamp = await readStamp(path.dirname(tileset));
-	const v = stamp?.values as { blurRadius?: number; sieveThreshold?: number; simplify?: number[] } | undefined;
+	const v = stamp?.values as { sieveThreshold?: number; simplify?: number[] } | undefined;
 	if (!stamp || !v) return path.basename(tileset);
 	const tol = v.simplify?.[z];
 	return (
-		`${stamp.fingerprint}  σ ${v.blurRadius} px · sieve ${v.sieveThreshold} px` +
+		`${stamp.fingerprint}  sieve ${v.sieveThreshold} px` +
 		(tol === undefined ? '' : ` · tolerance ${tol.toFixed(0)} m`)
 	);
 }

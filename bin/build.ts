@@ -36,7 +36,6 @@ await requireCommands([
 	'gdalinfo', // lib/block.ts reads the window histogram through it
 	'gdal_rasterize', // lib/ocean.ts burns OSM's sea into each window
 	'ogr2ogr',
-	'vips',
 	'tippecanoe',
 	'tile-join',
 	'versatiles',
@@ -63,7 +62,7 @@ if (srcDiff)
 	);
 
 // Refuse to mix caches: the fragments and per-zoom tilesets are keyed on zoom + block position only,
-// so nothing about their names would reveal that they came from another channel table or blur radius.
+// so nothing about their names would reveal that they came from another channel table or sieve.
 const cacheStamp = await readStamp(datadir);
 const cacheDiff = cacheStamp && stampMismatch(cacheStamp, cacheValues());
 if (cacheDiff)

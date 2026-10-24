@@ -561,25 +561,57 @@
 			]
 		},
 		"hudson-bay@blur0.75": {
-			"fingerprint": "fe043f8a",
-			"input": "data/preview/fe043f8a/preview-hudson_bay-z9-9.mbtiles",
-			"written": "2026-09-21T11:32:14.764Z",
-			"note": "sweep: LANDCOVER_BLUR_RENDERED=0.75, area hudson-bay, z9-9",
+			"fingerprint": "55442e89",
+			"input": "data/preview/55442e89/preview-hudson_bay-z8-10.mbtiles",
+			"written": "2026-10-24T12:19:56.517Z",
+			"note": "sweep: LANDCOVER_BLUR_RENDERED=0.75, area hudson-bay, z8-10",
 			"zooms": [
 				{
+					"z": 8,
+					"tiles": 245,
+					"bytes": 5976639,
+					"avg": 24394.444897959183,
+					"p50": 20828,
+					"p95": 66231,
+					"p99": 76005,
+					"max": 80919,
+					"worst": {
+						"z": 8,
+						"x": 67,
+						"y": 83,
+						"bytes": 80919
+					}
+				},
+				{
 					"z": 9,
-					"tiles": 514,
-					"bytes": 8723158,
-					"avg": 16971.124513618677,
-					"p50": 9279,
-					"p95": 51479,
-					"p99": 58217,
-					"max": 61838,
+					"tiles": 517,
+					"bytes": 14334410,
+					"avg": 27726.131528046422,
+					"p50": 21092,
+					"p95": 67734,
+					"p99": 76166,
+					"max": 81350,
 					"worst": {
 						"z": 9,
-						"x": 129,
-						"y": 159,
-						"bytes": 61838
+						"x": 132,
+						"y": 160,
+						"bytes": 81350
+					}
+				},
+				{
+					"z": 10,
+					"tiles": 927,
+					"bytes": 32963998,
+					"avg": 35559.86839266451,
+					"p50": 36535,
+					"p95": 67445,
+					"p99": 74856,
+					"max": 80144,
+					"worst": {
+						"z": 10,
+						"x": 266,
+						"y": 321,
+						"bytes": 80144
 					}
 				}
 			]
@@ -604,6 +636,62 @@
 						"x": 133,
 						"y": 166,
 						"bytes": 40613
+					}
+				}
+			]
+		},
+		"hudson-bay@blur0": {
+			"fingerprint": "41a1b871",
+			"input": "data/preview/41a1b871/preview-hudson_bay-z8-10.mbtiles",
+			"written": "2026-10-24T12:19:56.519Z",
+			"note": "sweep: LANDCOVER_BLUR_RENDERED=0, area hudson-bay, z8-10",
+			"zooms": [
+				{
+					"z": 8,
+					"tiles": 246,
+					"bytes": 8779573,
+					"avg": 35689.32113821138,
+					"p50": 33120,
+					"p95": 88816,
+					"p99": 98257,
+					"max": 104683,
+					"worst": {
+						"z": 8,
+						"x": 67,
+						"y": 83,
+						"bytes": 104683
+					}
+				},
+				{
+					"z": 9,
+					"tiles": 518,
+					"bytes": 21161729,
+					"avg": 40852.75868725869,
+					"p50": 33669,
+					"p95": 91334,
+					"p99": 100188,
+					"max": 103699,
+					"worst": {
+						"z": 9,
+						"x": 132,
+						"y": 165,
+						"bytes": 103699
+					}
+				},
+				{
+					"z": 10,
+					"tiles": 927,
+					"bytes": 48858587,
+					"avg": 52706.13484358144,
+					"p50": 54543,
+					"p95": 97600,
+					"p99": 106547,
+					"max": 112768,
+					"worst": {
+						"z": 10,
+						"x": 266,
+						"y": 321,
+						"bytes": 112768
 					}
 				}
 			]

@@ -63,14 +63,12 @@ describe('fingerprint', () => {
 			).stdout.trim();
 		const base = fp({});
 		const variants = (
-			[
-				{ LANDCOVER_DETAIL_PX: '2' },
-				{ LANDCOVER_BLUR_RENDERED: '0.5' },
-				{ LANDCOVER_SIEVE_RENDERED: '4' },
-				{ LANDCOVER_SIEVE_RENDERED: '0' },
-			] as Record<string, string>[]
+			[{ LANDCOVER_DETAIL_PX: '2' }, { LANDCOVER_SIEVE_RENDERED: '4' }, { LANDCOVER_SIEVE_RENDERED: '0' }] as Record<
+				string,
+				string
+			>[]
 		).map(fp);
-		assert.equal(new Set([base, ...variants]).size, 5, 'every override must move the fingerprint');
+		assert.equal(new Set([base, ...variants]).size, 4, 'every override must move the fingerprint');
 	});
 
 	test('the source stamp tracks the raster resolution', () => {
@@ -87,9 +85,9 @@ describe('stampMismatch', () => {
 	});
 
 	test('names every changed key, old before new', () => {
-		const report = stampMismatch(stampFor({ ...values, blurRadius: 4, tilePx: 2048 }), values);
+		const report = stampMismatch(stampFor({ ...values, sieveThreshold: 13, tilePx: 2048 }), values);
 		assert.ok(report);
-		assert.match(report, /blurRadius: 4 → 3/);
+		assert.match(report, /sieveThreshold: 13 → 28/);
 		assert.match(report, /tilePx: 2048 → 1024/);
 		assert.equal(report.split('\n').length, 2);
 	});
@@ -102,9 +100,9 @@ describe('stampMismatch', () => {
 	});
 
 	test('reports a key that is new or gone', () => {
-		const { blurRadius: _dropped, ...without } = values as Record<string, unknown>;
+		const { sieveThreshold: _dropped, ...without } = values as Record<string, unknown>;
 		const report = stampMismatch(stampFor(without), values);
-		assert.match(String(report), /blurRadius: \(absent\) → 3/);
+		assert.match(String(report), /sieveThreshold: \(absent\) → 28/);
 	});
 
 	test('does not trust a stamp whose fingerprint contradicts its values', () => {

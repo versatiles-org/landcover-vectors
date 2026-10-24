@@ -1,6 +1,6 @@
-// The ESA -> Shortbread channel table drives the per-block masks: at every zoom the active channels
-// plus the no-data channel must partition all ESA codes exactly once. A gap would leave pixels that no
-// mask claims; an overlap would make the argmax order decide the class silently.
+// The ESA -> Shortbread channel table drives the per-block class index: at every zoom the active channels
+// plus the no-data channel must partition all ESA codes exactly once. A gap would drop a class into
+// no-data unnoticed; an overlap would add two class indexes into a wrong one silently.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

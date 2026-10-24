@@ -5,7 +5,7 @@
 // own features of those kinds there (lib/handover.ts), so OSM takes over from z11. `water` and
 // `residential` are the exceptions: OSM's lakes and urban land use are the better source wherever OSM
 // has them, so the merge keeps those instead.
-// Each zoom is processed in BLOCK×BLOCK-tile blocks (with a pixel margin for blur/sieve) so
+// Each zoom is processed in BLOCK×BLOCK-tile blocks (with a pixel margin for the sieve) so
 // memory stays bounded; see lib/block.ts and the README "Merging with OSM" section.
 
 import os from 'node:os';
@@ -68,26 +68,18 @@ export const MAXLEVEL = 10;
 // per 256-px output tile, so 1024 means 4× oversampling (38 m/px at z10, against ESA's native 10 m). The
 // per-block window is BLOCK × TILE_PX pixels, so halve BLOCK when doubling TILE_PX to keep the window —
 // and therefore the memory per block — where it is. Everything downstream is expressed in *rendered*
-// pixels and derived from OVERSAMPLE, so changing TILE_PX does not silently change the smoothing too.
+// pixels and derived from OVERSAMPLE, so changing TILE_PX does not silently change the sieve too.
 export const TILE_PX = 1024; // raw raster pixels per output tile
 export const BLOCK = 8; // tiles per block side
 export const OVERSAMPLE = TILE_PX / 256; // raw pixels per rendered pixel (4)
 
-// Gaussian σ, in rendered pixels: how much of the pixel staircase is smoothed away before the argmax.
-// Below ~0.5 the boundaries turn blocky again; above ~1 small features start dissolving. Because the
-// argmax is a per-pixel majority vote, blurring also moves area from scattered classes to dominant ones
-// (in the Hudson Bay worst tile, heath loses half its area in this one step) — this is the main lever
-// on *which class ends up where*, where DETAIL_PX only changes how precisely the result is outlined.
-export const BLUR_RENDERED = numberFromEnv('LANDCOVER_BLUR_RENDERED', 0.75, { above: 0 });
-export const BLUR_RADIUS = BLUR_RENDERED * OVERSAMPLE; // Gaussian σ in raw pixels (3)
-
-// Smallest patch kept, in rendered px²; smaller regions are merged into their largest neighbour. It
-// defaults to a circle of the blur radius (π·σ² ≈ 1.77 px²) and so follows a blur override;
-// LANDCOVER_SIEVE_RENDERED decouples the two (less smoothing, still no speckle), and 0 turns it off.
-// It is the main lever on feature count, and with that on tile bytes.
-export const SIEVE_RENDERED = numberFromEnv('LANDCOVER_SIEVE_RENDERED', Math.PI * BLUR_RENDERED * BLUR_RENDERED, {
-	atLeast: 0,
-});
+// Smallest patch kept, in rendered px²; smaller regions are merged into their largest neighbour. This is
+// the only raster generalization: each pixel otherwise keeps its own ESA class. (A Gaussian blur before a
+// per-pixel majority vote used to round the patches as well, but it moved area from scattered classes to
+// dominant ones and cost accuracy for smaller tiles — see doc/TUNING.md.) 1.77 px² is what the blur's
+// circle of σ = 0.75 px gave; LANDCOVER_SIEVE_RENDERED overrides it, and 0 turns it off. It is the main
+// lever on feature count, and with that on tile bytes.
+export const SIEVE_RENDERED = numberFromEnv('LANDCOVER_SIEVE_RENDERED', 1.77, { atLeast: 0 });
 
 // full-world raster size at the deepest zoom (TILE_PX × 2^MAXLEVEL). The single EPSG:3857
 // source GeoTIFF is built at this resolution and carries an overview pyramid down to z0, so a
@@ -96,15 +88,15 @@ export const FULL_PX = TILE_PX * Math.pow(2, MAXLEVEL);
 
 // sieve threshold in raw pixels (see SIEVE_RENDERED)
 export const SIEVE_THRESHOLD = Math.round(SIEVE_RENDERED * OVERSAMPLE * OVERSAMPLE); // 28
-// processing margin (px) around a block so blur+sieve at the inner edge match neighbours
-export const MARGIN_PX = Math.ceil(3 * BLUR_RADIUS + 3 * Math.sqrt(SIEVE_THRESHOLD)); // 25
+// processing margin (px) around a block so the sieve at the inner edge matches neighbours
+export const MARGIN_PX = Math.ceil(3 * Math.sqrt(SIEVE_THRESHOLD)); // 16
 
 // Vector detail: the simplify tolerance is one pixel of a (256 · DETAIL_PX)-px tile, so DETAIL_PX = 2
 // keeps twice as much boundary detail per tile — and costs roughly twice the bytes. This, not TILE_PX, is
 // what decides how much detail survives into the tiles: raising the raster resolution alone changes
 // almost nothing, because the tolerance dominates. Measure a change with
 // `npm run stats -- --probe <area>` (or `npm run sweep`) before adopting it; the budget is tippecanoe's
-// 500 000 bytes per tile, and the z0–10 build's worst tile sits at ~60 KB.
+// 500 000 bytes per tile, and the worst tile of the Hudson Bay probe (z8–10) sits at ~110 KB.
 //
 // Beyond DETAIL_PX ≈ 16 the MVT grid quantises the extra precision away: tippecanoe's default
 // `--detail 12` gives 4096 units per tile, i.e. 16 units per rendered pixel.
@@ -114,7 +106,7 @@ export const MARGIN_PX = Math.ceil(3 * BLUR_RADIUS + 3 * Math.sqrt(SIEVE_THRESHO
 export const DETAIL_PX = numberFromEnv('LANDCOVER_DETAIL_PX', 1, { above: 0 });
 
 // A numeric setting a sweep may override through the environment (LANDCOVER_DETAIL_PX,
-// LANDCOVER_BLUR_RENDERED, LANDCOVER_SIEVE_RENDERED). An unparsable or out-of-range value is an error,
+// LANDCOVER_SIEVE_RENDERED). An unparsable or out-of-range value is an error,
 // never a silent fallback, because it changes the output. Empty counts as unset.
 function numberFromEnv(name: string, fallback: number, bound: { above?: number; atLeast?: number }): number {
 	const raw = process.env[name];
@@ -202,7 +194,7 @@ export function blockWindow(z: number, bx: number, by: number): BlockWindow {
 	return { inner3857, window3857, windowPx, innerLonLat };
 }
 
-// One channel of the blur/argmax stage. `esa` are the ESA WorldCover class codes that map to
+// One output class of the classification. `esa` are the ESA WorldCover class codes that map to
 // it; `layer`/`kind` are the Shortbread target (null = the dropped no-data class); `maxZoom`
 // is the highest zoom this pipeline emits the kind — up to there the merge drops OSM's features of
 // that kind, above it OSM owns it (lib/handover.ts); `osmFrom`, if set, turns that around for a kind
@@ -218,7 +210,7 @@ export type Channel = {
 	color?: string;
 };
 
-// ESA WorldCover → Shortbread mapping. Order is the argmax channel order; the no-data class is
+// ESA WorldCover → Shortbread mapping. Order is the class index order in a block; the no-data class is
 // first. Legend: https://esa-worldcover.org/en/data-access
 export const channels: Channel[] = [
 	{ esa: [0], layer: null, kind: null, maxZoom: -1 }, // no data / OSM's sea (dropped)

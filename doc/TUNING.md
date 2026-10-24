@@ -25,35 +25,48 @@ plus archipelago, fjord, delta, desert and glacier cases. `--worst N --attribute
 `tippecanoe-decode` and reports features and vertices per layer and `kind`, which answers _why_ a tile is big.
 
 `doc/size-baseline.json` holds the numbers of a build so a later one can be diffed against it; `--label` keeps
-variants of a parameter sweep apart. For the z0–10 build the worst tile is **60.5 KB at z9** (Hudson Bay
-Lowlands, 2273 features / 36 k vertices), with an average of 6–10 KB per tile — roughly **8× headroom** to the
-500 000-byte limit, which is the budget available for more detail.
+variants of a parameter sweep apart. Without the blur, the worst tile of the Hudson Bay probe (z8–10, where
+the largest tiles sit) is **110 KB at z10** — roughly **4.5× headroom** to the 500 000-byte limit, which is the
+budget available for more detail. (The last z0–10 build, still with the blur, peaked at 60.5 KB.)
 
 ## Quality: the raster stage decides
 
-Two stages decide how a tile looks, and they are tuned separately: the raster stage (blur, sieve, `TILE_PX`)
-decides **which class ends up where**, the vector stage (`DETAIL_PX`) only how precisely its outlines are
-traced. Measured on the worst tile of the z0–10 build (9/129/159, Hudson Bay Lowlands), against what it should
-show:
+Two stages decide how a tile looks, and they are tuned separately: the raster stage (sieve, `TILE_PX`) decides
+**which class ends up where**, the vector stage (`DETAIL_PX`) only how precisely its outlines are traced.
 
-| variant           | agreement at 256 px | heath kept | tile KB |
-| ----------------- | ------------------- | ---------- | ------- |
-| blur 0.5          | 79.4 %              | 36 %       | 98.5    |
-| blur 0.75 (today) | 74.5 %              | 27 %       | 60.4    |
-| blur 1.0          | 69.3 %              | 20 %       | 39.3    |
-| `DETAIL_PX` 4     | 77.9 %              | 31 %       | 93.9    |
+### Why there is no blur
 
-At about the same size, a smaller blur beats a finer tolerance on every measure: the blur is where scattered
-classes are voted away (heath loses half its area in that one step), and no outline precision brings them
-back. `DETAIL_PX` 4 costs 1.56× the bytes of `DETAIL_PX` 1, far less than 4×, because MVT delta-encodes
-dense vertices; beyond `DETAIL_PX` ≈ 16 the MVT grid quantises the extra precision away (tippecanoe's default
-`--detail 12` is 4096 units per tile, i.e. 16 per rendered pixel).
+The raster stage used to start with a Gaussian blur (σ 0.75 rendered px) of one mask per class, followed by a
+per-pixel argmax. That is a weighted majority vote: it rounded patches into blobs and cut tile bytes, but it moved
+area from scattered classes to dominant ones. Measured on the worst tile of the z0–10 build then (9/129/159,
+Hudson Bay Lowlands), every step of σ cost accuracy:
+
+| variant       | agreement at 256 px | heath kept | tile KB |
+| ------------- | ------------------- | ---------- | ------- |
+| blur 0.5      | 79.4 %              | 36 %       | 98.5    |
+| blur 0.75     | 74.5 %              | 27 %       | 60.4    |
+| blur 1.0      | 69.3 %              | 20 %       | 39.3    |
+| `DETAIL_PX` 4 | 77.9 %              | 31 %       | 93.9    |
+
+Switching it off entirely, with the sieve held at 1.77 px² (`hudson-bay`, z8–10, judged on 9/132/160):
+
+|                                   | blur 0.75          | no blur               |
+| --------------------------------- | ------------------ | --------------------- |
+| worst tile z8 / z9 / z10, KB      | 79.0 / 79.4 / 78.3 | 102.2 / 101.3 / 110.1 |
+| features / vertices on 9/132/160  | 3345 / 47 669      | 4088 / 58 204         |
+| agreement at 1024 px / at 256 px  | 60.5 % / 73.0 %    | 61.5 % / 71.7 %       |
+| heath / marsh kept                | 36.0 % / 66.3 %    | 39.4 % / 70.3 %       |
+| average full block, 9 in parallel | 70.4 s             | 46.4 s                |
+
+Without it, scattered classes keep more of their area and the polygons follow ESA's own texture instead of
+blobs, for 1.3–1.4× the bytes, well inside the budget. The blur was removed, which also drops masks, blur and
+argmax from every block (the slowest raster step) and libvips from the requirements. The sieve is now the only
+raster generalization, and with that the knob to turn when tiles grow too big.
 
 ## Sweeps and `inspect`
 
 ```sh
-npm run sweep -- --area hudson-bay --zoom 9 --blur 0.5,0.75,1        # the raster stage: size and quality
-LANDCOVER_SIEVE_RENDERED=1.77 npm run sweep -- --area hudson-bay --zoom 9 --blur 0.5,0.75,1   # sieve held fixed
+npm run sweep -- --area hudson-bay --zoom 9 --sieve 0,1.77,4         # the raster stage: size and quality
 npm run sweep -- --area hudson-bay --zoom 8-10 --detail 1,2,4        # the vector stage
 npm run inspect -- 9/129/159 --preview hudson-bay                    # one tile, every variant built for the area
 ```
@@ -68,8 +81,8 @@ into a hole.
 It reports:
 
 - each class's area and how much of it was kept;
-- the overall agreement, both at full resolution (which also counts the pixel-level mosaic the blur removes on
-  purpose) and at the 4×4 majority the tolerance is calibrated to (the structural number);
+- the overall agreement, both at full resolution (which also counts the pixel-level mosaic the sieve and the
+  simplify remove on purpose) and at the 4×4 majority the tolerance is calibrated to (the structural number);
 - the errors, split into wrong kind, gap and overdraw;
 - the tile's bytes, features and vertices.
 
@@ -77,7 +90,7 @@ It also writes a PNG to `data/inspect/` with the source, the target, and each va
 
 ## Raising `TILE_PX`
 
-Raising `TILE_PX` is the bigger operation: blur, sieve and tolerance are all set in rendered pixels (via
+Raising `TILE_PX` is the bigger operation: sieve and tolerance are both set in rendered pixels (via
 `OVERSAMPLE`), so it refines the grid they operate on without changing them. `FULL_PX` changes, so the source
 raster has to be rebuilt (`npm run download` — the stamp in `data/0_download` makes a stale one an error rather
 than a surprise), and the per-block window is `BLOCK`×`TILE_PX` pixels, so **halve `BLOCK` when doubling
@@ -99,7 +112,7 @@ agreement of the 256-px majorities. The stages are:
 - `download` — the warp as it runs, on whichever ESA overview GDAL picks (the difference to `10 m mode` is
   what ESA's overviews cost);
 - `pyramid` — our mode overview read like a block, below z10 (the cascaded majority vote);
-- each tileset present, which adds blur, sieve and simplify.
+- each tileset present, which adds sieve and simplify.
 
 On 9/129/159 the source loses little at 1024 (heath 95 % kept, 92 % agreement through the z9 pyramid) and a
-bit less at 2048 (98 %, 96 %); the blur's loss sits on top of that.
+bit less at 2048 (98 %, 96 %); the sieve's and the simplify's loss sit on top of that.
