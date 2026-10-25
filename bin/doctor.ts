@@ -1,7 +1,10 @@
 // Check every external tool the pipeline runs: present, new enough, and able to do what is asked of it
 // (lib/tools.ts). Run: npm run doctor (or pixi run doctor). Exits non-zero if any tool cannot be used.
 
-import { TOOLS, type ToolName } from '../lib/tools.ts';
+import { TOOLS, outsidePixi, type ToolName } from '../lib/tools.ts';
+
+const note = outsidePixi();
+if (note) console.log(`! ${note}\n`);
 
 let failed = 0;
 for (const [name, tool] of Object.entries(TOOLS) as [ToolName, (typeof TOOLS)[ToolName]][]) {

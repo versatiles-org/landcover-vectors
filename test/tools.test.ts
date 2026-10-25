@@ -5,7 +5,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { TOOLS, requireTools } from '../lib/tools.ts';
+import { TOOLS, requireTools, outsidePixi } from '../lib/tools.ts';
 import { versionAtLeast } from '../lib/handover.ts';
 import { gdalEnv } from '../lib/worldcover.ts';
 import { skipWithout } from './tools.ts';
@@ -31,6 +31,13 @@ describe('tool checks', () => {
 		const r = await TOOLS.tippecanoe.check();
 		assert.equal(r.problem, undefined, r.problem ?? '');
 		assert.match(r.version ?? '', /^\d+\.\d+\.\d+$/);
+	});
+
+	test('outside an installed pixi environment, it says so', () => {
+		// this checkout has one only where pixi install ran; the note must follow PIXI_ENVIRONMENT_NAME either way
+		assert.equal(outsidePixi({ PIXI_ENVIRONMENT_NAME: 'default' }), null);
+		const note = outsidePixi({});
+		if (note !== null) assert.match(note, /pixi run <task>.*pixi shell/);
 	});
 
 	test('a missing tool fails with its fix, naming every problem at once', async () => {

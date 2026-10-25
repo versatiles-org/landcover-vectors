@@ -3,6 +3,8 @@
 // or outdated tool fails in a second instead of hours into a build.
 
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 
 import { gdalEnv, commandExists } from './worldcover.ts';
 import { versionAtLeast } from './handover.ts';
@@ -31,6 +33,14 @@ function output(cmd: string, ...args: string[]): Promise<string | null> {
 }
 
 const version = (out: string) => out.match(/\d+\.\d+\.\d+/)?.[0];
+
+// A note when a pixi environment is installed here but this process does not run in it (pixi sets
+// PIXI_ENVIRONMENT_NAME in `pixi run` and `pixi shell`): the tools found are the system's, not the pinned ones.
+export function outsidePixi(env: NodeJS.ProcessEnv = process.env): string | null {
+	const root = path.resolve(import.meta.dirname, '..');
+	if (env.PIXI_ENVIRONMENT_NAME || !existsSync(path.join(root, '.pixi', 'envs'))) return null;
+	return 'this runs outside the pixi environment installed here — use "pixi run <task>" or "pixi shell"';
+}
 
 // a tool whose `--version` (or `args`) must run, and print at least `min`, or else warn below `tested`
 function versioned(
@@ -62,6 +72,12 @@ export const TOOLS: Record<ToolName, Tool> = {
 		hint: PIXI,
 		check: async () => {
 			const found = await versioned('gdal', { min: '3.13.0' })();
+			if (found.problem && !found.version) {
+				// no `gdal` command: GDAL before 3.11 has none, but may well be installed
+				const older = await output('gdalinfo', '--version');
+				if (older !== null)
+					return { version: version(older), problem: 'needs ≥ 3.13.0 (no gdal command before 3.11)' };
+			}
 			if (found.problem) return found;
 			const utilities = ['gdalbuildvrt', 'gdalwarp', 'gdaladdo', 'gdal_translate', 'gdal_rasterize', 'gdalinfo'];
 			const missing: string[] = [];
@@ -119,6 +135,7 @@ export async function requireTools(names: ToolName[]): Promise<void> {
 				failed
 					.map((r) => `  ${r.name}${r.version ? ` ${r.version}` : ''}: ${r.problem} — ${TOOLS[r.name].hint}`)
 					.join('\n') +
+				(outsidePixi() ? `\n${outsidePixi()}` : '') +
 				'\n(npm run doctor checks them all)',
 		);
 }
