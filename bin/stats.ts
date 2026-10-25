@@ -86,7 +86,7 @@ if (opt.areas) {
 async function probeBuild(area: string): Promise<string> {
 	resolveArea(area); // fail on a bad area before spending minutes on a build
 	parseZoomRange(opt.zoom);
-	const args = ['bin/preview.ts', '--build-only', '--area', area, ...(opt.zoom ? ['--zoom', opt.zoom] : [])];
+	const args = ['bin/preview.ts', '--build-only', `--area=${area}`, ...(opt.zoom ? ['--zoom', opt.zoom] : [])];
 	console.error('$ node %s', args.join(' '));
 	const r = spawnSync(process.execPath, args, { cwd: root, stdio: ['ignore', 'inherit', 'inherit'] });
 	if (r.status !== 0) throw new Error(`probe build failed (exit ${r.status})`);

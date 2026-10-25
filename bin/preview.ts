@@ -298,7 +298,7 @@ if (opt.watch && !opt.tiles) {
 		const args = [
 			process.argv[1],
 			'--build-only',
-			...(spec ? ['--area', spec] : []),
+			...(spec ? [`--area=${spec}`] : []),
 			'--zoom',
 			`${minZoom}-${maxZoom}`,
 		];

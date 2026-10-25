@@ -85,7 +85,7 @@ const results: Variant[] = [];
 
 for (const value of values) {
 	console.error('\n═══ %s = %s ═══', KNOBS[knob].env, value);
-	const args = ['bin/preview.ts', '--build-only', '--area', opt.area, '--zoom', `${minZoom}-${maxZoom}`];
+	const args = ['bin/preview.ts', '--build-only', `--area=${opt.area}`, '--zoom', `${minZoom}-${maxZoom}`];
 	const run = spawnSync(process.execPath, args, {
 		cwd: root,
 		stdio: ['ignore', 'inherit', 'inherit'],
