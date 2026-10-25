@@ -150,12 +150,17 @@ const baseline: Baseline = await fs
 	.readFile(BASELINE, 'utf8')
 	.then((s) => JSON.parse(s) as Baseline)
 	.catch(() => ({ entries: {} }) as Baseline);
+// the other knob, when it is overridden for the whole sweep, is part of the key: a sweep of DETAIL_PX at another
+// sieve must not overwrite the one at the default sieve
+const others = (Object.keys(KNOBS) as Knob[])
+	.filter((k) => k !== knob && process.env[KNOBS[k].env])
+	.map((k) => ({ knob: k, env: KNOBS[k].env, value: process.env[KNOBS[k].env] }));
 for (const r of results) {
-	baseline.entries[`${opt.area}@${knob}${r.value}`] = {
+	baseline.entries[`${opt.area}@${knob}${r.value}${others.map((o) => `+${o.knob}${o.value}`).join('')}`] = {
 		fingerprint: r.fingerprint, // the variant's real config fingerprint, so --baseline compare can name it
 		input: path.relative(root, r.tileset),
 		written: new Date().toISOString(),
-		note: `sweep: ${KNOBS[knob].env}=${r.value}, area ${opt.area}, z${minZoom}-${maxZoom}`,
+		note: `sweep: ${[`${KNOBS[knob].env}=${r.value}`, ...others.map((o) => `${o.env}=${o.value}`)].join(', ')}, area ${opt.area}, z${minZoom}-${maxZoom}`,
 		zooms: r.zooms,
 	};
 }

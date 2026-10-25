@@ -896,11 +896,11 @@
 				}
 			]
 		},
-		"-86,52.5,-84.5,53.5@detail1": {
+		"-86,52.5,-84.5,53.5@detail1+sieve5": {
 			"fingerprint": "ce387963",
 			"input": "data/preview/ce387963/preview-bbox_m86_52p5_m84p5_53p5-z8-8.mbtiles",
 			"written": "2026-10-25T21:06:03.520Z",
-			"note": "sweep: LANDCOVER_DETAIL_PX=1, area -86,52.5,-84.5,53.5, z8-8",
+			"note": "sweep: LANDCOVER_DETAIL_PX=1, LANDCOVER_SIEVE_RENDERED=5, area -86,52.5,-84.5,53.5, z8-8",
 			"zooms": [
 				{
 					"z": 8,
@@ -920,11 +920,11 @@
 				}
 			]
 		},
-		"-86,52.5,-84.5,53.5@detail0.7": {
+		"-86,52.5,-84.5,53.5@detail0.7+sieve5": {
 			"fingerprint": "ef2d2adf",
 			"input": "data/preview/ef2d2adf/preview-bbox_m86_52p5_m84p5_53p5-z8-8.mbtiles",
 			"written": "2026-10-25T21:06:03.521Z",
-			"note": "sweep: LANDCOVER_DETAIL_PX=0.7, area -86,52.5,-84.5,53.5, z8-8",
+			"note": "sweep: LANDCOVER_DETAIL_PX=0.7, LANDCOVER_SIEVE_RENDERED=5, area -86,52.5,-84.5,53.5, z8-8",
 			"zooms": [
 				{
 					"z": 8,
@@ -944,35 +944,11 @@
 				}
 			]
 		},
-		"-86,52.5,-84.5,53.5@detail0.5": {
-			"fingerprint": "bfe92a7a",
-			"input": "data/preview/bfe92a7a/preview-bbox_m86_52p5_m84p5_53p5-z8-8.mbtiles",
-			"written": "2026-10-25T20:49:55.007Z",
-			"note": "sweep: LANDCOVER_DETAIL_PX=0.5, area -86,52.5,-84.5,53.5, z8-8",
-			"zooms": [
-				{
-					"z": 8,
-					"tiles": 62,
-					"bytes": 2995060,
-					"avg": 48307.41935483871,
-					"p50": 41039,
-					"p95": 99706,
-					"p99": 106788,
-					"max": 106788,
-					"worst": {
-						"z": 8,
-						"x": 67,
-						"y": 83,
-						"bytes": 106788
-					}
-				}
-			]
-		},
-		"-86,52.5,-84.5,53.5@detail2": {
+		"-86,52.5,-84.5,53.5@detail2+sieve5": {
 			"fingerprint": "975b49ce",
 			"input": "data/preview/975b49ce/preview-bbox_m86_52p5_m84p5_53p5-z8-8.mbtiles",
 			"written": "2026-10-25T21:06:03.521Z",
-			"note": "sweep: LANDCOVER_DETAIL_PX=2, area -86,52.5,-84.5,53.5, z8-8",
+			"note": "sweep: LANDCOVER_DETAIL_PX=2, LANDCOVER_SIEVE_RENDERED=5, area -86,52.5,-84.5,53.5, z8-8",
 			"zooms": [
 				{
 					"z": 8,
@@ -988,6 +964,30 @@
 						"x": 67,
 						"y": 83,
 						"bytes": 106335
+					}
+				}
+			]
+		},
+		"-86,52.5,-84.5,53.5@detail0.5+sieve1.77": {
+			"fingerprint": "bfe92a7a",
+			"input": "data/preview/bfe92a7a/preview-bbox_m86_52p5_m84p5_53p5-z8-8.mbtiles",
+			"written": "2026-10-25T20:49:55.007Z",
+			"note": "sweep: LANDCOVER_DETAIL_PX=0.5, LANDCOVER_SIEVE_RENDERED=1.77, area -86,52.5,-84.5,53.5, z8-8",
+			"zooms": [
+				{
+					"z": 8,
+					"tiles": 62,
+					"bytes": 2995060,
+					"avg": 48307.41935483871,
+					"p50": 41039,
+					"p95": 99706,
+					"p99": 106788,
+					"max": 106788,
+					"worst": {
+						"z": 8,
+						"x": 67,
+						"y": 83,
+						"bytes": 106788
 					}
 				}
 			]
