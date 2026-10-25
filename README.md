@@ -190,9 +190,9 @@ names what changed and refuses to mix old and new. `npm run clean` clears them (
 
 ```mermaid
 flowchart TB
-  classDef data fill:#e8f0fb,stroke:#4a72b0,color:#1f2328
-  classDef step fill:#fdf0d9,stroke:#b9832a,color:#1f2328
-  classDef again fill:#e8f0fb,stroke:#4a72b0,color:#1f2328,stroke-dasharray:4 3
+  classDef data fill:#4a72b026,stroke:#4a72b0
+  classDef step fill:#d4972a33,stroke:#b9832a
+  classDef again fill:#4a72b026,stroke:#4a72b0,stroke-dasharray:4 3
   subgraph download["npm run download"]
     direction LR
     esa[("ESA WorldCover on S3")]:::data --> warp("reproject"):::step --> src[("worldcover-3857.tif")]:::data
@@ -200,11 +200,11 @@ flowchart TB
   end
   subgraph blocks["npm run build: blocks, zoom by zoom"]
     direction LR
-    src2[("worldcover-3857.tif<br/>seashare-3857.tif")]:::again --> block("process + tile each block"):::step --> bt[("1_results/z_x_y.mbtiles")]:::data --> zj("join per zoom"):::step --> zt[("2_tiles/z{z}.mbtiles")]:::data
+    src2[("worldcover-3857.tif<br/>seashare-3857.tif")]:::again --> block("process + tile each block"):::step --> bt[("`1_results/z{*z*}\_{*x*}\_{*y*}.mbtiles`")]:::data --> zj("join per zoom"):::step --> zt[("`2_tiles/z{*z*}.mbtiles`")]:::data
   end
   subgraph pack["npm run build: pack"]
     direction LR
-    zt2[("2_tiles/z{z}.mbtiles")]:::again --> pj("join zooms"):::step --> mb[("landcover.mbtiles")]:::data --> conv("convert"):::step --> vt[("landcover.versatiles")]:::data
+    zt2[("`2_tiles/z{*z*}.mbtiles`")]:::again --> pj("join zooms"):::step --> mb[("landcover.mbtiles")]:::data --> conv("convert"):::step --> vt[("landcover.versatiles")]:::data
   end
   subgraph merge["npm run merge (optional)"]
     direction LR
@@ -212,10 +212,10 @@ flowchart TB
     sb[("osm.versatiles")]:::data -.-> fm
   end
   download ~~~ blocks ~~~ pack ~~~ merge
-  style download fill:#f6f8fa,stroke:#d0d7de
-  style blocks fill:#f6f8fa,stroke:#d0d7de
-  style pack fill:#f6f8fa,stroke:#d0d7de
-  style merge fill:#f6f8fa,stroke:#d0d7de
+  style download fill:#8c959f1a,stroke:#8c959f80
+  style blocks fill:#8c959f1a,stroke:#8c959f80
+  style pack fill:#8c959f1a,stroke:#8c959f80
+  style merge fill:#8c959f1a,stroke:#8c959f80
 ```
 
 Blue cylinders are data (files under `data/`), orange boxes are the steps between them, and the grey frames say
@@ -293,9 +293,9 @@ a level, so a small VRT points at the window's rectangle in it, with no warp and
 
 ```mermaid
 flowchart TD
-  classDef step fill:#fdf0d9,stroke:#b9832a,color:#1f2328
-  classDef data fill:#e8f0fb,stroke:#4a72b0,color:#1f2328
-  classDef decision fill:#f6f8fa,stroke:#8c959f,color:#1f2328
+  classDef step fill:#d4972a33,stroke:#b9832a
+  classDef data fill:#4a72b026,stroke:#4a72b0
+  classDef decision fill:#8c959f1a,stroke:#8c959f
   src[("worldcover-3857.tif")] --> read
   sea[("seashare-3857.tif")] --> read
   read["read window + sea share (VRTs)"] --> hist{"histograms"}
@@ -303,7 +303,7 @@ flowchart TD
   hist -- "one kind, no sea" --> rect["window rectangle"] --> tile
   hist -- "otherwise" --> classify["1 classify"] --> sieve["2 sieve 7 px → 28 px"] --> cut["3 cut at tile edges"]
   cut --> poly["4 polygonize"] --> simp["5 simplify-coverage"] --> split["6 tag & split land / water"] --> tile["7 tippecanoe → keep own tiles"]
-  tile --> out[("1_results/z_x_y.mbtiles")]
+  tile --> out[("`1_results/z{*z*}\_{*x*}\_{*y*}.mbtiles`")]
   empty --> out
   class read,empty,rect,classify,sieve,cut,poly,simp,split,tile step
   class src,sea,out data
