@@ -8,16 +8,18 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { skipWithout } from './tools.ts';
+
 const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'lcv-ocean-'));
 process.env.LANDCOVER_SOURCE_DIR = tmp; // config.ts reads it on import, so import everything after this
 
-const { runQuiet, commandExists } = await import('../lib/worldcover.ts');
+const { runQuiet } = await import('../lib/worldcover.ts');
 const { maskOcean, buildSeaShare, seaShareWindow, SEA } = await import('../lib/ocean.ts');
 const { pyramidLevel } = await import('../lib/window.ts');
 const { readBytes } = await import('../lib/inspect.ts');
 const { file, MERC, MAXLEVEL, FULL_PX, blockWindow, blocksPerAxis } = await import('../config.ts');
 
-const haveGdal = (await commandExists('gdal_rasterize')) && (await commandExists('ogr2ogr'));
+const skip = await skipWithout('gdal_rasterize', 'ogr2ogr', 'gdal_translate');
 const PX = 10;
 
 // a PX×PX raster of ESA class 30 (grassland) over [minx, minx+1000] × [0, 1000] in EPSG:3857
@@ -37,7 +39,7 @@ async function grassland(name: string, minx: number): Promise<string> {
 	return tif;
 }
 
-describe('maskOcean', { skip: !haveGdal && 'GDAL is not on PATH' }, () => {
+describe('maskOcean', { skip }, () => {
 	before(async () => {
 		// the sea: the western half of the first window
 		const gj = path.join(tmp, 'sea.geojson');
@@ -76,7 +78,7 @@ describe('maskOcean', { skip: !haveGdal && 'GDAL is not on PATH' }, () => {
 	});
 });
 
-describe('buildSeaShare', { skip: !haveGdal && 'GDAL is not on PATH' }, () => {
+describe('buildSeaShare', { skip }, () => {
 	const FULL = 1024; // a tiny world: 1024² base pixels in 4×4 tiles
 	const px = (2 * MERC) / FULL; // metres per base pixel
 	const share = path.join(tmp, 'seashare.tif');

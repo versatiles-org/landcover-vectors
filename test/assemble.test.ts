@@ -10,11 +10,10 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import { tileBlock, tileCount, joinTilesets } from '../lib/assemble.ts';
-import { commandExists } from '../lib/worldcover.ts';
+import { skipWithout } from './tools.ts';
 import { blockWindow } from '../config.ts';
 
-const haveTools = (await commandExists('tippecanoe')) && (await commandExists('ogrinfo'));
-const skip = !haveTools && 'tippecanoe or ogrinfo is not on PATH';
+const skip = await skipWithout('tippecanoe', 'ogrinfo');
 
 const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'lcv-assemble-'));
 after(() => fs.rm(tmp, { recursive: true, force: true }));

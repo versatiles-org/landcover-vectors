@@ -108,8 +108,10 @@ describe("GDAL's own progress, shown as a bar", () => {
 	});
 
 	test('runProgress runs a real GDAL tool to the end', async (t) => {
-		const { runProgress, runQuiet, commandExists } = await import('../lib/worldcover.ts');
-		if (!(await commandExists('gdal_translate'))) return t.skip('GDAL is not on PATH');
+		const { runProgress, runQuiet } = await import('../lib/worldcover.ts');
+		const { skipWithout } = await import('./tools.ts');
+		const skip = await skipWithout('gdal_translate');
+		if (skip) return t.skip(skip);
 		const fs = await import('node:fs/promises');
 		const os = await import('node:os');
 		const path = await import('node:path');

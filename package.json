@@ -21,7 +21,7 @@
     "timings": "node bin/timings.ts",
     "sweep": "node --disable-warning=ExperimentalWarning bin/sweep.ts",
     "clean": "node bin/clean.ts",
-    "test": "node --disable-warning=ExperimentalWarning --test",
+    "test": "node --disable-warning=ExperimentalWarning --test 'test/**/*.test.ts'",
     "typecheck": "tsc --noEmit",
     "upgrade": "npx npm-check-updates -u && npm install",
     "format": "prettier --write .",
