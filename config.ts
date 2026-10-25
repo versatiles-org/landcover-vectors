@@ -37,6 +37,7 @@ const sourcedir = fromEnv('LANDCOVER_SOURCE_DIR', path.join(datadir, '0_download
 export const dir = {
 	source: sourcedir, // holds the reprojected source raster, its tile list and the ocean mask (download)
 	results: path.join(datadir, '1_results'), // per-block tilesets (cached → builds resume)
+	tiles: path.join(datadir, '2_tiles'), // per-zoom tilesets, joined once a zoom's blocks are done (cached)
 	tmp: path.join(datadir, 'tmp'), // per-block scratch (not cached between runs)
 };
 

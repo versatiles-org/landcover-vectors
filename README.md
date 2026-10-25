@@ -162,8 +162,9 @@ npm run build      # everything else → data/landcover.versatiles
 npm run merge      # optional: merge with OSM → data/combined.versatiles
 ```
 
-> **Resources.** A full z0–10 build needs roughly **50 GB** of disk under `data/` (the ~19 GB EPSG:3857 source,
-> the ~1.3 GB ocean polygons, the ~0.4 GB sea share, the per-block tilesets and, about as large, the joined tileset) and on the order of **300 core-hours** of CPU. It's
+> **Resources.** A full z0–10 build needs roughly **60 GB** of disk under `data/` (the ~19 GB EPSG:3857 source,
+> the ~1.3 GB ocean polygons, the ~0.4 GB sea share, the per-block tilesets and, each about as large, the per-zoom
+> tilesets and the joined tileset) and on the order of **300 core-hours** of CPU. It's
 > heavily parallelised, but plan for a long run on a many-core machine with ample free disk.
 
 Everything reads and writes under `data/`; `LANDCOVER_DATA_DIR` moves it, and `LANDCOVER_SOURCE_DIR` lets
@@ -175,14 +176,17 @@ identical fragments). Every block holds its window and polygons in memory, so wh
 `LANDCOVER_CONCURRENCY` sets fewer blocks at once.
 
 The build is **resumable**. Every block's tileset (`data/1_results`) is written atomically and skipped on a
-re-run, so an interrupted build continues where it stopped. The cache is
+re-run, so an interrupted build continues where it stopped. Once all blocks of a zoom are done, their tiles are
+joined into `data/2_tiles/z{z}.mbtiles`, a tileset of the whole zoom to watch, serve or inspect while the build
+goes on (`npm run preview -- --tiles data/2_tiles/z7.mbtiles`, `npm run stats -- --input data/2_tiles/z7.mbtiles`); a re-run skips every
+zoom that has one. The cache is
 stamped with a fingerprint of the parameters they were built with: after a change in `config.ts` the build
 names what changed and refuses to mix old and new. `npm run clean` clears them (the download stays), or point
 `LANDCOVER_DATA_DIR` at a fresh directory.
 
 ## How it works
 
-`build` runs: **coverage index → for each zoom 0–10, per-block processing and tiling → pack**.
+`build` runs: **coverage index → for each zoom 0–10 ( per-block processing and tiling → join ) → pack**.
 
 ### Blocks
 
@@ -190,7 +194,7 @@ A naïve pipeline renders one global EPSG:3857 raster per zoom level. At the res
 60000×60000 px and beyond, and a global coverage-simplify loads the whole thing into RAM and gets OOM-killed.
 Instead each zoom is processed in **blocks** of `BLOCK`×`BLOCK` = 8×8 tiles (`TILE_PX` = 1024 raw px per tile),
 so every raster/vector operation works on a ≤ ~8224² px window — bounded memory, feasible at every zoom. Each
-block is tiled on its own, and the blocks' tiles are joined into one tileset at the end.
+block is tiled on its own, and the blocks' tiles are joined into one tileset per zoom.
 
 ### Source raster
 
@@ -299,8 +303,8 @@ requires the histogram to count every pixel of the window as well.
 
 ### Pack
 
-`lib/assemble.ts` copies every block's tiles into `data/landcover.mbtiles` (blocks never share a tile, so this
-is a plain copy, nothing is decoded), and `versatiles convert -c brotli` packs
+`lib/assemble.ts` copies the per-zoom tiles into `data/landcover.mbtiles` (zooms, like blocks, never share a
+tile, so this is a plain copy, nothing is decoded), and `versatiles convert -c brotli` packs
 it into `data/landcover.versatiles`, stamping `tile_schema: shortbread@1.1` so consumers can tell that a
 Shortbread style fits. The build ends with a per-zoom tally of how its blocks were processed, from
 `data/blocks.log`.

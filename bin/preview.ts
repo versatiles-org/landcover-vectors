@@ -116,7 +116,7 @@ async function build(): Promise<void> {
 
 	const dirs = previewPaths(current.previewDir, spec);
 	await fs.rm(dirs.tmp, { recursive: true, force: true });
-	for (const d of [dirs.tmp, dirs.results, current.genDir]) await fs.mkdir(d, { recursive: true });
+	for (const d of [dirs.tmp, dirs.results, dirs.tiles, current.genDir]) await fs.mkdir(d, { recursive: true });
 	await writeStamp(current.previewDir, cacheValues());
 	startTimingLog(path.join(current.previewDir, 'timings.jsonl'), 'preview', {
 		area: spec ?? 'world',
@@ -139,11 +139,12 @@ async function build(): Promise<void> {
 
 	const bar = progress(total, 'blocks');
 	setGdalThreads(1); // one block per core, one GDAL thread each — as in the build
-	const tilesets = await timed('preview', () =>
+	const zooms = await timed('preview', () =>
 		runZooms(plan, {
 			src: file.source,
 			tmpdir: dirs.tmp,
 			resultsdir: dirs.results,
+			tilesdir: dirs.tiles,
 			logFile: dirs.log,
 			concurrency: Number(opt.concurrency ?? BLOCK_CONCURRENCY),
 			bar,
@@ -152,7 +153,7 @@ async function build(): Promise<void> {
 	);
 	bar.done();
 
-	await joinTilesets(tilesets, current.tileset);
+	if (!(await joinTilesets(zooms, current.tileset))) throw new Error(`no tiles in ${spec ?? 'the world'}`);
 	await fs.rm(dirs.tmp, { recursive: true, force: true });
 	// tell whoever spawned us (the --watch parent) which fingerprint this build belongs to
 	await fs.writeFile(LAST_BUILD, JSON.stringify({ fingerprint: fp, tileset: current.tileset }) + '\n');

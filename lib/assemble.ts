@@ -1,10 +1,10 @@
-// Tile every block on its own, then join all their tiles and pack.
+// Tile every block on its own, join each zoom's blocks, then join the zooms and pack.
 //
 // A block tiles itself: one tippecanoe run over its land/water polygons → a small mbtiles of just its own tiles,
 // which is also the block's cache entry. The tiles on a block's edge get their buffer from the block's own margin
 // (lib/block.ts), so no tile needs a neighbour's polygons, and the blocks of a zoom never have to meet in one big
-// file. Blocks never share a tile, so joining them is a plain copy of rows into one mbtiles, which
-// `versatiles convert` packs.
+// file of polygons. Blocks never share a tile, so joining them is a plain copy of rows: into one mbtiles per zoom
+// once its blocks are done (lib/pipeline.ts), and the zooms into one at the end, which `versatiles convert` packs.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -69,10 +69,11 @@ async function emptyTileset(out: string): Promise<void> {
 	});
 }
 
-// Join the block tilesets (disjoint tiles) into one mbtiles at `out`, in the order given, and write its metadata:
-// the zoom range, the bounds of the tiles, and the vector layers the blocks declare.
-export async function joinTilesets(tilesets: string[], out: string): Promise<void> {
-	if (tilesets.length === 0) throw new Error('nothing to join — no block produced any tiles');
+// Join tilesets of disjoint tiles (a zoom's blocks, or the zooms) into one mbtiles at `out`, in the order given,
+// and write its metadata: the zoom range, the bounds of the tiles, and the vector layers the inputs declare.
+// False, and nothing written, if the inputs hold no tiles at all.
+export async function joinTilesets(tilesets: string[], out: string): Promise<boolean> {
+	if (!tilesets.some((t) => tileCount(t) > 0)) return false;
 	await fs.mkdir(path.dirname(out), { recursive: true });
 	await atomic(out, async (tmp) => {
 		const db = new DatabaseSync(tmp);
@@ -101,12 +102,9 @@ export async function joinTilesets(tilesets: string[], out: string): Promise<voi
 				db.exec('DETACH DATABASE b');
 			}
 
-			const range = db.prepare('SELECT min(zoom_level) AS minzoom, max(zoom_level) AS maxzoom FROM tiles').get() as {
-				minzoom: number | null;
-				maxzoom: number | null;
-			};
-			if (range.maxzoom === null) throw new Error('nothing to join — the blocks hold no tiles');
-			const { minzoom, maxzoom } = range as { minzoom: number; maxzoom: number };
+			const { minzoom, maxzoom } = db
+				.prepare('SELECT min(zoom_level) AS minzoom, max(zoom_level) AS maxzoom FROM tiles')
+				.get() as { minzoom: number; maxzoom: number };
 			// bounds: the extent of the tiles over all zooms (a coarse zoom's tiles reach further than a fine one's)
 			const extents = db
 				.prepare(
@@ -147,14 +145,15 @@ export async function joinTilesets(tilesets: string[], out: string): Promise<voi
 			db.close();
 		}
 	});
+	return true;
 }
 
-// join every block's tiles and pack them into a brotli versatiles container (the build's final step).
+// join the per-zoom tilesets and pack them into a brotli versatiles container (the build's final step).
 // The container declares Shortbread explicitly: it writes Shortbread's own layer names and `kind` values,
 // which is the whole point, and tippecanoe has no way to say so — without this it ships as "other" and a
 // consumer cannot tell that a stock Shortbread style already fits.
-export async function pack(tilesets: string[]): Promise<void> {
-	await joinTilesets(tilesets, file.tiles);
+export async function pack(zooms: string[]): Promise<void> {
+	if (!(await joinTilesets(zooms, file.tiles))) throw new Error('nothing to pack — no zoom produced any tiles');
 	await fs.rm(file.container, { force: true });
 	const pipeline = `[,vpl](from_container filename="${file.tiles}" | meta_update schema="${SCHEMA}")`;
 	await run('versatiles', 'convert', ['-c', 'brotli'], pipeline, file.container);

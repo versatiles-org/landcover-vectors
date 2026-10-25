@@ -60,6 +60,12 @@ describe('tileBlock', () => {
 		await tileBlock(5, blockWindow(5, 0, 0).tiles, [], out, tmp);
 		assert.equal(tileCount(out), 0);
 	});
+
+	test('joining nothing but empty tilesets writes nothing and says so', async () => {
+		const out = path.join(tmp, 'none.mbtiles');
+		assert.equal(await joinTilesets([path.join(tmp, 'empty.mbtiles')], out), false);
+		await assert.rejects(fs.stat(out));
+	});
 });
 
 describe('joinTilesets', () => {

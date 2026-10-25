@@ -1,7 +1,7 @@
 // Fingerprint the config values the cached artefacts depend on, so a cache built with other
 // parameters is never silently reused.
 //
-// The per-block tilesets (dir.results) are keyed on zoom + block position only — nothing in their names says which sieve or channel table produced them. A
+// The per-block and per-zoom tilesets (dir.results, dir.tiles) are keyed on zoom + block position only — nothing in their names says which sieve or channel table produced them. A
 // stamp file in the directory closes that gap: build compares it, refuses to mix, and names what
 // changed. The source raster gets its own stamp because it is built for one specific FULL_PX.
 //

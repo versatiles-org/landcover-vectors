@@ -2,8 +2,8 @@
 //
 // Builds zoom levels 0..MAXLEVEL. Each zoom is split into BLOCK×BLOCK-tile blocks; every
 // non-empty block is turned into its Shortbread land/water_polygons tiles independently
-// (lib/block.ts, bounded memory). Finally every block's tiles are joined and packed to versatiles
-// (lib/assemble.ts).
+// (lib/block.ts, bounded memory), and once a zoom's blocks are done, their tiles are joined into one tileset
+// of the zoom. Finally the zooms are joined and packed to versatiles (lib/assemble.ts).
 // The single EPSG:3857 source raster is built once by bin/download.ts (`npm run download`).
 
 import fs from 'node:fs/promises';
@@ -54,20 +54,20 @@ if (srcDiff)
 			'Re-run "npm run download" to rebuild it for the current config.',
 	);
 
-// Refuse to mix caches: the block tilesets are keyed on zoom + block position only,
+// Refuse to mix caches: the block and zoom tilesets are keyed on zoom + block position only,
 // so nothing about their names would reveal that they came from another channel table or sieve.
 const cacheStamp = await readStamp(datadir);
 const cacheDiff = cacheStamp && stampMismatch(cacheStamp, cacheValues());
 if (cacheDiff)
 	throw new Error(
 		`the cache in ${datadir} was built with other parameters:\n${cacheDiff}\n\n` +
-			'Per-block tilesets are keyed on zoom + block position only, so they cannot be ' +
+			'Per-block and per-zoom tilesets are keyed on zoom + block position only, so they cannot be ' +
 			'mixed. Run "npm run clean" to rebuild (keeps the download), or set LANDCOVER_DATA_DIR to a fresh directory.',
 	);
 if (!cacheStamp) {
 	// nothing to compare against: adopt what is there, but say so if it is not an empty directory
-	const leftovers = await fs.readdir(dir.results).catch(() => [] as string[]);
-	if (leftovers.length > 0)
+	const leftovers = await Promise.all([dir.results, dir.tiles].map((d) => fs.readdir(d).catch(() => [] as string[])));
+	if (leftovers.some((l) => l.length > 0))
 		console.error(
 			'! adopting an unstamped cache in %s — if it predates a config change, run "npm run clean"',
 			datadir,
@@ -77,6 +77,7 @@ if (!cacheStamp) {
 await fs.rm(dir.tmp, { recursive: true, force: true }); // tmp is scratch only — start from a clean slate
 await fs.mkdir(dir.tmp, { recursive: true });
 await fs.mkdir(dir.results, { recursive: true });
+await fs.mkdir(dir.tiles, { recursive: true });
 await fs.appendFile(file.log, LOG_HEADER + '\n'); // header row marks the start of this run; rows appended per block
 const fp = await writeStamp(datadir, cacheValues());
 startTimingLog(file.timings, 'build', { fingerprint: fp, cores: CPU_CORES, concurrency: BLOCK_CONCURRENCY });
@@ -95,11 +96,12 @@ const bar = progress(countBlocks(plan), 'blocks');
 
 // one block per core (BLOCK_CONCURRENCY), so each block's GDAL calls get one thread instead of all cores
 setGdalThreads(1);
-const tilesets = await timed('build', () =>
+const zooms = await timed('build', () =>
 	runZooms(plan, {
 		src: file.source,
 		tmpdir: dir.tmp,
 		resultsdir: dir.results,
+		tilesdir: dir.tiles,
 		logFile: file.log,
 		concurrency: BLOCK_CONCURRENCY,
 		bar,
@@ -108,7 +110,7 @@ const tilesets = await timed('build', () =>
 );
 bar.done();
 
-await timed('pack', () => pack(tilesets));
+await timed('pack', () => pack(zooms));
 await fs.rm(dir.tmp, { recursive: true, force: true }); // scratch no longer needed
 
 // what actually happened, from the log this run appended — branch counts included, so a fast path that
