@@ -1,5 +1,5 @@
 // The progress bar is the only feedback during an 11-hour build, so its accounting has to survive
-// tick(n) jumps (a cached zoom ticks through in one call) and its ETA formatting has to stay readable.
+// tick(n) jumps, keep a resumed build's cached blocks out of its pace, and keep its ETA readable.
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -79,6 +79,26 @@ describe('progress', () => {
 			bar.tick();
 		});
 		assert.match(lines.at(-1)!, /^zoom 7\/10 /);
+	});
+
+	test('skipped items advance the bar and are shown, but do not count towards the pace', () => {
+		const realNow = Date.now;
+		let now = 1_000_000;
+		Date.now = () => now;
+		try {
+			const lines = capture(() => {
+				const bar = progress(100);
+				now += 30_000; // a resumed build walks through its cached half for 30 s …
+				bar.skip(50);
+				now += 10_000; // … then computes one item in 10 s
+				bar.tick();
+			});
+			assert.match(lines.at(-2)!, / 50% 50\/100, 50 cached \(0\.00\/s, ETA --\)/);
+			// 49 items left at one per 10 s; counting the cached ones, it would claim 5.1/s and 10 s
+			assert.match(lines.at(-1)!, / 51% 51\/100, 50 cached \(0\.10\/s, ETA 8m10s\)/);
+		} finally {
+			Date.now = realNow;
+		}
 	});
 
 	test('a zero total does not divide by zero', () => {

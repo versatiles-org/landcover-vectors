@@ -35,6 +35,9 @@ export type BlockCtx = {
 const TILE_CODE = 16;
 if (channels.length >= TILE_CODE) throw new Error(`lib/block.ts: ${channels.length} channels do not fit TILE_CODE`);
 
+// a block's tileset, and whether it was there already (a resumed build), which the progress bar counts apart
+export type BlockResult = { tileset: string; cached: boolean };
+
 // how a block was processed (recorded in the log)
 type Branch = 'cached' | 'empty' | 'uniform' | 'full' | 'failed';
 
@@ -90,7 +93,7 @@ export function fastPath(c: WindowContent, active: Channel[]): FastPath {
 //
 // Blocks without source coverage are expected to be gone already — the caller drops them (bin/build.ts,
 // via lib/coverage.ts) so the progress total reflects real work. This runs the chain on whatever it gets.
-export async function processBlock(z: number, bx: number, by: number, ctx: BlockCtx): Promise<string> {
+export async function processBlock(z: number, bx: number, by: number, ctx: BlockCtx): Promise<BlockResult> {
 	const t0 = performance.now();
 	const id = `z${z}_${bx}_${by}`;
 	const win = blockWindow(z, bx, by);
@@ -127,7 +130,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			].join('\t');
 			await fs.appendFile(ctx.logFile, row + '\n');
 		}
-		return tileset;
+		return { tileset, cached: branch === 'cached' };
 	};
 
 	// channels active at this zoom; everything else (incl. ESA 0) folds into the no-data class.

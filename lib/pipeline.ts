@@ -39,7 +39,7 @@ export async function runZooms(plan: ZoomBlocks[], ctx: PipelineCtx, deps: Pipel
 		const zMb = path.join(ctx.tilesdir, `z${z}.mbtiles`);
 		if (existsSync(zMb)) {
 			zooms.push(zMb);
-			ctx.bar?.tick(blocks.length);
+			ctx.bar?.skip(blocks.length);
 			continue;
 		}
 
@@ -76,13 +76,17 @@ async function runZoom(
 							resultsdir: ctx.resultsdir,
 							logFile: ctx.logFile,
 						});
-					collected[i] = await timed('block', block, `z${z}_${bx}_${by}`);
+					const { tileset, cached } = await timed('block', block, `z${z}_${bx}_${by}`);
+					collected[i] = tileset;
+					// a cached block took no time, and must not count towards the pace
+					if (cached) ctx.bar?.skip();
+					else ctx.bar?.tick();
 				} catch (err) {
 					// one bad block must not discard the zoom's other few thousand: every finished block is
 					// cached, so a rerun retries just the failures. processBlock already logged a `failed` row.
 					failed.push({ id: `z${z}_${bx}_${by}`, err });
+					ctx.bar?.tick();
 				}
-				ctx.bar?.tick();
 			},
 		),
 	);
