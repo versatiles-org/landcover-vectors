@@ -45,7 +45,9 @@ function toArgv(args: Arg[]): string[] {
 	return args.flat().map(String);
 }
 
-// spawn a command with the GDAL environment, and log its wall time to the timing log (lib/timing.ts)
+// spawn a command with the GDAL environment, and log its wall time to the timing log (lib/timing.ts).
+// The runners below settle on 'close', not 'exit': 'exit' can fire before the child's pipes are drained, so
+// under load a captured stdout (gdalinfo's JSON) or stderr could come back cut short.
 function spawnTimed(cmd: string, argv: string[], stdio: StdioOptions): ChildProcess {
 	const done = commandStarted(cmd, argv);
 	const child = spawn(cmd, argv, { stdio, env: gdalEnv });
@@ -66,7 +68,7 @@ export function run(cmd: string, ...args: Arg[]): Promise<void> {
 		console.error('$ %s %s', cmd, argv.join(' '));
 		const child = spawnTimed(cmd, argv, 'inherit');
 		child.on('error', reject);
-		child.on('exit', (code, signal) => (code === 0 ? resolve() : reject(new Error(exitMessage(cmd, code, signal)))));
+		child.on('close', (code, signal) => (code === 0 ? resolve() : reject(new Error(exitMessage(cmd, code, signal)))));
 	});
 }
 
@@ -89,7 +91,7 @@ export function runProgress(label: string, cmd: string, ...args: Arg[]): Promise
 			shown = Math.max(shown, steps);
 		});
 		child.on('error', reject);
-		child.on('exit', (code, signal) => {
+		child.on('close', (code, signal) => {
 			bar.done();
 			if (code === 0) resolve();
 			else reject(new Error(exitMessage(cmd, code, signal)));
@@ -118,7 +120,7 @@ export function runQuiet(cmd: string, ...args: Arg[]): Promise<void> {
 		let stderr = '';
 		child.stderr?.on('data', (d) => (stderr += d));
 		child.on('error', reject);
-		child.on('exit', (code, signal) =>
+		child.on('close', (code, signal) =>
 			code === 0 ? resolve() : reject(new Error(stderr.trim() || exitMessage(cmd, code, signal))),
 		);
 	});
@@ -134,7 +136,7 @@ export function runCapture(cmd: string, ...args: Arg[]): Promise<string> {
 		child.stdout?.on('data', (d) => (stdout += d));
 		child.stderr?.on('data', (d) => (stderr += d));
 		child.on('error', reject);
-		child.on('exit', (code, signal) =>
+		child.on('close', (code, signal) =>
 			code === 0 ? resolve(stdout) : reject(new Error(stderr.trim() || exitMessage(cmd, code, signal))),
 		);
 	});
@@ -167,7 +169,13 @@ export async function presentValues(tif: string): Promise<BandValues> {
 // the raw histogram of a single-band Byte raster (bucket i counts the pixels of value i, no-data left out)
 // and its pixel count. Same caveats as presentValues: one full read, and a `.aux.xml` sidecar.
 export async function histogram(tif: string): Promise<{ buckets: number[]; pixels: number }> {
-	const info = JSON.parse(await runCapture('gdalinfo', ['-json', '-hist'], tif));
+	const out = await runCapture('gdalinfo', ['-json', '-hist'], tif);
+	let info;
+	try {
+		info = JSON.parse(out);
+	} catch (err) {
+		throw new Error(`gdalinfo returned no valid JSON for ${tif} (${out.length} bytes): ${(err as Error).message}`);
+	}
 	if (!Array.isArray(info.size)) throw new Error(`gdalinfo reported no raster size for ${tif}`);
 	const [width, height] = info.size as [number, number];
 	return { buckets: info.bands?.[0]?.histogram?.buckets ?? [], pixels: width * height };
