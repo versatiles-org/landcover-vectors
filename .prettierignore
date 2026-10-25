@@ -4,3 +4,5 @@ attic
 package.json
 package-lock.json
 *.versatiles
+.pixi
+pixi.lock

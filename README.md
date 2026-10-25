@@ -146,14 +146,26 @@ so they follow any change of a cutoff.
 
 ### Requirements
 
-GDAL, tippecanoe and curl come from conda-forge with `micromamba env create -f environment.yml` (or conda /
-mamba); then `micromamba activate landcover`. CI tests against the same environment.
+The quickest way is [pixi](https://pixi.sh) (`brew install pixi`, or `curl -fsSL https://pixi.sh/install.sh | sh`):
 
-- `node` (or `bun`)
-- [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdaladdo`, `gdalwarp`, `gdalinfo`, `gdal_translate`, `gdal_calc.py`, `gdal_rasterize`, `ogr2ogr` and the `gdal raster` / `gdal vector` subcommands `sieve`, `polygonize` and `simplify-coverage` on `PATH`
+```sh
+pixi install       # GDAL, tippecanoe, curl and Node.js from conda-forge, the versions pinned in pixi.lock
+pixi run doctor    # checks every tool the pipeline runs, and says how to fix what is missing
+```
+
+`pixi run build` (or `download`, `merge`, `preview`, `stats`, …) then runs the npm script in that environment;
+CI tests against the same lockfile. Only versatiles is not on conda-forge yet:
+`brew install versatiles-org/versatiles/versatiles`, or see its
+[install instructions](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install).
+
+Without pixi, install these yourself; `npm run doctor` checks them all, and every command checks its own before
+it starts:
+
+- `node` ≥ 22.18
+- [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdaladdo`, `gdalwarp`, `gdalinfo`, `gdal_translate`, `gdal_calc.py`, `gdal_rasterize`, `ogr2ogr`, `ogrinfo` and the `gdal raster` / `gdal vector` subcommands `sieve`, `polygonize` and `simplify-coverage` on `PATH`
 - Python 3 with `numpy` (used by `gdal_calc.py` for the class index; both ship with the GDAL install)
-- [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`) — `tippecanoe-decode`, which ships with it, is used by `npm run stats -- --attribute`
-- [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install) ≥ 4.15.0
+- [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`) — `tippecanoe-decode`, which ships with it, is used by `npm run inspect` and `npm run stats -- --attribute`
+- [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install) ≥ 5.0.0, the first to know the `shortbread@1.1` schema the build and the merge write
 - `curl`, for the ocean mask and the OSM base
 - for `npm run preview`: a browser, and internet access for MapLibre GL from a CDN, the OSM container and versatiles-style's fonts and icons (the land cover tiles themselves are served locally)
 

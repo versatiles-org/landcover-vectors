@@ -4,8 +4,9 @@
 # and seams, skip-empty, the block plan, the cache fingerprint, style generation, and the README/config drift
 # guard — in seconds. The tests that need the real tools skip themselves there.
 #
-# `tools` installs GDAL and tippecanoe from conda-forge (environment.yml) and runs the tests that need them:
-# the sea-share pyramid, the ocean mask, a GDAL progress bar, and tiling and joining block tilesets.
+# `tools` installs GDAL, tippecanoe and Node.js from pixi.lock — the environment `pixi install` gives a
+# developer — and runs the tests that need them: the tool checks, the sea-share pyramid, the ocean mask, a GDAL
+# progress bar, and tiling and joining block tilesets.
 # LANDCOVER_REQUIRE_TOOLS turns a missing tool into a failure, so a broken install cannot pass with those tests
 # skipped. Neither job runs the pipeline itself: every stage needs the 23 GB source raster and hours of CPU.
 name: CI
@@ -34,21 +35,13 @@ jobs:
 
    tools:
       runs-on: ubuntu-latest
-      defaults:
-         run:
-            shell: bash -el {0} # a login shell, so the micromamba environment is active
       steps:
          - uses: actions/checkout@v5
-         - uses: actions/setup-node@v5
+         - uses: prefix-dev/setup-pixi@v0.11.2
            with:
-              node-version: '24'
-              cache: npm
-         - uses: mamba-org/setup-micromamba@v3
-           with:
-              environment-file: environment.yml
-              cache-environment: true
-         - run: gdal --version && tippecanoe --version
-         - run: npm ci
-         - run: npm test
+              pixi-version: v0.83.0
+              cache: true # the environment, keyed on pixi.lock
+         - run: pixi run gdal --version && pixi run tippecanoe --version && pixi run node --version
+         - run: pixi run test
            env:
               LANDCOVER_REQUIRE_TOOLS: '1'

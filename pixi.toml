@@ -1,0 +1,31 @@
+# Everything the pipeline runs, from conda-forge, pinned for macOS and Linux in pixi.lock:
+#   pixi install        # GDAL, tippecanoe, curl, Node.js
+#   pixi run doctor     # checks every tool, versatiles included (not on conda-forge yet, see the README)
+#   pixi run build      # or download, merge, preview, stats, test, check …
+# CI builds its test environment from the same lockfile (.github/workflows/ci.yml).
+
+[workspace]
+name = "landcover-vectors"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "osx-64", "linux-64", "linux-aarch64"]
+
+[dependencies]
+gdal = ">=3.13" # the gdal raster / gdal vector subcommands, and gdal_calc.py
+numpy = "*" # for gdal_calc.py
+tippecanoe = ">=2.79"
+curl = "*"
+nodejs = ">=22.18"
+
+[tasks]
+# npm's own dependencies, reinstalled only when package-lock.json changes
+npm-deps = { cmd = "npm ci", inputs = ["package-lock.json"], outputs = ["node_modules/.package-lock.json"] }
+doctor = { cmd = "npm run doctor", depends-on = ["npm-deps"] }
+download = { cmd = "npm run download", depends-on = ["npm-deps"] }
+build = { cmd = "npm run build", depends-on = ["npm-deps"] }
+merge = { cmd = "npm run merge", depends-on = ["npm-deps"] }
+preview = { cmd = "npm run preview", depends-on = ["npm-deps"] }
+inspect = { cmd = "npm run inspect", depends-on = ["npm-deps"] }
+stats = { cmd = "npm run stats", depends-on = ["npm-deps"] }
+timings = { cmd = "npm run timings", depends-on = ["npm-deps"] }
+test = { cmd = "npm test", depends-on = ["npm-deps"] }
+check = { cmd = "npm run check", depends-on = ["npm-deps"] }
