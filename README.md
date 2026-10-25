@@ -162,8 +162,8 @@ npm run build      # everything else → data/landcover.versatiles
 npm run merge      # optional: merge with OSM → data/combined.versatiles
 ```
 
-> **Resources.** A full z0–10 build needs roughly **150 GB** of disk under `data/` (the ~19 GB EPSG:3857 source,
-> the ~1.3 GB ocean polygons, the ~0.4 GB sea share, and the per-block / per-zoom caches) and on the order of **300 core-hours** of CPU. It's
+> **Resources.** A full z0–10 build needs roughly **50 GB** of disk under `data/` (the ~19 GB EPSG:3857 source,
+> the ~1.3 GB ocean polygons, the ~0.4 GB sea share, the per-block tilesets and, about as large, the joined tileset) and on the order of **300 core-hours** of CPU. It's
 > heavily parallelised, but plan for a long run on a many-core machine with ample free disk.
 
 Everything reads and writes under `data/`; `LANDCOVER_DATA_DIR` moves it, and `LANDCOVER_SOURCE_DIR` lets
@@ -174,23 +174,23 @@ on a 42-block sample, 9 blocks with all cores each took 25 % longer than 14 bloc
 identical fragments). Every block holds its window and polygons in memory, so where memory runs short,
 `LANDCOVER_CONCURRENCY` sets fewer blocks at once.
 
-The build is **resumable**. Every per-block fragment (`data/1_results`) and per-zoom tileset (`data/2_tiles`) is
-written atomically and skipped on a re-run, so an interrupted build continues where it stopped. The caches are
+The build is **resumable**. Every block's tileset (`data/1_results`) is written atomically and skipped on a
+re-run, so an interrupted build continues where it stopped. The cache is
 stamped with a fingerprint of the parameters they were built with: after a change in `config.ts` the build
 names what changed and refuses to mix old and new. `npm run clean` clears them (the download stays), or point
 `LANDCOVER_DATA_DIR` at a fresh directory.
 
 ## How it works
 
-`build` runs: **coverage index → for each zoom 0–10 ( per-block processing → per-zoom tiling ) → pack**.
+`build` runs: **coverage index → for each zoom 0–10, per-block processing and tiling → pack**.
 
 ### Blocks
 
 A naïve pipeline renders one global EPSG:3857 raster per zoom level. At the resolution we want that reaches
 60000×60000 px and beyond, and a global coverage-simplify loads the whole thing into RAM and gets OOM-killed.
 Instead each zoom is processed in **blocks** of `BLOCK`×`BLOCK` = 8×8 tiles (`TILE_PX` = 1024 raw px per tile),
-so every raster/vector operation works on a ≤ ~8224² px window — bounded memory, feasible at every zoom. The
-blocks are stitched back into a seamless layer by a single per-zoom tippecanoe run.
+so every raster/vector operation works on a ≤ ~8224² px window — bounded memory, feasible at every zoom. Each
+block is tiled on its own, and the blocks' tiles are joined into one tileset at the end.
 
 ### Source raster
 
@@ -249,7 +249,7 @@ it never skips a block that overlaps land.
 
 ### Per-block processing
 
-`lib/block.ts` turns one block at one zoom into `land`/`water_polygons` fragments. It reads the block's window
+`lib/block.ts` turns one block at one zoom into its `land`/`water_polygons` tiles. It reads the block's window
 plus a margin from the source and the matching window of the sea share (see [ocean mask](#ocean-mask)), both
 straight from the pyramid level for its zoom (so a low-zoom block reads ≈100× less): a block's grid lines up with
 a level, so a small VRT points at the window's rectangle in it, with no warp and no resampling, then:
@@ -261,19 +261,30 @@ a level, so a small VRT points at the window's rectangle in it, with no warp and
    (`SIEVE_THRESHOLD` = round(1.77·4²) = 28 px) into their largest neighbour, in two passes (`SIEVE_STAGES`):
    first at a quarter of that, 7 px, then at 28 px. A single pass leaves much of a fragmented mosaic untouched,
    because most neighbours of a small patch are small too (see [doc/TUNING.md](doc/TUNING.md)).
-3. **Crop** — cut the raster to the block's exact 8×8-tile rectangle, discarding the margin. Cropping the
-   raster rather than clipping vectors keeps the edge pixel-exact.
-4. **Polygonize** — `gdal raster polygonize`, giving a gap-free coverage of the block, **no-data included**.
+3. **Cut at the tile edges** — a VRT over the sieved window shifts each tile's class codes by 0, 16, 32 or 48,
+   by the parity of its column and row, so neighbouring tiles never share a code and no polygon crosses a tile
+   edge. tippecanoe can then leave every polygon as it is in its own tile: cutting a huge polygon (thousands of
+   holes) down to a tile, it can lose the outer ring and keep only the holes.
+4. **Polygonize** — `gdal raster polygonize`, giving a gap-free coverage of the window, **no-data included**.
 5. **Simplify** — `gdal vector simplify-coverage --preserve-boundary`, tolerance
    `(2·MERC)/(256·DETAIL_PX·2^z)` ≈ 1 px at a 256·`DETAIL_PX` px tile (`DETAIL_PX` = 1 today).
    ⚠️ It simplifies only edges _shared_ between polygons, which is why no-data must still be there: without it,
    every coastline would be an outer edge and keep its pixel staircase.
-6. **Tag & split** — drop no-data, tag each polygon's Shortbread `kind`, reproject to EPSG:4326, and split into
-   `land` and `water_polygons`.
+6. **Tag & split** — drop no-data, tag each polygon's Shortbread `kind` (margin included) and split into `land`
+   and `water_polygons`. The polygons stay in EPSG:3857, which tippecanoe reads directly: reprojected to
+   EPSG:4326, straight edges bend, and a hole touching its shell at a point can end up crossing it.
+7. **Tile** — one `tippecanoe -Z z -z z` over the block → `data/1_results/z{z}_{x}_{y}.mbtiles`, keeping only
+   the block's own tiles (tippecanoe also writes the ones the margin reaches into). `--coalesce-smallest-as-needed`
+   keeps the coverage complete: when a low-zoom tile would exceed the size limit, the smallest polygons merge into
+   their neighbours instead of being dropped.
 
 The **margin** (`MARGIN_PX` = ceil(3·√`SIEVE_THRESHOLD`) = 16 px) lets the sieve at the inner edge see the
 same neighbourhood as a global pass would, so a class never changes across a block
-seam; the tile-exact crop and `--preserve-boundary` give neighbouring blocks an identical straight edge.
+seam. Because tile edges, the block's included, are edges of the coverage, simplify-coverage keeps them straight
+and keeps the points where a border crosses one, which a neighbouring block shares, so borders meet at the seam.
+The margin's pixels belong to the neighbouring tiles, and their polygons are the tile buffer (`TILE_BUFFER` =
+16 px / 4 = 4 rendered px) of the tiles along the block's edge, so no tile needs a neighbour's polygons and no
+hairline shows at a seam.
 
 Each kind is active up to its cutoff (`maxZoom` in `config.ts`, z10 for every kind today). Above it, a class
 folds into no-data.
@@ -286,17 +297,10 @@ what lies under it — ESA's own sea is class 80 inside its coastal tiles — an
 one class of water without the sea count. GDAL also leaves no-data out of the histogram, so "a single value"
 requires the histogram to count every pixel of the window as well.
 
-### Per-zoom tiling
-
-`lib/assemble.ts` unions a zoom's block fragments per layer into one FlatGeobuf and runs **one**
-`tippecanoe -Z z -z z` over it → `data/2_tiles/z{z}.mbtiles`. Tiling the whole zoom at once fills tippecanoe's
-tile buffers across block seams (no hairlines), and `--coalesce-smallest-as-needed` keeps the coverage
-complete: when a low-zoom tile would exceed the size limit, the smallest polygons merge into their neighbours
-instead of being dropped.
-
 ### Pack
 
-`tile-join` joins the per-zoom tilesets into `data/landcover.mbtiles`, and `versatiles convert -c brotli` packs
+`lib/assemble.ts` copies every block's tiles into `data/landcover.mbtiles` (blocks never share a tile, so this
+is a plain copy, nothing is decoded), and `versatiles convert -c brotli` packs
 it into `data/landcover.versatiles`, stamping `tile_schema: shortbread@1.1` so consumers can tell that a
 Shortbread style fits. The build ends with a per-zoom tally of how its blocks were processed, from
 `data/blocks.log`.

@@ -1,5 +1,5 @@
-// Per-block wrapper: turns one BLOCK×BLOCK-tile region at zoom z into Shortbread `land` /
-// `water_polygons` polygon fragments. Everything runs on the small (~window) raster in tmp,
+// Per-block wrapper: turns one BLOCK×BLOCK-tile region at zoom z into the Shortbread `land` /
+// `water_polygons` tiles of that region. Everything runs on the small (~window) raster in tmp,
 // so memory stays bounded. See the README and the plan for the rationale of each step.
 
 import fs from 'node:fs/promises';
@@ -7,8 +7,9 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 
-import { runQuiet, atomic, presentValues, histogram } from './worldcover.ts';
+import { runQuiet, presentValues, histogram } from './worldcover.ts';
 import { seaShareWindow } from './ocean.ts';
+import { tileBlock, tileCount, type Layer } from './assemble.ts';
 import { timed } from './timing.ts';
 import { windowVrt } from './window.ts';
 import {
@@ -16,8 +17,8 @@ import {
 	blockWindow,
 	SIEVE_STAGES,
 	SEA_SHARE_MIN,
+	TILE_PX,
 	simplifyForLevel,
-	type Rect,
 	type Channel,
 } from '../config.ts';
 
@@ -27,7 +28,12 @@ export type BlockCtx = {
 	resultsdir: string;
 	logFile?: string; // optional TSV log: one row per block (how it was processed, timing, sizes, histogram)
 };
-export type BlockFragments = { land: string | null; water: string | null };
+
+// Each tile's class codes are shifted by one of four multiples of this, by the parity of its column and row, so
+// neighbouring tiles never share a code and every tile edge is an edge of the coverage (step 4). The class codes
+// run from 1 (no-data) to the number of channels, so they must stay below it.
+const TILE_CODE = 16;
+if (channels.length >= TILE_CODE) throw new Error(`lib/block.ts: ${channels.length} channels do not fit TILE_CODE`);
 
 // how a block was processed (recorded in the log)
 type Branch = 'cached' | 'empty' | 'uniform' | 'full' | 'failed';
@@ -38,8 +44,8 @@ export const LOG_HEADER = [
 	'id',
 	'branch',
 	'ms',
-	'land_bytes',
-	'water_bytes',
+	'tiles',
+	'bytes', // the block's tileset
 	'present', // distinct ESA values in the window — no-data excluded, see presentValues()
 	'nodata_px', // ... which is exactly why this column exists: no-data pixels in the window
 	'sea_px', // pixels of OSM's sea in the window (sea share ≥ SEA_SHARE_MIN), whatever ESA has under them
@@ -78,22 +84,22 @@ export function fastPath(c: WindowContent, active: Channel[]): FastPath {
 	return { branch: 'full', classes };
 }
 
-// process block (bx,by) at zoom z → its land/water FlatGeobuf fragments (or nulls if the
-// block is empty / a layer has no active kinds at this zoom). Fragments are written atomically
-// to ctx.resultsdir and cached: a block whose fragments already exist there is skipped, so a
-// build resumes where it left off. Intermediate scratch in ctx.tmpdir is cleaned up.
+// process block (bx,by) at zoom z → its tileset, an mbtiles of the block's own tiles (none if the block is
+// empty). It is written atomically to ctx.resultsdir and cached: a block whose tileset already exists there is
+// skipped, so a build resumes where it left off. Intermediate scratch in ctx.tmpdir is cleaned up.
 //
 // Blocks without source coverage are expected to be gone already — the caller drops them (bin/build.ts,
 // via lib/coverage.ts) so the progress total reflects real work. This runs the chain on whatever it gets.
-export async function processBlock(z: number, bx: number, by: number, ctx: BlockCtx): Promise<BlockFragments> {
+export async function processBlock(z: number, bx: number, by: number, ctx: BlockCtx): Promise<string> {
 	const t0 = performance.now();
 	const id = `z${z}_${bx}_${by}`;
 	const win = blockWindow(z, bx, by);
 
-	// append one TSV row describing how this block was processed, then return its fragments
+	const tileset = path.join(ctx.resultsdir, `${id}.mbtiles`);
+
+	// append one TSV row describing how this block was processed, then return its tileset
 	const finish = async (
 		branch: Branch,
-		frags: BlockFragments,
 		opts: {
 			present?: number[];
 			nodata?: number;
@@ -104,21 +110,14 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		} = {},
 	) => {
 		if (ctx.logFile) {
-			const sizeOf = (f: string | null) =>
-				f
-					? fs.stat(f).then(
-							(s) => s.size,
-							() => null,
-						)
-					: Promise.resolve(null);
-			const [landBytes, waterBytes] = await Promise.all([sizeOf(frags.land), sizeOf(frags.water)]);
+			const ok = branch !== 'failed' && branch !== 'cached';
 			const row = [
 				new Date().toISOString(),
 				id,
 				branch,
 				Math.round(performance.now() - t0),
-				landBytes ?? '',
-				waterBytes ?? '',
+				ok ? tileCount(tileset) : '',
+				ok ? (await fs.stat(tileset)).size : '',
 				opts.present?.join(',') ?? '',
 				opts.nodata ?? '',
 				opts.sea ?? '',
@@ -128,20 +127,14 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			].join('\t');
 			await fs.appendFile(ctx.logFile, row + '\n');
 		}
-		return frags;
+		return tileset;
 	};
 
 	// channels active at this zoom; everything else (incl. ESA 0) folds into the no-data class.
 	const active = channels.filter((c) => c.layer !== null && c.maxZoom >= z);
 
-	const hasLand = active.some((c) => c.layer === 'land');
-	const hasWater = active.some((c) => c.layer === 'water_polygons');
-	const landFrag = path.join(ctx.resultsdir, `${id}_land.fgb`);
-	const waterFrag = path.join(ctx.resultsdir, `${id}_water.fgb`);
-	const frags: BlockFragments = { land: hasLand ? landFrag : null, water: hasWater ? waterFrag : null };
-
-	// resume: if this block's fragments are already on disk, skip the work
-	if ((!hasLand || existsSync(landFrag)) && (!hasWater || existsSync(waterFrag))) return finish('cached', frags);
+	// resume: if this block's tileset is already on disk, skip the work
+	if (existsSync(tileset)) return finish('cached');
 
 	const p = (suffix: string) => path.join(ctx.tmpdir, `${id}_${suffix}`);
 	const scratch: string[] = [];
@@ -177,53 +170,35 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		const content = { present: [...present], nodata: pixels - counted, sea };
 		const route = fastPath({ present, counted, pixels, sea }, active);
 
-		// write fragments directly from the inner rectangle (EPSG:4326 = win.innerLonLat): the
-		// rectangle tagged `kind` for a uniform block's layer, an empty layer for everything else
-		const emit = async (uniform: Channel | null): Promise<void> => {
-			const { west, south, east, north } = win.innerLonLat;
-			const ring = [
-				[west, south],
-				[east, south],
-				[east, north],
-				[west, north],
-				[west, south],
-			];
-			const writeLayer = async (frag: string, layerName: 'land' | 'water_polygons') => {
-				const features =
-					uniform && uniform.layer === layerName
-						? [
-								{
-									type: 'Feature',
-									properties: { kind: uniform.kind },
-									geometry: { type: 'Polygon', coordinates: [ring] },
-								},
-							]
-						: [];
-				const gj = tmp(`${layerName}.geojson`);
-				await fs.writeFile(gj, JSON.stringify({ type: 'FeatureCollection', features }));
-				await atomic(frag, (out) =>
-					runQuiet(
-						'ogr2ogr',
-						['-f', 'FlatGeobuf'],
-						['-lco', 'SPATIAL_INDEX=NO'],
-						['-nlt', 'MULTIPOLYGON'],
-						['-nln', layerName],
-						out,
-						gj,
-					),
-				);
-			};
-			if (hasLand) await writeLayer(landFrag, 'land');
-			if (hasWater) await writeLayer(waterFrag, 'water_polygons');
-		};
+		// tile the polygons of `layers` into the block's tileset (lib/assemble.ts)
+		const tile = (layers: Layer[]) => timed('tile', () => tileBlock(z, win.tiles, layers, tileset, ctx.tmpdir));
 
 		if (route.branch === 'empty') {
-			await timed('emit', () => emit(null)); // all sea, or nothing but no-data
-			return finish('empty', frags, content);
+			await tile([]); // all sea, or nothing but no-data
+			return finish('empty', content);
 		}
 		if (route.branch === 'uniform') {
-			await timed('emit', () => emit(route.kind)); // one kind fills the block
-			return finish('uniform', frags, { ...content, kind: route.kind.kind });
+			// one kind fills the window: its rectangle (EPSG:3857), margin included, so the edge tiles get their
+			// buffer too
+			const { minx, miny, maxx, maxy } = w;
+			const ring = [
+				[minx, miny],
+				[maxx, miny],
+				[maxx, maxy],
+				[minx, maxy],
+				[minx, miny],
+			];
+			const feature = {
+				type: 'Feature',
+				properties: { kind: route.kind.kind },
+				geometry: { type: 'Polygon', coordinates: [ring] },
+			};
+			const gj = tmp('uniform.geojson');
+			await timed('emit', () =>
+				fs.writeFile(gj, JSON.stringify({ type: 'FeatureCollection', features: [feature] })),
+			);
+			await tile([{ name: route.kind.layer as Layer['name'], file: gj }]);
+			return finish('uniform', { ...content, kind: route.kind.kind });
 		}
 		const activePresent = route.classes;
 
@@ -267,33 +242,58 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			}
 		});
 
-		// 4. crop the classified raster to the block's exact inner BLOCK×BLOCK rectangle in EPSG:3857.
-		// Block pixel grids are aligned (same pixel size; the inner offset is a whole number of margin
-		// pixels), so a raster crop tiles perfectly with neighbours — and polygonizing the crop avoids
-		// the GeometryCollection slivers a vector clip can produce along the boundary.
-		const r: Rect = win.inner3857;
-		const cropped = tmp('cropped.tif');
-		await timed('crop', () =>
-			runQuiet(
-				'gdal_translate',
-				'-q',
-				['-projwin', r.minx, r.maxy, r.maxx, r.miny],
-				['-co', 'COMPRESS=DEFLATE'],
-				['-co', 'TILED=YES'],
-				sieved,
-				cropped,
-			),
+		// 4. cut at the tile edges: a VRT over the sieved window that shifts the codes of every tile by TILE_CODE
+		// times 0–3, by the parity of its column and row, so no polygon crosses a tile edge. tippecanoe then never
+		// has to cut a polygon down to its tile, which it can get wrong: clipping one with thousands of holes, it
+		// lost the outer ring and kept the holes (94 % of the forest of a z6 tile in Hudson Bay). The margin's pixels
+		// belong to the neighbouring tiles, and their polygons become the buffer of the block's edge tiles. As every
+		// edge of the coverage, the tile edges stay straight in simplify-coverage (6), and the points where a border
+		// crosses one stay on its pixel corners, which a neighbouring block has too. Whole pixels are copied.
+		const { x: ix, y: iy } = win.innerPx;
+		const span = (from: number, size: number) => {
+			// the window's pixel ranges, one per tile, as [tile index relative to the block, start, size]
+			const out: [number, number, number][] = [];
+			for (let t = -Math.ceil(from / TILE_PX); from + t * TILE_PX < size; t++) {
+				const a = Math.max(0, from + t * TILE_PX);
+				out.push([t, a, Math.min(size, from + (t + 1) * TILE_PX) - a]);
+			}
+			return out;
+		};
+		const sources = span(iy, px.height).flatMap(([ty, y, h]) =>
+			span(ix, px.width).map(([tx, x, wd]) => {
+				const shift = TILE_CODE * (((win.tiles.x0 + tx) & 1) + 2 * ((win.tiles.y0 + ty) & 1));
+				return `    <ComplexSource>
+      <SourceFilename relativeToVRT="0">${path.resolve(sieved)}</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SrcRect xOff="${x}" yOff="${y}" xSize="${wd}" ySize="${h}"/>
+      <DstRect xOff="${x}" yOff="${y}" xSize="${wd}" ySize="${h}"/>
+      <ScaleOffset>${shift}</ScaleOffset>
+      <ScaleRatio>1</ScaleRatio>
+    </ComplexSource>`;
+			}),
+		);
+		const cut = tmp('cut.vrt');
+		await fs.writeFile(
+			cut,
+			`<VRTDataset rasterXSize="${px.width}" rasterYSize="${px.height}">
+  <SRS>EPSG:3857</SRS>
+  <GeoTransform>${w.minx}, ${(w.maxx - w.minx) / px.width}, 0, ${w.maxy}, 0, ${-(w.maxy - w.miny) / px.height}</GeoTransform>
+  <VRTRasterBand dataType="Byte" band="1">
+${sources.join('\n')}
+  </VRTRasterBand>
+</VRTDataset>
+`,
 		);
 
-		// 5. polygonize (field `code` = channel index) → a gap-free coverage of the whole block,
-		// INCLUDING the no-data class (code 1). It must stay 100% filled for the next step.
+		// 5. polygonize (field `code` = channel index + the tile's shift) → a gap-free coverage of the whole
+		// window, INCLUDING the no-data class (code 1). It must stay 100% filled for the next step.
 		const poly = tmp('poly.fgb');
 		await fs.rm(poly, { force: true });
 		await timed('polygonize', () =>
 			runQuiet(
 				'gdal',
 				['raster', 'polygonize'],
-				['-i', cropped],
+				['-i', cut],
 				['-o', poly],
 				['-f', 'FlatGeobuf'],
 				['--lco', 'SPATIAL_INDEX=NO'], // read sequentially by simplify-coverage; no index needed
@@ -324,39 +324,43 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			),
 		);
 
-		// 7. now drop the no-data class, tag each polygon's Shortbread `kind`, reproject to EPSG:4326
-		// and split per layer; each fragment is written to a temp file and renamed on success (so a
-		// finished fragment on disk means the block is done)
+		// 7. now drop the no-data class, tag each polygon's Shortbread `kind` and split per layer, keeping only the
+		// layers with a kind present. The polygons stay in EPSG:3857, which tippecanoe reads as it is: reprojected
+		// to EPSG:4326, straight edges bend, and a hole touching its shell at a point could cross it instead.
 		const kindWhen = activePresent.map((c, j) => `WHEN ${j + 2} THEN '${c.kind}'`).join(' ');
-		const codesFor = (layer: 'land' | 'water_polygons') =>
-			activePresent.flatMap((c, j) => (c.layer === layer ? [j + 2] : []));
-		const split = (out: string, layerName: string, codes: number[]) =>
-			runQuiet(
-				'ogr2ogr',
-				['-t_srs', 'EPSG:4326'],
-				['-f', 'FlatGeobuf'],
-				['-lco', 'SPATIAL_INDEX=NO'],
-				['-nlt', 'PROMOTE_TO_MULTI'],
-				['-nln', layerName],
-				['-dialect', 'SQLite'],
-				// `-1` keeps the IN clause valid (→ empty fragment) when this layer has no present codes
-				[
-					'-sql',
-					`SELECT *, CASE code ${kindWhen} END AS kind FROM data WHERE code IN (${codes.join(',') || '-1'})`,
-				],
-				out,
-				simplified,
-			);
+		const layers: Layer[] = [];
 		await timed('split', async () => {
-			if (hasLand) await atomic(landFrag, (out) => split(out, 'land', codesFor('land')));
-			if (hasWater) await atomic(waterFrag, (out) => split(out, 'water_polygons', codesFor('water_polygons')));
+			for (const name of ['land', 'water_polygons'] as const) {
+				const codes = activePresent.flatMap((c, j) => (c.layer === name ? [j + 2] : []));
+				if (codes.length === 0) continue;
+				const out = tmp(`${name}.fgb`);
+				await runQuiet(
+					'ogr2ogr',
+					['-f', 'FlatGeobuf'],
+					['-lco', 'SPATIAL_INDEX=NO'],
+					['-nlt', 'PROMOTE_TO_MULTI'],
+					['-nln', name],
+					['-dialect', 'SQLite'],
+					[
+						'-sql',
+						`SELECT *, CASE code % ${TILE_CODE} ${kindWhen} END AS kind FROM data ` +
+							`WHERE code % ${TILE_CODE} IN (${codes.join(',')})`,
+					],
+					out,
+					simplified,
+				);
+				layers.push({ name, file: out });
+			}
 		});
-		return finish('full', frags, { ...content, channels: activePresent.length });
+
+		// 8. tile the block
+		await tile(layers);
+		return finish('full', { ...content, channels: activePresent.length });
 	} catch (err) {
 		// leave a row behind, then let the caller decide: bin/build.ts collects every failed block of a
 		// zoom and reports them together, so one bad block no longer discards the whole zoom's work
 		const note = err instanceof Error ? err.message : String(err);
-		await finish('failed', { land: null, water: null }, { note }).catch(() => {}); // never mask `err`
+		await finish('failed', { note }).catch(() => {}); // never mask `err`
 		throw err;
 	} finally {
 		await Promise.all(scratch.map((f) => fs.rm(f, { force: true })));

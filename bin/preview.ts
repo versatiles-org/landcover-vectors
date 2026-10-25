@@ -22,7 +22,7 @@ import { requireSeaShare } from '../lib/ocean.ts';
 import { buildCoverage } from '../lib/coverage.ts';
 import { planBlocks, countBlocks } from '../lib/plan.ts';
 import { runZooms } from '../lib/pipeline.ts';
-import { joinZooms } from '../lib/assemble.ts';
+import { joinTilesets } from '../lib/assemble.ts';
 import { progress } from '../lib/progress.ts';
 import { resolveArea, parseZoomRange, areaSlug, previewPaths, AREAS } from '../lib/areas.ts';
 import { maplibreStyle } from '../lib/style-spec.ts';
@@ -110,13 +110,13 @@ let current = currentFor(fp);
 
 // ---------------------------------------------------------------- build
 async function build(): Promise<void> {
-	await requireCommands(['gdal', 'gdal_translate', 'gdal_calc.py', 'gdalinfo', 'ogr2ogr', 'tippecanoe', 'tile-join']);
+	await requireCommands(['gdal', 'gdal_translate', 'gdal_calc.py', 'gdalinfo', 'ogr2ogr', 'tippecanoe']);
 	if (!(await exists(file.source))) throw new Error(`missing ${file.source} — run "npm run download" first`);
 	await requireSeaShare();
 
 	const dirs = previewPaths(current.previewDir, spec);
 	await fs.rm(dirs.tmp, { recursive: true, force: true });
-	for (const d of [dirs.tmp, dirs.results, dirs.tiles, current.genDir]) await fs.mkdir(d, { recursive: true });
+	for (const d of [dirs.tmp, dirs.results, current.genDir]) await fs.mkdir(d, { recursive: true });
 	await writeStamp(current.previewDir, cacheValues());
 	startTimingLog(path.join(current.previewDir, 'timings.jsonl'), 'preview', {
 		area: spec ?? 'world',
@@ -139,12 +139,11 @@ async function build(): Promise<void> {
 
 	const bar = progress(total, 'blocks');
 	setGdalThreads(1); // one block per core, one GDAL thread each — as in the build
-	const zMbtiles = await timed('preview', () =>
+	const tilesets = await timed('preview', () =>
 		runZooms(plan, {
 			src: file.source,
 			tmpdir: dirs.tmp,
 			resultsdir: dirs.results,
-			tilesdir: dirs.tiles,
 			logFile: dirs.log,
 			concurrency: Number(opt.concurrency ?? BLOCK_CONCURRENCY),
 			bar,
@@ -153,7 +152,7 @@ async function build(): Promise<void> {
 	);
 	bar.done();
 
-	await joinZooms(zMbtiles, current.tileset);
+	await joinTilesets(tilesets, current.tileset);
 	await fs.rm(dirs.tmp, { recursive: true, force: true });
 	// tell whoever spawned us (the --watch parent) which fingerprint this build belongs to
 	await fs.writeFile(LAST_BUILD, JSON.stringify({ fingerprint: fp, tileset: current.tileset }) + '\n');

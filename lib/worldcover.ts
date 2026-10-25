@@ -12,7 +12,7 @@ import { commandStarted } from './timing.ts';
 export const BUCKET = 'https://esa-worldcover.s3.eu-central-1.amazonaws.com';
 export const PREFIX = 'v200/2021/map/';
 
-// environment for every GDAL child process
+// environment for every child process: GDAL settings, and tippecanoe's threads
 export const gdalEnv: NodeJS.ProcessEnv = {
 	...process.env,
 	// multithread GTiff block (de)compression on reads and writes, and any operation that
@@ -25,6 +25,8 @@ export const gdalEnv: NodeJS.ProcessEnv = {
 	CPL_VSIL_CURL_ALLOWED_EXTENSIONS: '.tif',
 	GDAL_HTTP_MAX_RETRY: '5',
 	GDAL_HTTP_RETRY_DELAY: '2',
+	// tippecanoe only ever tiles a single block (lib/assemble.ts), one block per core
+	TIPPECANOE_MAX_THREADS: '1',
 };
 
 // Threads for every GDAL call from here on. The build runs one block per core, so its GDAL calls get one thread

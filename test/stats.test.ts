@@ -29,7 +29,7 @@ import { LAT_LIMIT } from '../lib/areas.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-// a minimal mbtiles: the schema tile-join writes, with blobs of the requested sizes.
+// a minimal mbtiles: the schema the build's join writes (lib/assemble.ts), with blobs of the requested sizes.
 // `tiles` are given in XYZ and stored flipped, exactly as a real tileset does.
 async function fixture(tiles: { z: number; x: number; y: number; bytes: number }[]): Promise<string> {
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lcv-stats-'));

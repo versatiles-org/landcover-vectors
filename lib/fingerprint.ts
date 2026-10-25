@@ -1,14 +1,13 @@
 // Fingerprint the config values the cached artefacts depend on, so a cache built with other
 // parameters is never silently reused.
 //
-// The per-block fragments (dir.results) and per-zoom tilesets (dir.tiles) are keyed on zoom + block
-// position only — nothing in their names says which sieve or channel table produced them. A
+// The per-block tilesets (dir.results) are keyed on zoom + block position only — nothing in their names says which sieve or channel table produced them. A
 // stamp file in the directory closes that gap: build compares it, refuses to mix, and names what
 // changed. The source raster gets its own stamp because it is built for one specific FULL_PX.
 //
 // Deliberately NOT part of the fingerprint: paths, concurrency, and the per-channel `color` (styles
 // are generated separately, so recolouring must not invalidate a 55-core-hour cache) or `meta`
-// (name/attribution/description are stamped in at pack time, not baked into the fragments). Nor is the
+// (name/attribution/description are stamped in at pack time, not baked into the block tilesets). Nor is the
 // date of the ocean mask: OSM's coastline moves by metres a year, which is not worth a rebuild.
 
 import { createHash } from 'node:crypto';
@@ -23,6 +22,7 @@ import {
 	SIEVE_THRESHOLD,
 	SIEVE_STAGES,
 	MARGIN_PX,
+	TIPPECANOE_ARGS,
 	FULL_PX,
 	OCEAN_URL,
 	SEA_SHARE_MIN,
@@ -34,7 +34,7 @@ export type Stamp = { fingerprint: string; written: string; values?: Values }; /
 
 const STAMP = '.fingerprint';
 
-// everything that changes the per-block / per-zoom output
+// everything that changes the per-block output
 export function cacheValues(): Values {
 	return {
 		maxLevel: MAXLEVEL,
@@ -43,6 +43,7 @@ export function cacheValues(): Values {
 		sieveThreshold: SIEVE_THRESHOLD,
 		sieveStages: SIEVE_STAGES, // the sieve's passes, in raw pixels
 		marginPx: MARGIN_PX,
+		tippecanoe: TIPPECANOE_ARGS, // each block tiles itself, and its tiles are cached (lib/assemble.ts)
 		// what matters is the tolerance per zoom, not how it is written: sample the function
 		simplify: Array.from({ length: MAXLEVEL + 1 }, (_, z) => simplifyForLevel(z)),
 		channels: channels.map((c) => ({ esa: c.esa, layer: c.layer, kind: c.kind, maxZoom: c.maxZoom })),

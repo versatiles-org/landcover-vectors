@@ -12,10 +12,10 @@
   "scripts": {
     "check": "npm run typecheck && npm run format:check && npm test",
     "download": "node bin/download.ts",
-    "build": "node bin/build.ts",
+    "build": "node --disable-warning=ExperimentalWarning bin/build.ts",
     "merge": "node bin/merge.ts",
     "inspect": "node --disable-warning=ExperimentalWarning bin/inspect.ts",
-    "preview": "node bin/preview.ts",
+    "preview": "node --disable-warning=ExperimentalWarning bin/preview.ts",
     "style": "node bin/style.ts",
     "stats": "node --disable-warning=ExperimentalWarning bin/stats.ts",
     "timings": "node bin/timings.ts",

@@ -41,8 +41,8 @@ export function parseZoomRange(spec: string | undefined, maxLevel: number = MAXL
 	return [lo, hi];
 }
 
-// A filename-safe tag for an area. It is a cache key — bin/preview.ts keeps an area's per-zoom tilesets
-// under it — so it has to be collision-free. A preset keeps its name (so existing tilesets keep theirs).
+// A filename-safe tag for an area. It is a cache key — bin/preview.ts keeps an area's scratch and its
+// tileset under it — so it has to be collision-free. A preset keeps its name (so existing tilesets keep theirs).
 // An explicit box is keyed by its *resolved* numbers with sign and decimal point spelled out: stripping
 // them would put "-5,10,20,30" and "5,10,20,30" — two different areas — into one cache.
 export function areaSlug(spec: string | undefined): string {
@@ -55,15 +55,13 @@ export function areaSlug(spec: string | undefined): string {
 
 // The cache layout of one preview build, under a config-fingerprinted directory.
 //
-// Block fragments depend only on the block (and the config the directory is keyed on), so every area
-// shares them — which is what makes a second area cheap. A per-zoom tileset is the union of whichever
-// blocks *one area* planned, so it lives under that area: a shared one is how a Sahara z8 once stood in
-// for Hudson Bay's. Scratch is per area too, because a build starts by wiping it.
+// Block tilesets depend only on the block (and the config the directory is keyed on), so every area
+// shares them — which is what makes a second area cheap. Scratch is per area, because a build starts by
+// wiping it.
 export function previewPaths(previewDir: string, spec: string | undefined) {
 	const slug = areaSlug(spec);
 	return {
 		results: path.join(previewDir, '1_results'),
-		tiles: path.join(previewDir, '2_tiles', slug),
 		tmp: path.join(previewDir, 'tmp', slug),
 		log: path.join(previewDir, 'blocks.log'),
 	};

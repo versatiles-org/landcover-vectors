@@ -61,7 +61,7 @@ describe('blockWindow', () => {
 	});
 
 	test('the inner rectangle sits a whole number of pixels inside the window', () => {
-		// the crop in lib/block.ts step 6 is a raster crop, so a fractional offset would shift the grid
+		// lib/block.ts marks the margin by whole pixels (innerPx), so a fractional offset would shift the grid
 		for (const z of [4, 6, 10]) {
 			const px = pxSize(z);
 			const n = blocksPerAxis(z);
@@ -87,6 +87,18 @@ describe('blockWindow', () => {
 				}
 			}
 		}
+	});
+
+	test('innerPx is the inner rectangle in window pixels, and tiles are its XYZ tiles', () => {
+		const inner = blockWindow(5, 1, 1);
+		assert.deepEqual(inner.innerPx, { x: MARGIN_PX, y: MARGIN_PX, width: BLOCK * TILE_PX, height: BLOCK * TILE_PX });
+		assert.deepEqual(inner.tiles, { x0: BLOCK, y0: BLOCK, x1: 2 * BLOCK, y1: 2 * BLOCK });
+		// a corner block has no margin towards the world's edge
+		const corner = blockWindow(5, 0, 0);
+		assert.deepEqual([corner.innerPx.x, corner.innerPx.y], [0, 0]);
+		assert.equal(corner.windowPx.width, corner.innerPx.width + MARGIN_PX);
+		// a zoom smaller than a block has fewer tiles than BLOCK
+		assert.deepEqual(blockWindow(2, 0, 0).tiles, { x0: 0, y0: 0, x1: 4, y1: 4 });
 	});
 
 	test('edge blocks clamp to the world square', () => {

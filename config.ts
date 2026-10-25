@@ -36,9 +36,8 @@ const sourcedir = fromEnv('LANDCOVER_SOURCE_DIR', path.join(datadir, '0_download
 
 export const dir = {
 	source: sourcedir, // holds the reprojected source raster, its tile list and the ocean mask (download)
-	results: path.join(datadir, '1_results'), // per-block land/water fragments (cached → builds resume)
-	tiles: path.join(datadir, '2_tiles'), // per-zoom mbtiles (cached → builds resume)
-	tmp: path.join(datadir, 'tmp'), // per-block / per-zoom scratch (not cached between runs)
+	results: path.join(datadir, '1_results'), // per-block tilesets (cached → builds resume)
+	tmp: path.join(datadir, 'tmp'), // per-block scratch (not cached between runs)
 };
 
 export const file = {
@@ -48,7 +47,7 @@ export const file = {
 	ocean: path.join(sourcedir, 'water-polygons-3857.fgb'), // OSM's sea polygons, rasterized into seaShare (download)
 	log: path.join(datadir, 'blocks.log'), // per-block processing log (TSV), one row per block (build)
 	timings: path.join(datadir, 'timings.jsonl'), // how long every step and command took (download, build)
-	tiles: path.join(datadir, 'landcover.mbtiles'), // merged tile pyramid (pack)
+	tiles: path.join(datadir, 'landcover.mbtiles'), // every block's tiles in one tileset (pack)
 	container: path.join(datadir, 'landcover.versatiles'), // brotli versatiles (pack)
 	osm: path.join(datadir, 'osm.versatiles'), // OSM Shortbread base, downloaded on demand (merge)
 	merged: path.join(datadir, 'combined.versatiles'), // OSM + landcover feature-merge (merge)
@@ -112,6 +111,19 @@ export const SIEVE_STAGES =
 // processing margin (px) around a block so the sieve at the inner edge matches neighbours
 export const MARGIN_PX = Math.ceil(3 * Math.sqrt(SIEVE_THRESHOLD)); // 16
 
+// tippecanoe's tile buffer, in rendered pixels: each block tiles itself, so the buffer of a tile on the block's
+// edge is filled from the block's own margin, and must not reach past it
+export const TILE_BUFFER = Math.floor(MARGIN_PX / OVERSAMPLE); // 4
+
+// How tippecanoe tiles a block (lib/assemble.ts). Part of the cache fingerprint: the block tilesets are cached.
+export const TIPPECANOE_ARGS = [
+	['--projection', 'EPSG:3857'], // the polygons stay in Web Mercator (lib/block.ts)
+	['--buffer', String(TILE_BUFFER)],
+	['--attribute-type', 'kind:string'],
+	['--include', 'kind'], // keep only `kind` in the tiles
+	'--coalesce-smallest-as-needed', // keep coverage complete instead of dropping features
+];
+
 // Vector detail: the simplify tolerance is one pixel of a (256 · DETAIL_PX)-px tile, so DETAIL_PX = 2
 // keeps twice as much boundary detail per tile — and costs roughly twice the bytes. This, not TILE_PX, is
 // what decides how much detail survives into the tiles: raising the raster resolution alone changes
@@ -165,11 +177,14 @@ function merc2lat(y: number): number {
 }
 
 export type Rect = { minx: number; miny: number; maxx: number; maxy: number };
+export type LonLatBox = { west: number; south: number; east: number; north: number };
 export type BlockWindow = {
 	inner3857: Rect; // exact BLOCK×BLOCK tile rectangle (the clip / seam boundary)
-	window3857: Rect; // inner + MARGIN_PX, clamped to the world square (the warp extent)
+	window3857: Rect; // inner + MARGIN_PX, clamped to the world square (the extent read)
 	windowPx: { width: number; height: number };
-	innerLonLat: { west: number; south: number; east: number; north: number }; // for skip-empty
+	innerPx: { x: number; y: number; width: number; height: number }; // the inner rectangle in window pixels
+	innerLonLat: LonLatBox; // for skip-empty
+	tiles: { x0: number; y0: number; x1: number; y1: number }; // the block's tiles, XYZ, x1/y1 exclusive
 };
 
 // extents and pixel size for block (bx,by) at zoom z. Edge blocks are clamped to the grid
@@ -205,14 +220,28 @@ export function blockWindow(z: number, bx: number, by: number): BlockWindow {
 		height: Math.round((window3857.maxy - window3857.miny) / pxSize),
 	};
 
-	const innerLonLat = {
-		west: (inner3857.minx / MERC) * 180,
-		east: (inner3857.maxx / MERC) * 180,
-		south: merc2lat(inner3857.miny),
-		north: merc2lat(inner3857.maxy),
+	const innerPx = {
+		x: Math.round((inner3857.minx - window3857.minx) / pxSize),
+		y: Math.round((window3857.maxy - inner3857.maxy) / pxSize),
+		width: (x1 - x0) * TILE_PX,
+		height: (y1 - y0) * TILE_PX,
 	};
 
-	return { inner3857, window3857, windowPx, innerLonLat };
+	const lonLat = (r: Rect): LonLatBox => ({
+		west: (r.minx / MERC) * 180,
+		east: (r.maxx / MERC) * 180,
+		south: merc2lat(r.miny),
+		north: merc2lat(r.maxy),
+	});
+
+	return {
+		inner3857,
+		window3857,
+		windowPx,
+		innerPx,
+		innerLonLat: lonLat(inner3857),
+		tiles: { x0, y0, x1, y1 },
+	};
 }
 
 // One output class of the classification. `esa` are the ESA WorldCover class codes that map to

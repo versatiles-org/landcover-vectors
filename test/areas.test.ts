@@ -107,19 +107,17 @@ describe('areaSlug', () => {
 describe('previewPaths', () => {
 	const dir = '/data/preview/fe043f8a';
 
-	test('areas share block fragments but never per-zoom tilesets or scratch', () => {
-		// the regression: a Sahara run's z8 tileset was reused for Hudson Bay under one fingerprint
+	test('areas share block tilesets but never scratch', () => {
 		const sahara = previewPaths(dir, 'sahara');
 		const hudson = previewPaths(dir, 'hudson-bay');
-		assert.equal(sahara.results, hudson.results, 'fragments are per block, so sharing them is correct');
-		assert.notEqual(sahara.tiles, hudson.tiles);
+		assert.equal(sahara.results, hudson.results, 'tilesets are per block, so sharing them is correct');
 		assert.notEqual(sahara.tmp, hudson.tmp, 'a build wipes its scratch on start');
 		assert.equal(sahara.log, hudson.log);
 	});
 
 	test('everything stays under the fingerprinted directory', () => {
 		for (const p of Object.values(previewPaths(dir, '-92,52,-84,58'))) assert.ok(p.startsWith(dir + '/'), p);
-		assert.equal(previewPaths(dir, 'hudson-bay').tiles, `${dir}/2_tiles/hudson_bay`);
-		assert.equal(previewPaths(dir, undefined).tiles, `${dir}/2_tiles/world`);
+		assert.equal(previewPaths(dir, 'hudson-bay').tmp, `${dir}/tmp/hudson_bay`);
+		assert.equal(previewPaths(dir, undefined).tmp, `${dir}/tmp/world`);
 	});
 });
