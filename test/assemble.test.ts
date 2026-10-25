@@ -61,6 +61,19 @@ describe('tileBlock', () => {
 		assert.equal(tileCount(out), 0);
 	});
 
+	test('an empty layer is left out, and with no layer left the tileset is empty', async () => {
+		const empty = path.join(tmp, 'nothing.geojson');
+		await fs.writeFile(empty, JSON.stringify({ type: 'FeatureCollection', features: [] }));
+		const range = blockWindow(5, 1, 2).tiles;
+		const some = path.join(tmp, 'some.mbtiles');
+		const land = { name: 'land' as const, file: await windowPolygon(5, 1, 2, 'forest') };
+		await tileBlock(5, range, [land, { name: 'water_polygons', file: empty }], some, tmp);
+		assert.equal(tileCount(some), 64);
+		const none = path.join(tmp, 'none-left.mbtiles');
+		await tileBlock(5, range, [{ name: 'water_polygons', file: empty }], none, tmp);
+		assert.equal(tileCount(none), 0);
+	});
+
 	test('joining nothing but empty tilesets writes nothing and says so', async () => {
 		const out = path.join(tmp, 'none.mbtiles');
 		assert.equal(await joinTilesets([path.join(tmp, 'empty.mbtiles')], out), false);

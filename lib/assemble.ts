@@ -10,7 +10,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-import { run, runQuiet, atomic } from './worldcover.ts';
+import { run, runQuiet, runCapture, atomic } from './worldcover.ts';
 import { file, meta, SCHEMA, TIPPECANOE_ARGS } from '../config.ts';
 
 export type TileRange = { x0: number; y0: number; x1: number; y1: number }; // XYZ, x1/y1 exclusive
@@ -18,7 +18,11 @@ export type Layer = { name: 'land' | 'water_polygons'; file: string };
 
 // Tile block polygons at zoom z → `out`, an mbtiles holding only the tiles of `range`. tippecanoe also writes
 // tiles just outside the block, wherever the margin reaches into them; those belong to the neighbours.
-export async function tileBlock(z: number, range: TileRange, layers: Layer[], out: string, tmpdir: string) {
+export async function tileBlock(z: number, range: TileRange, all: Layer[], out: string, tmpdir: string) {
+	// tippecanoe refuses a run without any geometry, so empty layers are left out: a kind the histogram saw can
+	// still be gone, under OSM's sea or sieved away (z8_21_16 held nothing but no-data in the end)
+	const layers: Layer[] = [];
+	for (const l of all) if ((await featureCount(l.file)) > 0) layers.push(l);
 	if (layers.length === 0) return emptyTileset(out);
 	await atomic(out, async (tmp) => {
 		await runQuiet(
@@ -44,6 +48,12 @@ export async function tileBlock(z: number, range: TileRange, layers: Layer[], ou
 			db.close();
 		}
 	});
+}
+
+// how many features the (single) layer of a vector file holds
+async function featureCount(file: string): Promise<number> {
+	const info = JSON.parse(await runCapture('ogrinfo', '-json', '-so', '-al', file));
+	return info.layers?.[0]?.featureCount ?? 0;
 }
 
 // how many tiles a tileset holds
