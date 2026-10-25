@@ -188,6 +188,23 @@ names what changed and refuses to mix old and new. `npm run clean` clears them (
 
 `build` runs: **coverage index → for each zoom 0–10 ( per-block processing and tiling → join ) → pack**.
 
+```mermaid
+flowchart LR
+  subgraph download["npm run download"]
+    esa["ESA WorldCover tiles (S3)"] --> src["worldcover-3857.tif<br/>mode overviews"]
+    osm["OSM water polygons"] --> sea["seashare-3857.tif<br/>average overviews"]
+  end
+  subgraph build["npm run build"]
+    plan["coverage index → block plan"] --> blocks
+    subgraph zoom["each zoom 0–10"]
+      blocks["blocks, one per core<br/>1_results/z_x_y.mbtiles"] --> join["join<br/>2_tiles/z{z}.mbtiles"]
+    end
+    join --> pack["join zooms → landcover.mbtiles<br/>convert → landcover.versatiles"]
+  end
+  src --> blocks
+  sea --> blocks
+```
+
 ### Blocks
 
 A naïve pipeline renders one global EPSG:3857 raster per zoom level. At the resolution we want that reaches
@@ -258,6 +275,15 @@ plus a margin from the source and the matching window of the sea share (see [oce
 straight from the pyramid level for its zoom (so a low-zoom block reads ≈100× less): a block's grid lines up with
 a level, so a small VRT points at the window's rectangle in it, with no warp and no resampling, then:
 
+```mermaid
+flowchart TD
+  read["read window + sea share (VRTs)"] --> hist{"histograms"}
+  hist -- "all sea / nothing active" --> empty["empty tileset"]
+  hist -- "one kind, no sea" --> rect["window rectangle"] --> tile
+  hist -- "otherwise" --> classify["1 classify"] --> sieve["2 sieve 7 px → 28 px"] --> cut["3 cut at tile edges"]
+  cut --> poly["4 polygonize"] --> simp["5 simplify-coverage"] --> split["6 tag & split land / water"] --> tile["7 tippecanoe → keep own tiles"]
+```
+
 1. **Classify** — one `gdal_calc.py` call maps each pixel's ESA code to its class index. ESA's no-data,
    every inactive class and OSM's sea fold into the no-data class. Each pixel keeps its own class: there is no smoothing
    before the sieve, because a blur cost accuracy (see [doc/TUNING.md](doc/TUNING.md)).
@@ -281,6 +307,8 @@ a level, so a small VRT points at the window's rectangle in it, with no warp and
    the block's own tiles (tippecanoe also writes the ones the margin reaches into). `--coalesce-smallest-as-needed`
    keeps the coverage complete: when a low-zoom tile would exceed the size limit, the smallest polygons merge into
    their neighbours instead of being dropped.
+
+![One block: its 8 × 8 tiles, coloured by their class code shift, inside the margin read from the neighbouring tiles](doc/block.svg)
 
 The **margin** (`MARGIN_PX` = ceil(3·√`SIEVE_THRESHOLD`) = 16 px) lets the sieve at the inner edge see the
 same neighbourhood as a global pass would, so a class never changes across a block
