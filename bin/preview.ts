@@ -17,6 +17,7 @@ import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
 import { requireCommands, commandExists, runCapture, setGdalThreads } from '../lib/worldcover.ts';
+import { requireTools } from '../lib/tools.ts';
 import { startTimingLog, timed } from '../lib/timing.ts';
 import { requireSeaShare } from '../lib/ocean.ts';
 import { buildCoverage } from '../lib/coverage.ts';
@@ -110,7 +111,7 @@ let current = currentFor(fp);
 
 // ---------------------------------------------------------------- build
 async function build(): Promise<void> {
-	await requireCommands(['gdal', 'gdal_translate', 'gdal_calc.py', 'gdalinfo', 'ogr2ogr', 'tippecanoe']);
+	await requireTools(['node', 'gdal', 'gdal_calc', 'tippecanoe']);
 	if (!(await exists(file.source))) throw new Error(`missing ${file.source} — run "npm run download" first`);
 	await requireSeaShare();
 

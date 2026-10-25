@@ -52,7 +52,8 @@ import {
 	shareError,
 	shares,
 } from '../lib/native.ts';
-import { requireCommands, listSourceKeys } from '../lib/worldcover.ts';
+import { listSourceKeys } from '../lib/worldcover.ts';
+import { requireTools } from '../lib/tools.ts';
 import { requireOcean, requireSeaShare } from '../lib/ocean.ts';
 import { channels, datadir, file, MAXLEVEL, MERC, TILE_PX } from '../config.ts';
 
@@ -169,7 +170,7 @@ else await inspectTarget();
 // the default: the tile against its target, our own source read at TILE_PX
 async function inspectTarget(): Promise<void> {
 	// ---------------------------------------------------------------- render and compare
-	await requireCommands(['gdal_translate', 'gdal_rasterize', 'ogr2ogr', 'tippecanoe-decode']);
+	await requireTools(['node', 'gdal', 'tippecanoe-decode']);
 	await requireSeaShare(); // the target is sea-masked like a block reads its window (lib/inspect.ts)
 	if (
 		!(await fs.stat(file.source).then(
@@ -315,15 +316,7 @@ async function inspectTarget(): Promise<void> {
 
 // --native: each stage of the source, and each tileset, against ESA's own 10 m pixels
 async function inspectNative(): Promise<void> {
-	await requireCommands([
-		'gdalbuildvrt',
-		'gdalwarp',
-		'gdaladdo',
-		'gdal_translate',
-		'gdal_rasterize',
-		'ogr2ogr',
-		'tippecanoe-decode',
-	]);
+	await requireTools(['node', 'gdal', 'tippecanoe-decode']);
 	await requireOcean(); // every stage is sea-masked like a block (lib/native.ts)
 	const tilePxs = (opt['tile-px'] ?? String(TILE_PX)).split(',').map(Number);
 	for (const t of tilePxs) {

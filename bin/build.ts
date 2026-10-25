@@ -8,7 +8,8 @@
 
 import fs from 'node:fs/promises';
 
-import { requireCommands, setGdalThreads } from '../lib/worldcover.ts';
+import { setGdalThreads } from '../lib/worldcover.ts';
+import { requireTools } from '../lib/tools.ts';
 import { startTimingLog, timed } from '../lib/timing.ts';
 import { requireSeaShare } from '../lib/ocean.ts';
 import { progress } from '../lib/progress.ts';
@@ -21,18 +22,10 @@ import { readRunSummary, formatSummary } from '../lib/summary.ts';
 import { pack } from '../lib/assemble.ts';
 import { datadir, dir, file, MAXLEVEL, BLOCK_CONCURRENCY, CPU_CORES } from '../config.ts';
 
-// fail fast (before the long build) if any external tool is missing
+// fail fast (before the long build) if any external tool is missing or too old
 const started = Date.now();
 
-await requireCommands([
-	'gdal',
-	'gdal_translate',
-	'gdal_calc.py',
-	'gdalinfo', // lib/block.ts reads the window histogram through it
-	'ogr2ogr',
-	'tippecanoe',
-	'versatiles',
-]);
+await requireTools(['node', 'gdal', 'gdal_calc', 'tippecanoe', 'versatiles']);
 
 // the single reprojected source raster (with overview pyramid) is built by `npm run download`;
 // blocks read their window from it — coarse levels at low zoom, full detail at high zoom

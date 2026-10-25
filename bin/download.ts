@@ -4,10 +4,10 @@
 // raster once, then build tiles from it as often as you like. What is already there is kept.
 
 import { download } from '../lib/download.ts';
-import { requireCommands } from '../lib/worldcover.ts';
+import { requireTools } from '../lib/tools.ts';
 import { startTimingLog, timed } from '../lib/timing.ts';
 import { file, CPU_CORES } from '../config.ts';
 
-await requireCommands(['gdalbuildvrt', 'gdalwarp', 'gdaladdo', 'gdal_translate', 'gdal_rasterize', 'ogr2ogr', 'curl']);
+await requireTools(['node', 'gdal', 'curl']);
 startTimingLog(file.timings, 'download', { cores: CPU_CORES });
 await timed('download', download);

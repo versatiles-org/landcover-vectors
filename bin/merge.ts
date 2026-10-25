@@ -11,8 +11,9 @@
 
 import fs from 'node:fs/promises';
 
-import { run, runCapture, requireCommands } from '../lib/worldcover.ts';
-import { mergePipeline, versionAtLeast, MIN_VERSATILES } from '../lib/handover.ts';
+import { run } from '../lib/worldcover.ts';
+import { requireTools } from '../lib/tools.ts';
+import { mergePipeline } from '../lib/handover.ts';
 import { file, OSM_URL, SCHEMA } from '../config.ts';
 
 const exists = (p: string): Promise<boolean> =>
@@ -28,12 +29,9 @@ async function contentLength(url: string): Promise<number | null> {
 	return len === null ? null : Number(len);
 }
 
-await requireCommands(['versatiles', 'curl']);
-const versatilesVersion = (await runCapture('versatiles', '--version')).trim();
-if (!versionAtLeast(versatilesVersion, MIN_VERSATILES))
-	throw new Error(
-		`${versatilesVersion || 'versatiles'} is too old — the merge filter needs versatiles ≥ ${MIN_VERSATILES} (older versions silently drop the whole land layer)`,
-	);
+// versatiles ≥ 5.0: the merge stamps shortbread@1.1, and its filter needs ≥ 4.15 anyway (older versions
+// silently drop the whole land layer, lib/handover.ts)
+await requireTools(['node', 'versatiles', 'curl']);
 
 // the landcover container is the build output — without it there is nothing to merge
 if (!(await exists(file.container))) throw new Error(`missing ${file.container} — run "npm run build" first`);
