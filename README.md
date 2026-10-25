@@ -146,6 +146,9 @@ so they follow any change of a cutoff.
 
 ### Requirements
 
+GDAL, tippecanoe and curl come from conda-forge with `micromamba env create -f environment.yml` (or conda /
+mamba); then `micromamba activate landcover`. CI tests against the same environment.
+
 - `node` (or `bun`)
 - [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdaladdo`, `gdalwarp`, `gdalinfo`, `gdal_translate`, `gdal_calc.py`, `gdal_rasterize`, `ogr2ogr` and the `gdal raster` / `gdal vector` subcommands `sieve`, `polygonize` and `simplify-coverage` on `PATH`
 - Python 3 with `numpy` (used by `gdal_calc.py` for the class index; both ship with the GDAL install)

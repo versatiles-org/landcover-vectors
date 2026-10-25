@@ -1,9 +1,13 @@
-# Type-check, formatting and unit tests.
+# Type-check, formatting and unit tests, in two jobs.
 #
-# Deliberately no GDAL / tippecanoe / versatiles here: every pipeline stage needs the 23 GB source
-# raster and hours of CPU, so CI covers the pure logic instead — block geometry and seams, skip-empty,
-# the block plan, the cache fingerprint, style generation, and the README/config drift guard. Runs in
-# seconds, which is what makes it useful on every push.
+# `check` runs without GDAL or tippecanoe, on every supported Node version: the pure logic — block geometry
+# and seams, skip-empty, the block plan, the cache fingerprint, style generation, and the README/config drift
+# guard — in seconds. The tests that need the real tools skip themselves there.
+#
+# `tools` installs GDAL and tippecanoe from conda-forge (environment.yml) and runs the tests that need them:
+# the sea-share pyramid, the ocean mask, a GDAL progress bar, and tiling and joining block tilesets.
+# LANDCOVER_REQUIRE_TOOLS turns a missing tool into a failure, so a broken install cannot pass with those tests
+# skipped. Neither job runs the pipeline itself: every stage needs the 23 GB source raster and hours of CPU.
 name: CI
 
 on:
@@ -27,3 +31,24 @@ jobs:
               cache: npm
          - run: npm ci
          - run: npm run check
+
+   tools:
+      runs-on: ubuntu-latest
+      defaults:
+         run:
+            shell: bash -el {0} # a login shell, so the micromamba environment is active
+      steps:
+         - uses: actions/checkout@v5
+         - uses: actions/setup-node@v5
+           with:
+              node-version: '24'
+              cache: npm
+         - uses: mamba-org/setup-micromamba@v2
+           with:
+              environment-file: environment.yml
+              cache-environment: true
+         - run: gdal --version && tippecanoe --version
+         - run: npm ci
+         - run: npm test
+           env:
+              LANDCOVER_REQUIRE_TOOLS: '1'
