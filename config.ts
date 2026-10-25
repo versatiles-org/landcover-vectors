@@ -18,7 +18,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const CPU_CORES = os.availableParallelism();
 
 // blocks the build and the preview process at once: one per core, each with one GDAL thread (setGdalThreads in
-// lib/worldcover.ts). Every block holds its ~8224² px window and its polygons in memory, so LANDCOVER_CONCURRENCY
+// lib/worldcover.ts). Every block holds its ~8246² px window and its polygons in memory, so LANDCOVER_CONCURRENCY
 // lowers it where memory, not CPU, is the limit. Not part of the fingerprint: it never changes the output.
 export const BLOCK_CONCURRENCY = Math.floor(numberFromEnv('LANDCOVER_CONCURRENCY', CPU_CORES, { atLeast: 1 }));
 
@@ -83,10 +83,12 @@ export const OVERSAMPLE = TILE_PX / 256; // raw pixels per rendered pixel (4)
 // Smallest patch kept, in rendered px²; smaller regions are merged into their largest neighbour. This is
 // the only raster generalization: each pixel otherwise keeps its own ESA class. (A Gaussian blur before a
 // per-pixel majority vote used to round the patches as well, but it moved area from scattered classes to
-// dominant ones and cost accuracy for smaller tiles — see doc/TUNING.md.) 1.77 px² is what the blur's
-// circle of σ = 0.75 px gave; LANDCOVER_SIEVE_RENDERED overrides it, and 0 turns it off. It is the main
-// lever on feature count, and with that on tile bytes.
-export const SIEVE_RENDERED = numberFromEnv('LANDCOVER_SIEVE_RENDERED', 1.77, { atLeast: 0 });
+// dominant ones and cost accuracy for smaller tiles — see doc/TUNING.md.) LANDCOVER_SIEVE_RENDERED overrides it,
+// and 0 turns it off. It is the main lever on feature count, and with that on tile bytes: the largest tiles are
+// fragmented mosaics of patches only a few px² large. 5 px² against the 1.77 used before shrinks the worst
+// Hudson Bay z8 tile by 42 % (118.9 → 69.4 KB, 5400 → 2341 features) for 6 points of pixel agreement with the
+// source (66.6 → 60.6 %); a coarser simplify tolerance costs as much accuracy for a third of the bytes.
+export const SIEVE_RENDERED = numberFromEnv('LANDCOVER_SIEVE_RENDERED', 5, { atLeast: 0 });
 
 // full-world raster size at the deepest zoom (TILE_PX × 2^MAXLEVEL). The single EPSG:3857
 // source GeoTIFF is built at this resolution and carries an overview pyramid down to z0, so a
@@ -94,14 +96,14 @@ export const SIEVE_RENDERED = numberFromEnv('LANDCOVER_SIEVE_RENDERED', 1.77, { 
 export const FULL_PX = TILE_PX * Math.pow(2, MAXLEVEL);
 
 // sieve threshold in raw pixels (see SIEVE_RENDERED)
-export const SIEVE_THRESHOLD = Math.round(SIEVE_RENDERED * OVERSAMPLE * OVERSAMPLE); // 28
+export const SIEVE_THRESHOLD = Math.round(SIEVE_RENDERED * OVERSAMPLE * OVERSAMPLE); // 80
 // The sieve's passes, in raw pixels: a quarter of the threshold first, then the threshold. GDAL's sieve merges a
 // small patch into a neighbour, but in a fragmented mosaic most neighbours are small too, so a single pass leaves
 // much of it as it is — and the more, the larger the size. The small first pass merges the specks into their
-// neighbours, so the full pass finds large ones for what is left. On the Hudson Bay worst z6 tile: 132.9 → 82.5 KB,
-// with better agreement at every zoom (z8: 64.5 → 66.6 %); z8–10 tiles grow by up to 14 % (worst 117 KB). A second
-// pass at the full size instead shrinks the tiles more but is less accurate; doubling sizes 4→8→16→28 matches
-// this one at twice the passes. See doc/TUNING.md.
+// neighbours, so the full pass finds large ones for what is left. Measured at a 28 px sieve, on the Hudson Bay
+// worst z6 tile: 132.9 → 82.5 KB, with better agreement at every zoom (z8: 64.5 → 66.6 %). A second pass at the
+// full size instead shrinks the tiles more but is less accurate; doubling sizes 4→8→16→28 matches this one at
+// twice the passes. See doc/TUNING.md.
 export const SIEVE_STAGES =
 	SIEVE_THRESHOLD >= 8
 		? [Math.round(SIEVE_THRESHOLD / 4), SIEVE_THRESHOLD]
@@ -110,11 +112,11 @@ export const SIEVE_STAGES =
 			: [];
 
 // processing margin (px) around a block so the sieve at the inner edge matches neighbours
-export const MARGIN_PX = Math.ceil(3 * Math.sqrt(SIEVE_THRESHOLD)); // 16
+export const MARGIN_PX = Math.ceil(3 * Math.sqrt(SIEVE_THRESHOLD)); // 27
 
 // tippecanoe's tile buffer, in rendered pixels: each block tiles itself, so the buffer of a tile on the block's
 // edge is filled from the block's own margin, and must not reach past it
-export const TILE_BUFFER = Math.floor(MARGIN_PX / OVERSAMPLE); // 4
+export const TILE_BUFFER = Math.floor(MARGIN_PX / OVERSAMPLE); // 6
 
 // How tippecanoe tiles a block (lib/assemble.ts). Part of the cache fingerprint: the block tilesets are cached.
 export const TIPPECANOE_ARGS = [
@@ -130,7 +132,8 @@ export const TIPPECANOE_ARGS = [
 // what decides how much detail survives into the tiles: raising the raster resolution alone changes
 // almost nothing, because the tolerance dominates. Measure a change with
 // `npm run stats -- --probe <area>` (or `npm run sweep`) before adopting it; the budget is tippecanoe's
-// 500 000 bytes per tile, and the worst tile of the Hudson Bay probe (z8–10) sits at ~110 KB.
+// 500 000 bytes per tile. At the 5 px² sieve, 2 instead of 1 costs 50 % more bytes for 3 points of agreement, and
+// 0.7 saves 15 % for 2 points (worst Hudson Bay z8 tile, doc/TUNING.md).
 //
 // Beyond DETAIL_PX ≈ 16 the MVT grid quantises the extra precision away: tippecanoe's default
 // `--detail 12` gives 4096 units per tile, i.e. 16 units per rendered pixel.

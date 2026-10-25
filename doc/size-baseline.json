@@ -897,49 +897,49 @@
 			]
 		},
 		"-86,52.5,-84.5,53.5@detail1": {
-			"fingerprint": "de2462a7",
-			"input": "data/preview/de2462a7/preview-bbox_m86_52p5_m84p5_53p5-z8-8.mbtiles",
-			"written": "2026-10-25T20:49:55.006Z",
+			"fingerprint": "ce387963",
+			"input": "data/preview/ce387963/preview-bbox_m86_52p5_m84p5_53p5-z8-8.mbtiles",
+			"written": "2026-10-25T21:06:03.520Z",
 			"note": "sweep: LANDCOVER_DETAIL_PX=1, area -86,52.5,-84.5,53.5, z8-8",
 			"zooms": [
 				{
 					"z": 8,
 					"tiles": 62,
-					"bytes": 3559834,
-					"avg": 57416.67741935484,
-					"p50": 50711,
-					"p95": 114558,
-					"p99": 121770,
-					"max": 121770,
+					"bytes": 2047862,
+					"avg": 33030.032258064515,
+					"p50": 28069,
+					"p95": 64581,
+					"p99": 71060,
+					"max": 71060,
 					"worst": {
 						"z": 8,
 						"x": 67,
 						"y": 83,
-						"bytes": 121770
+						"bytes": 71060
 					}
 				}
 			]
 		},
 		"-86,52.5,-84.5,53.5@detail0.7": {
-			"fingerprint": "79d33f02",
-			"input": "data/preview/79d33f02/preview-bbox_m86_52p5_m84p5_53p5-z8-8.mbtiles",
-			"written": "2026-10-25T20:49:55.007Z",
+			"fingerprint": "ef2d2adf",
+			"input": "data/preview/ef2d2adf/preview-bbox_m86_52p5_m84p5_53p5-z8-8.mbtiles",
+			"written": "2026-10-25T21:06:03.521Z",
 			"note": "sweep: LANDCOVER_DETAIL_PX=0.7, area -86,52.5,-84.5,53.5, z8-8",
 			"zooms": [
 				{
 					"z": 8,
 					"tiles": 62,
-					"bytes": 3176324,
-					"avg": 51231.032258064515,
-					"p50": 44357,
-					"p95": 104109,
-					"p99": 111347,
-					"max": 111347,
+					"bytes": 1705216,
+					"avg": 27503.483870967742,
+					"p50": 23072,
+					"p95": 54870,
+					"p99": 60569,
+					"max": 60569,
 					"worst": {
 						"z": 8,
 						"x": 67,
 						"y": 83,
-						"bytes": 111347
+						"bytes": 60569
 					}
 				}
 			]
@@ -964,6 +964,30 @@
 						"x": 67,
 						"y": 83,
 						"bytes": 106788
+					}
+				}
+			]
+		},
+		"-86,52.5,-84.5,53.5@detail2": {
+			"fingerprint": "975b49ce",
+			"input": "data/preview/975b49ce/preview-bbox_m86_52p5_m84p5_53p5-z8-8.mbtiles",
+			"written": "2026-10-25T21:06:03.521Z",
+			"note": "sweep: LANDCOVER_DETAIL_PX=2, area -86,52.5,-84.5,53.5, z8-8",
+			"zooms": [
+				{
+					"z": 8,
+					"tiles": 62,
+					"bytes": 3192650,
+					"avg": 51494.354838709674,
+					"p50": 44370,
+					"p95": 98961,
+					"p99": 106335,
+					"max": 106335,
+					"worst": {
+						"z": 8,
+						"x": 67,
+						"y": 83,
+						"bytes": 106335
 					}
 				}
 			]

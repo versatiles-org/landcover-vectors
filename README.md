@@ -241,7 +241,7 @@ which command runs them. A dashed cylinder is a file from the row above, repeate
 A naïve pipeline renders one global EPSG:3857 raster per zoom level. At the resolution we want that reaches
 60000×60000 px and beyond, and a global coverage-simplify loads the whole thing into RAM and gets OOM-killed.
 Instead each zoom is processed in **blocks** of `BLOCK`×`BLOCK` = 8×8 tiles (`TILE_PX` = 1024 raw px per tile),
-so every raster/vector operation works on a ≤ ~8224² px window — bounded memory, feasible at every zoom. Each
+so every raster/vector operation works on a ≤ ~8246² px window — bounded memory, feasible at every zoom. Each
 block is tiled on its own, and the blocks' tiles are joined into one tileset per zoom.
 
 ### Source raster
@@ -316,7 +316,7 @@ flowchart TD
   read["read window + sea share (VRTs)"] --> hist{"histograms"}
   hist -- "all sea / nothing active" --> empty["write an empty tileset"]
   hist -- "one kind, no sea" --> rect["window rectangle"] --> tile
-  hist -- "otherwise" --> classify["1 classify"] --> sieve["2 sieve 7 px → 28 px"] --> cut["3 cut at tile edges"]
+  hist -- "otherwise" --> classify["1 classify"] --> sieve["2 sieve 20 px → 80 px"] --> cut["3 cut at tile edges"]
   cut --> poly["4 polygonize"] --> simp["5 simplify-coverage"] --> split["6 tag & split land / water"] --> tile["7 tippecanoe → keep own tiles"]
   tile --> out[("`1_results/z{*z*}\_{*x*}\_{*y*}.mbtiles`")]
   empty --> out
@@ -328,9 +328,9 @@ flowchart TD
 1. **Classify** — one `gdal_calc.py` call maps each pixel's ESA code to its class index. ESA's no-data,
    every inactive class and OSM's sea fold into the no-data class. Each pixel keeps its own class: there is no smoothing
    before the sieve, because a blur cost accuracy (see [doc/TUNING.md](doc/TUNING.md)).
-2. **Sieve** — `gdal raster sieve` merges patches smaller than `SIEVE_RENDERED` = 1.77 rendered px²
-   (`SIEVE_THRESHOLD` = round(1.77·4²) = 28 px) into their largest neighbour, in two passes (`SIEVE_STAGES`):
-   first at a quarter of that, 7 px, then at 28 px. A single pass leaves much of a fragmented mosaic untouched,
+2. **Sieve** — `gdal raster sieve` merges patches smaller than `SIEVE_RENDERED` = 5 rendered px²
+   (`SIEVE_THRESHOLD` = round(5·4²) = 80 px) into their largest neighbour, in two passes (`SIEVE_STAGES`):
+   first at a quarter of that, 20 px, then at 80 px. A single pass leaves much of a fragmented mosaic untouched,
    because most neighbours of a small patch are small too (see [doc/TUNING.md](doc/TUNING.md)).
 3. **Cut at the tile edges** — a VRT over the sieved window shifts each tile's class codes by 0, 16, 32 or 48,
    by the parity of its column and row, so neighbouring tiles never share a code and no polygon crosses a tile
@@ -351,12 +351,12 @@ flowchart TD
 
 ![One block: its 8 × 8 tiles, coloured by their class code shift, inside the margin read from the neighbouring tiles](doc/block.svg)
 
-The **margin** (`MARGIN_PX` = ceil(3·√`SIEVE_THRESHOLD`) = 16 px) lets the sieve at the inner edge see the
+The **margin** (`MARGIN_PX` = ceil(3·√`SIEVE_THRESHOLD`) = 27 px) lets the sieve at the inner edge see the
 same neighbourhood as a global pass would, so a class never changes across a block
 seam. Because tile edges, the block's included, are edges of the coverage, simplify-coverage keeps them straight
 and keeps the points where a border crosses one, which a neighbouring block shares, so borders meet at the seam.
 The margin's pixels belong to the neighbouring tiles, and their polygons are the tile buffer (`TILE_BUFFER` =
-16 px / 4 = 4 rendered px) of the tiles along the block's edge, so no tile needs a neighbour's polygons and no
+⌊27 px / 4⌋ = 6 rendered px) of the tiles along the block's edge, so no tile needs a neighbour's polygons and no
 hairline shows at a seam.
 
 Each kind is active up to its cutoff (`maxZoom` in `config.ts`, z10 for every kind today). Above it, a class
@@ -430,13 +430,13 @@ offered. `?style=versatiles` in the URL opens it directly.
 
 | stage  | knob                                                         | what it changes                                                                                      | override                   |
 | ------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | -------------------------- |
-| raster | `SIEVE_RENDERED` (1.77 rendered px²)                         | the smallest patch kept, sieved in two passes; the main lever on feature count; 0 turns it off       | `LANDCOVER_SIEVE_RENDERED` |
+| raster | `SIEVE_RENDERED` (5 rendered px²)                            | the smallest patch kept, sieved in two passes; the main lever on feature count; 0 turns it off       | `LANDCOVER_SIEVE_RENDERED` |
 | vector | `DETAIL_PX` (1)                                              | the simplify tolerance — how precisely outlines follow the result                                    | `LANDCOVER_DETAIL_PX`      |
 | raster | `TILE_PX` (1024 → 38 m/px at z10, against ESA's native 10 m) | the resolution the source is classified at; 4× source raster and CPU per doubling, and a re-download | — (edit, then re-download) |
 
 The overrides are for sweeps; each value builds into its own cache, because all knobs are part of the config
-fingerprint. The worst tile of the Hudson Bay probe (z8–10), where the largest tiles sit, is 110 KB, about 4.5×
-below tippecanoe's 500 000-byte limit. How
+fingerprint. The largest tiles sit in Hudson Bay's wetland mosaic; at the 5 px² sieve its worst z8 tile is 69 KB,
+far below tippecanoe's 500 000-byte limit (122 KB in the z0–9 build at the 1.77 px² sieve before). How
 to measure a change, and what the measurements so far say, is in [doc/TUNING.md](doc/TUNING.md).
 
 ## License

@@ -87,7 +87,7 @@ describe('stampMismatch', () => {
 	test('names every changed key, old before new', () => {
 		const report = stampMismatch(stampFor({ ...values, sieveThreshold: 13, tilePx: 2048 }), values);
 		assert.ok(report);
-		assert.match(report, /sieveThreshold: 13 → 28/);
+		assert.match(report, new RegExp(`sieveThreshold: 13 → ${values.sieveThreshold}\\b`));
 		assert.match(report, /tilePx: 2048 → 1024/);
 		assert.equal(report.split('\n').length, 2);
 	});
@@ -102,7 +102,7 @@ describe('stampMismatch', () => {
 	test('reports a key that is new or gone', () => {
 		const { sieveThreshold: _dropped, ...without } = values as Record<string, unknown>;
 		const report = stampMismatch(stampFor(without), values);
-		assert.match(String(report), /sieveThreshold: \(absent\) → 28/);
+		assert.match(String(report), new RegExp(`sieveThreshold: \\(absent\\) → ${values.sieveThreshold}\\b`));
 	});
 
 	test('does not trust a stamp whose fingerprint contradicts its values', () => {

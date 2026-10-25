@@ -25,9 +25,8 @@ plus archipelago, fjord, delta, desert and glacier cases. `--worst N --attribute
 `tippecanoe-decode` and reports features and vertices per layer and `kind`, which answers _why_ a tile is big.
 
 `doc/size-baseline.json` holds the numbers of a build so a later one can be diffed against it; `--label` keeps
-variants of a parameter sweep apart. Without the blur, the worst tile of the Hudson Bay probe (z8–10, where
-the largest tiles sit) is **110 KB at z10** — roughly **4.5× headroom** to the 500 000-byte limit, which is the
-budget available for more detail. (The last z0–10 build, still with the blur, peaked at 60.5 KB.)
+variants of a parameter sweep apart. The z0–9 build at the 1.77 px² sieve peaked at **122 KB** (z8, Hudson Bay;
+85 KB at z6, 119 KB at z7, 118 KB at z9), which led to the 5 px² sieve below.
 
 ## Quality: the raster stage decides
 
@@ -94,6 +93,32 @@ up to 14 %. Sieving twice at the full size gives the smallest tiles but is a lit
 doubling sizes 4 → 8 → 16 → 28 matches 7 → 28 at twice the passes. The extra pass costs about 2.5 s on a
 fragmented block (7.0 s against 4.6 s). In passes, the sieve size behaves as expected again: with doubling
 sizes, the worst z6 tile shrank to 58, 47 and 38 KB at 3, 5 and 8 px², losing accuracy step by step.
+
+### Why the sieve is 5 px²
+
+The largest tiles are fragmented mosaics: the worst ones of the z0–9 build (Hudson Bay, z6–9) each held about
+5400 features, with a median of 3 rendered px² and 60 % under 4 px². Their bytes are the patches, not the outlines.
+Measured on the worst z8 tile, 8/67/83, built from the same block at each setting (`npm run sweep`, agreement with
+the source at 1024 px):
+
+| sieve     | `DETAIL_PX` | worst tile  | features | agreement  | grassland kept |
+| --------- | ----------- | ----------- | -------- | ---------- | -------------- |
+| 1.77 px²  | 1           | 118.9 KB    | 5400     | 66.6 %     | 51.8 %         |
+| 1.77 px²  | 0.7         | 108.7 KB    | 5398     | 63.5 %     | 47.3 %         |
+| 1.77 px²  | 0.5         | 104.3 KB    | 5397     | 61.2 %     | 44.4 %         |
+| 3 px²     | 1           | 89.2 KB     | 3482     | 63.6 %     | 46.4 %         |
+| **5 px²** | **1**       | **69.4 KB** | **2341** | **60.6 %** | **40.2 %**     |
+| 5 px²     | 0.7         | 59.1 KB     | 2340     | 58.4 %     | 37.4 %         |
+| 5 px²     | 2           | 103.8 KB    | 2345     | 63.6 %     | 43.8 %         |
+
+The sieve is the efficient lever: a coarser simplify tolerance keeps every patch and only drops vertices, so at
+1.77 px² it buys a third of the bytes for the same accuracy. And accuracy is cheaper to keep with a smaller sieve
+than to win back with finer outlines: 3 px² at `DETAIL_PX` 1 reaches the 63.6 % of 5 px² at `DETAIL_PX` 2 with
+14 % fewer bytes. Grassland, the most scattered kind, loses most. Rivers, the large marsh areas and the lakes stay.
+
+tippecanoe's own size limit is no alternative: `--maximum-tile-bytes` with `--coalesce-smallest-as-needed` merges
+a small feature into the one before it in the data, not into a neighbour, so at 100 KB 16 % of the tile's pixels,
+and at 80 KB 32 %, ended up on the wrong kind.
 
 ## Sweeps and `inspect`
 

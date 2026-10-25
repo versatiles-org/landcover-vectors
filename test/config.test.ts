@@ -156,7 +156,7 @@ describe('blockWindow', () => {
 describe('the resolution knobs', () => {
 	test('the sieve is anchored to rendered pixels, so TILE_PX cannot change it by accident', () => {
 		assert.equal(OVERSAMPLE, TILE_PX / 256);
-		assert.equal(SIEVE_RENDERED, 1.77, 'the committed default; a sweep overrides it per run');
+		assert.equal(SIEVE_RENDERED, 5, 'the committed default; a sweep overrides it per run');
 		// the raw-pixel values are derived from it, so they scale along
 		assert.equal(SIEVE_THRESHOLD, Math.round(SIEVE_RENDERED * OVERSAMPLE * OVERSAMPLE));
 		assert.equal(MARGIN_PX, Math.ceil(3 * Math.sqrt(SIEVE_THRESHOLD)));
@@ -177,7 +177,7 @@ describe('the resolution knobs', () => {
 		};
 
 		// two passes: a quarter of the threshold, then the threshold
-		assert.deepEqual(read({}).values, [28, 16, [7, 28]]);
+		assert.deepEqual(read({}).values, [80, 27, [20, 80]]);
 		// a sieve override moves the threshold and its passes, and the margin grows to cover it
 		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '4' }).values, [64, 24, [16, 64]]);
 		// a threshold too small to split runs once
@@ -185,7 +185,7 @@ describe('the resolution knobs', () => {
 		// 0 switches the sieve off, and with it the margin
 		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '0' }).values, [0, 0, []]);
 		// empty means unset
-		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '' }).values, [28, 16, [7, 28]]);
+		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '' }).values, [80, 27, [20, 80]]);
 
 		for (const [name, bad] of [
 			['LANDCOVER_SIEVE_RENDERED', '-1'],
