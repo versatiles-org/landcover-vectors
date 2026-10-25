@@ -1,6 +1,6 @@
 // A block tiles itself, so its tileset must hold exactly its own tiles: tippecanoe also writes the neighbours'
 // tiles the margin reaches into, and a join would then find two blocks claiming one tile. These run the real
-// tippecanoe on a rectangle.
+// tippecanoe on a rectangle, so they are skipped where it is not installed (CI).
 
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +10,11 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import { tileBlock, tileCount, joinTilesets } from '../lib/assemble.ts';
+import { commandExists } from '../lib/worldcover.ts';
 import { blockWindow } from '../config.ts';
+
+const haveTools = (await commandExists('tippecanoe')) && (await commandExists('ogrinfo'));
+const skip = !haveTools && 'tippecanoe or ogrinfo is not on PATH';
 
 const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'lcv-assemble-'));
 after(() => fs.rm(tmp, { recursive: true, force: true }));
@@ -47,7 +51,7 @@ async function block(z: number, bx: number, by: number): Promise<string> {
 	return out;
 }
 
-describe('tileBlock', () => {
+describe('tileBlock', { skip }, () => {
 	test("keeps the block's own tiles and none of the neighbours' the margin reaches into", async () => {
 		const out = await block(5, 1, 2); // an interior block: its margin reaches into all eight neighbours
 		const tiles = rows(out, 'SELECT tile_column AS x, 31 - tile_row AS y FROM tiles') as { x: number; y: number }[];
@@ -81,7 +85,7 @@ describe('tileBlock', () => {
 	});
 });
 
-describe('joinTilesets', () => {
+describe('joinTilesets', { skip }, () => {
 	test("copies every block's tiles and describes them", async () => {
 		const a = await block(5, 1, 2);
 		const b = await block(5, 2, 2);
