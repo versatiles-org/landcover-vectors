@@ -189,21 +189,35 @@ names what changed and refuses to mix old and new. `npm run clean` clears them (
 `build` runs: **coverage index → for each zoom 0–10 ( per-block processing and tiling → join ) → pack**.
 
 ```mermaid
-flowchart LR
+flowchart TB
+  classDef data fill:#e8f0fb,stroke:#4a72b0,color:#1f2328
+  classDef step fill:#fdf0d9,stroke:#b9832a,color:#1f2328
   subgraph download["npm run download"]
-    esa["ESA WorldCover tiles (S3)"] --> src["worldcover-3857.tif<br/>mode overviews"]
-    osm["OSM water polygons"] --> sea["seashare-3857.tif<br/>average overviews"]
+    direction LR
+    esa[("ESA WorldCover on S3")]:::data --> warp("reproject"):::step --> src[("worldcover-3857.tif")]:::data
+    osm[("OSM water polygons")]:::data --> rast("rasterize"):::step --> sea[("seashare-3857.tif")]:::data
   end
-  subgraph build["npm run build"]
-    plan["coverage index → block plan"] --> blocks
-    subgraph zoom["each zoom 0–10"]
-      blocks["blocks, one per core<br/>1_results/z_x_y.mbtiles"] --> join["join<br/>2_tiles/z{z}.mbtiles"]
-    end
-    join --> pack["join zooms → landcover.mbtiles<br/>convert → landcover.versatiles"]
+  subgraph blocks["npm run build: blocks, zoom by zoom"]
+    direction LR
+    block("process + tile each block"):::step --> bt[("1_results/z_x_y.mbtiles")]:::data --> zj("join per zoom"):::step --> zt[("2_tiles/z{z}.mbtiles")]:::data
   end
-  src --> blocks
-  sea --> blocks
+  subgraph pack["npm run build: pack"]
+    direction LR
+    pj("join zooms"):::step --> mb[("landcover.mbtiles")]:::data --> conv("convert"):::step --> vt[("landcover.versatiles")]:::data
+  end
+  subgraph merge["npm run merge (optional)"]
+    direction LR
+    sb[("osm.versatiles")]:::data -.-> fm("feature-merge"):::step -.-> cv[("combined.versatiles")]:::data
+  end
+  download --> blocks --> pack -.-> merge
+  style download fill:#f6f8fa,stroke:#d0d7de
+  style blocks fill:#f6f8fa,stroke:#d0d7de
+  style pack fill:#f6f8fa,stroke:#d0d7de
+  style merge fill:#f6f8fa,stroke:#d0d7de
 ```
+
+Blue cylinders are data (files under `data/`), orange boxes are the steps between them; the grey frames say which
+command runs them, and each frame feeds the next.
 
 ### Blocks
 
@@ -277,11 +291,21 @@ a level, so a small VRT points at the window's rectangle in it, with no warp and
 
 ```mermaid
 flowchart TD
+  classDef step fill:#fdf0d9,stroke:#b9832a,color:#1f2328
+  classDef data fill:#e8f0fb,stroke:#4a72b0,color:#1f2328
+  classDef decision fill:#f6f8fa,stroke:#8c959f,color:#1f2328
+  src[("worldcover-3857.tif")] --> read
+  sea[("seashare-3857.tif")] --> read
   read["read window + sea share (VRTs)"] --> hist{"histograms"}
-  hist -- "all sea / nothing active" --> empty["empty tileset"]
+  hist -- "all sea / nothing active" --> empty["write an empty tileset"]
   hist -- "one kind, no sea" --> rect["window rectangle"] --> tile
   hist -- "otherwise" --> classify["1 classify"] --> sieve["2 sieve 7 px → 28 px"] --> cut["3 cut at tile edges"]
   cut --> poly["4 polygonize"] --> simp["5 simplify-coverage"] --> split["6 tag & split land / water"] --> tile["7 tippecanoe → keep own tiles"]
+  tile --> out[("1_results/z_x_y.mbtiles")]
+  empty --> out
+  class read,empty,rect,classify,sieve,cut,poly,simp,split,tile step
+  class src,sea,out data
+  class hist decision
 ```
 
 1. **Classify** — one `gdal_calc.py` call maps each pixel's ESA code to its class index. ESA's no-data,
