@@ -296,7 +296,7 @@ export const meta = {
 	name: 'VersaTiles Landcover Vectors',
 	attribution:
 		'<a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a> (<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>), coastline <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>',
-	description: `Global land cover for zoom levels 0–${MAXLEVEL} from ESA WorldCover 2021 (v200), in Shortbread's land and water_polygons layers. © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium`,
+	description: `Global land cover for zoom levels 0-${MAXLEVEL} from ESA WorldCover 2021 (v200), in Shortbread's land and water_polygons layers. © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium`,
 	// the tileset's revision (MBTiles `version`): raise it with every published build whose tiles differ
 	version: '3',
 	// where a viewer opens the container: [lon, lat, zoom]

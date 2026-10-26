@@ -374,11 +374,13 @@ requires the histogram to count every pixel of the window as well.
 
 `lib/assemble.ts` copies the per-zoom tiles into `data/landcover.mbtiles` (zooms, like blocks, never share a
 tile, so this is a plain copy, nothing is decoded), and `versatiles convert -c brotli` packs
-it into `data/landcover-vectors.versatiles`, the name it is published under, stamping `tile_schema: shortbread@1.1`
-so consumers can tell that a Shortbread style fits. Name, description, attribution, revision (`version`) and the
-layer descriptions come from `meta` in `config.ts`. The container also names the build it came from, like the
-`planetiler:*` keys of `osm.versatiles`: `landcover:fingerprint` (the config), `landcover:githash` (the commit,
-`-dirty` with uncommitted changes) and `landcover:buildtime`. The build ends with a per-zoom tally of how its blocks were processed, from
+it into `data/landcover-vectors.versatiles`, the name it is published under. Its whole metadata is one TileJSON,
+`data/tmp/container-meta.json`, which `meta_update tilejson_file=…` puts in place of the mbtiles' own:
+`tile_schema: shortbread@1.1`, so consumers can tell that a Shortbread style fits; name, description, attribution,
+revision (`version`), center and the layer descriptions from `meta` in `config.ts`; bounds, zooms and layers of
+the joined tileset; and, like the `planetiler:*` keys of `osm.versatiles`, the build it came from:
+`landcover:fingerprint` (the config), `landcover:githash` (the commit, `-dirty` with uncommitted changes) and
+`landcover:buildtime`. The build ends with a per-zoom tally of how its blocks were processed, from
 `data/blocks.log`.
 
 ## Development

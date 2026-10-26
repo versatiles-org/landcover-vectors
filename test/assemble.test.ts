@@ -9,9 +9,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-import { tileBlock, tileCount, joinTilesets, containerMeta, gitCommit } from '../lib/assemble.ts';
+import { tileBlock, tileCount, joinTilesets, containerMeta, gitCommit, readJoined } from '../lib/assemble.ts';
 import { skipWithout } from './tools.ts';
-import { blockWindow, meta as tilesetMeta } from '../config.ts';
+import { blockWindow, meta as tilesetMeta, SCHEMA } from '../config.ts';
 
 const skip = await skipWithout('tippecanoe', 'ogrinfo');
 
@@ -129,6 +129,11 @@ describe('joinTilesets', { skip }, () => {
 		);
 		assert.equal(meta.minzoom, '5');
 		assert.equal(meta.maxzoom, '6');
+		// what pack reads back for the container's metadata
+		const joined = readJoined(out);
+		assert.deepEqual(joined.bounds, meta.bounds.split(',').map(Number));
+		assert.deepEqual([joined.minzoom, joined.maxzoom], [5, 6]);
+		assert.deepEqual(joined.vector_layers, JSON.parse(meta.json).vector_layers);
 	});
 
 	test('two blocks claiming one tile is an error, not a silent overwrite', async () => {
@@ -138,16 +143,34 @@ describe('joinTilesets', { skip }, () => {
 });
 
 describe('container metadata', () => {
-	test('names the build it came from, next to the center to open at', () => {
+	test('is the whole TileJSON: config, schema, the joined extent and layers, and the build it came from', () => {
 		const buildtime = new Date('2026-10-25T22:35:25.493Z');
-		assert.deepEqual(containerMeta({ fingerprint: 'ce387963', commit: 'abc123', buildtime }), {
+		const joined = {
+			bounds: [-180, -85.051129, 180, 85.051129],
+			minzoom: 0,
+			maxzoom: 10,
+			vector_layers: [{ id: 'land' }],
+		};
+		assert.deepEqual(containerMeta(joined, { fingerprint: 'ce387963', commit: 'abc123', buildtime }), {
+			tilejson: '3.0.0',
+			name: tilesetMeta.name,
+			description: tilesetMeta.description,
+			attribution: tilesetMeta.attribution,
+			version: tilesetMeta.version,
+			type: 'overlay',
+			tile_schema: SCHEMA,
+			bounds: joined.bounds,
 			center: tilesetMeta.center,
+			minzoom: 0,
+			maxzoom: 10,
+			vector_layers: joined.vector_layers,
 			'landcover:fingerprint': 'ce387963',
 			'landcover:githash': 'abc123',
 			'landcover:buildtime': '2026-10-25T22:35:25.493Z',
 		});
 		// outside a git checkout there is no commit to name, and no key that pretends otherwise
-		assert.ok(!('landcover:githash' in containerMeta({ fingerprint: 'ce387963', commit: null, buildtime })));
+		const noCommit = containerMeta(joined, { fingerprint: 'ce387963', commit: null, buildtime });
+		assert.ok(!('landcover:githash' in noCommit));
 	});
 
 	test('the commit is read from this checkout, and is null outside one', async () => {

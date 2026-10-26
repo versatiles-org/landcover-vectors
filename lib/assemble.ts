@@ -167,11 +167,43 @@ export async function joinTilesets(tilesets: string[], out: string): Promise<boo
 // Which build a container came from: its config fingerprint, the commit it was built from, and when.
 export type Provenance = { fingerprint: string; commit: string | null; buildtime: Date };
 
-// What pack lays over the joined tileset's metadata: the center to open at (the joined one is just the middle of
-// the bounds), and the provenance, as `landcover:*` keys next to the `planetiler:*` ones of osm.versatiles.
-export function containerMeta(p: Provenance): Record<string, unknown> {
+// what the joined tileset knows about itself: its extent and its layers
+export type Joined = { bounds: number[]; minzoom: number; maxzoom: number; vector_layers: unknown[] };
+
+export function readJoined(mbtiles: string): Joined {
+	const db = new DatabaseSync(mbtiles, { readOnly: true });
+	try {
+		const rows = db.prepare('SELECT name, value FROM metadata').all() as { name: string; value: string }[];
+		const m = Object.fromEntries(rows.map((r) => [r.name, r.value]));
+		return {
+			bounds: m.bounds.split(',').map(Number),
+			minzoom: Number(m.minzoom),
+			maxzoom: Number(m.maxzoom),
+			vector_layers: JSON.parse(m.json).vector_layers,
+		};
+	} finally {
+		db.close();
+	}
+}
+
+// The container's complete TileJSON, which pack hands to `meta_update` as the only source of its metadata:
+// `meta` from config.ts, the schema, the extent and layers of the joined tileset, and the provenance, as
+// `landcover:*` keys next to the `planetiler:*` ones of osm.versatiles. A whole document, because a partial
+// update cannot set `tile_schema`; versatiles still fills in `tile_format` and `tile_type` from the tiles.
+export function containerMeta(joined: Joined, p: Provenance): Record<string, unknown> {
 	return {
+		tilejson: '3.0.0',
+		name: meta.name,
+		description: meta.description,
+		attribution: meta.attribution,
+		version: meta.version,
+		type: 'overlay',
+		tile_schema: SCHEMA,
+		bounds: joined.bounds,
 		center: meta.center,
+		minzoom: joined.minzoom,
+		maxzoom: joined.maxzoom,
+		vector_layers: joined.vector_layers,
 		'landcover:fingerprint': p.fingerprint,
 		...(p.commit ? { 'landcover:githash': p.commit } : {}),
 		'landcover:buildtime': p.buildtime.toISOString(),
@@ -189,18 +221,16 @@ export async function gitCommit(cwd = path.resolve(import.meta.dirname, '..')): 
 	}
 }
 
-// join the per-zoom tilesets and pack them into a brotli versatiles container (the build's final step).
-// The container declares Shortbread explicitly: it writes Shortbread's own layer names and `kind` values,
-// which is the whole point, and tippecanoe has no way to say so — without this it ships as "other" and a
-// consumer cannot tell that a stock Shortbread style already fits.
+// join the per-zoom tilesets and pack them into a brotli versatiles container (the build's final step), with
+// data/tmp/container-meta.json (containerMeta) as its whole metadata. The container declares Shortbread
+// explicitly: it writes Shortbread's own layer names and `kind` values, which is the whole point, and tippecanoe
+// has no way to say so — without this it ships as "other" and a consumer cannot tell that a stock Shortbread
+// style already fits.
 export async function pack(zooms: string[], provenance: Provenance, tmpdir: string): Promise<void> {
 	if (!(await joinTilesets(zooms, file.tiles))) throw new Error('nothing to pack — no zoom produced any tiles');
 	await fs.rm(file.container, { force: true });
-	// custom keys survive only as a TileJSON update: versatiles reads just the standard ones from an mbtiles
-	const update = path.join(tmpdir, 'container-meta.json');
-	await fs.writeFile(update, JSON.stringify(containerMeta(provenance)));
-	const pipeline =
-		`[,vpl](from_container filename="${file.tiles}"` +
-		` | meta_update schema="${SCHEMA}" tilejson_update_file="${update}")`;
+	const tilejson = path.join(tmpdir, 'container-meta.json');
+	await fs.writeFile(tilejson, JSON.stringify(containerMeta(readJoined(file.tiles), provenance), null, '\t') + '\n');
+	const pipeline = `[,vpl](from_container filename="${file.tiles}" | meta_update tilejson_file="${tilejson}")`;
 	await run('versatiles', 'convert', ['-c', 'brotli'], pipeline, file.container);
 }
