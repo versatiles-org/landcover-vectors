@@ -9,9 +9,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-import { tileBlock, tileCount, joinTilesets } from '../lib/assemble.ts';
+import { tileBlock, tileCount, joinTilesets, containerMeta, gitCommit } from '../lib/assemble.ts';
 import { skipWithout } from './tools.ts';
-import { blockWindow } from '../config.ts';
+import { blockWindow, meta as tilesetMeta } from '../config.ts';
 
 const skip = await skipWithout('tippecanoe', 'ogrinfo');
 
@@ -100,6 +100,8 @@ describe('joinTilesets', { skip }, () => {
 		assert.equal(meta.minzoom, '5');
 		assert.equal(meta.maxzoom, '5');
 		assert.equal(meta.format, 'pbf');
+		assert.equal(meta.name, tilesetMeta.name);
+		assert.equal(meta.version, tilesetMeta.version);
 		const { west, north } = blockWindow(5, 1, 2).innerLonLat;
 		const { east, south } = blockWindow(5, 2, 2).innerLonLat;
 		assert.deepEqual(
@@ -107,7 +109,7 @@ describe('joinTilesets', { skip }, () => {
 			[west, south, east, north].map((v) => Number(v.toFixed(6))),
 		);
 		assert.deepEqual(JSON.parse(meta.json).vector_layers, [
-			{ id: 'land', minzoom: 5, maxzoom: 5, fields: { kind: 'String' }, description: '' },
+			{ id: 'land', minzoom: 5, maxzoom: 5, fields: { kind: 'String' }, description: tilesetMeta.layers.land },
 		]);
 	});
 
@@ -132,5 +134,28 @@ describe('joinTilesets', { skip }, () => {
 	test('two blocks claiming one tile is an error, not a silent overwrite', async () => {
 		const a = await block(5, 1, 2);
 		await assert.rejects(joinTilesets([a, a], path.join(tmp, 'dup.mbtiles')), /UNIQUE/);
+	});
+});
+
+describe('container metadata', () => {
+	test('names the build it came from, next to the center to open at', () => {
+		const buildtime = new Date('2026-10-25T22:35:25.493Z');
+		assert.deepEqual(containerMeta({ fingerprint: 'ce387963', commit: 'abc123', buildtime }), {
+			center: tilesetMeta.center,
+			'landcover:fingerprint': 'ce387963',
+			'landcover:githash': 'abc123',
+			'landcover:buildtime': '2026-10-25T22:35:25.493Z',
+		});
+		// outside a git checkout there is no commit to name, and no key that pretends otherwise
+		assert.ok(!('landcover:githash' in containerMeta({ fingerprint: 'ce387963', commit: null, buildtime })));
+	});
+
+	test('the commit is read from this checkout, and is null outside one', async () => {
+		assert.match((await gitCommit()) ?? '', /^[0-9a-f]{40}(-dirty)?$/);
+		assert.equal(await gitCommit(tmp), null);
+	});
+
+	test('every layer the tiles have is described', () => {
+		assert.deepEqual(Object.keys(tilesetMeta.layers).sort(), ['land', 'water_polygons']);
 	});
 });

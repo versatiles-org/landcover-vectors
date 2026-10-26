@@ -6,12 +6,16 @@
 // file of polygons. Blocks never share a tile, so joining them is a plain copy of rows: into one mbtiles per zoom
 // once its blocks are done (lib/pipeline.ts), and the zooms into one at the end, which `versatiles convert` packs.
 
+import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { promisify } from 'node:util';
 
 import { run, runQuiet, runCapture, atomic } from './worldcover.ts';
 import { file, meta, SCHEMA, TIPPECANOE_ARGS } from '../config.ts';
+
+const execFileAsync = promisify(execFile);
 
 export type TileRange = { x0: number; y0: number; x1: number; y1: number }; // XYZ, x1/y1 exclusive
 export type Layer = { name: 'land' | 'water_polygons'; file: string };
@@ -141,14 +145,16 @@ export async function joinTilesets(tilesets: string[], out: string): Promise<boo
 				name: meta.name,
 				description: meta.description,
 				attribution: meta.attribution,
-				version: '2',
+				version: meta.version,
 				type: 'overlay',
 				format: 'pbf',
 				minzoom: String(minzoom),
 				maxzoom: String(maxzoom),
 				bounds: bounds.map(fixed).join(','),
 				center: [(bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2].map(fixed).join(',') + `,${minzoom}`,
-				json: JSON.stringify({ vector_layers: [...layers.values()].map((l) => ({ ...l, description: '' })) }),
+				json: JSON.stringify({
+					vector_layers: [...layers.values()].map((l) => ({ ...l, description: meta.layers[l.id] ?? '' })),
+				}),
 			}))
 				insert.run(name, value);
 		} finally {
@@ -158,13 +164,43 @@ export async function joinTilesets(tilesets: string[], out: string): Promise<boo
 	return true;
 }
 
+// Which build a container came from: its config fingerprint, the commit it was built from, and when.
+export type Provenance = { fingerprint: string; commit: string | null; buildtime: Date };
+
+// What pack lays over the joined tileset's metadata: the center to open at (the joined one is just the middle of
+// the bounds), and the provenance, as `landcover:*` keys next to the `planetiler:*` ones of osm.versatiles.
+export function containerMeta(p: Provenance): Record<string, unknown> {
+	return {
+		center: meta.center,
+		'landcover:fingerprint': p.fingerprint,
+		...(p.commit ? { 'landcover:githash': p.commit } : {}),
+		'landcover:buildtime': p.buildtime.toISOString(),
+	};
+}
+
+// the commit HEAD points at, marked "-dirty" when tracked files differ from it; null outside a git checkout
+export async function gitCommit(cwd = path.resolve(import.meta.dirname, '..')): Promise<string | null> {
+	try {
+		const git = async (...args: string[]) => (await execFileAsync('git', ['-C', cwd, ...args])).stdout.trim();
+		const head = await git('rev-parse', 'HEAD');
+		return (await git('status', '--porcelain', '--untracked-files=no')) ? `${head}-dirty` : head;
+	} catch {
+		return null;
+	}
+}
+
 // join the per-zoom tilesets and pack them into a brotli versatiles container (the build's final step).
 // The container declares Shortbread explicitly: it writes Shortbread's own layer names and `kind` values,
 // which is the whole point, and tippecanoe has no way to say so — without this it ships as "other" and a
 // consumer cannot tell that a stock Shortbread style already fits.
-export async function pack(zooms: string[]): Promise<void> {
+export async function pack(zooms: string[], provenance: Provenance, tmpdir: string): Promise<void> {
 	if (!(await joinTilesets(zooms, file.tiles))) throw new Error('nothing to pack — no zoom produced any tiles');
 	await fs.rm(file.container, { force: true });
-	const pipeline = `[,vpl](from_container filename="${file.tiles}" | meta_update schema="${SCHEMA}")`;
+	// custom keys survive only as a TileJSON update: versatiles reads just the standard ones from an mbtiles
+	const update = path.join(tmpdir, 'container-meta.json');
+	await fs.writeFile(update, JSON.stringify(containerMeta(provenance)));
+	const pipeline =
+		`[,vpl](from_container filename="${file.tiles}"` +
+		` | meta_update schema="${SCHEMA}" tilejson_update_file="${update}")`;
 	await run('versatiles', 'convert', ['-c', 'brotli'], pipeline, file.container);
 }

@@ -19,13 +19,15 @@ import { runZooms } from '../lib/pipeline.ts';
 import { cacheValues, sourceValues, readStamp, writeStamp, stampMismatch } from '../lib/fingerprint.ts';
 import { LOG_HEADER } from '../lib/block.ts';
 import { readRunSummary, formatSummary } from '../lib/summary.ts';
-import { pack } from '../lib/assemble.ts';
+import { pack, gitCommit } from '../lib/assemble.ts';
 import { datadir, dir, file, MAXLEVEL, BLOCK_CONCURRENCY, CPU_CORES } from '../config.ts';
 
 // fail fast (before the long build) if any external tool is missing or too old
 const started = Date.now();
 
 await requireTools(['node', 'gdal', 'gdal_calc', 'tippecanoe', 'versatiles']);
+// the commit stamped into the container, read now: the checkout may move on during an hours-long build
+const commit = await gitCommit();
 
 // the single reprojected source raster (with overview pyramid) is built by `npm run download`;
 // blocks read their window from it — coarse levels at low zoom, full detail at high zoom
@@ -103,7 +105,7 @@ const zooms = await timed('build', () =>
 );
 bar.done();
 
-await timed('pack', () => pack(zooms));
+await timed('pack', () => pack(zooms, { fingerprint: fp, commit, buildtime: new Date(started) }, dir.tmp));
 await fs.rm(dir.tmp, { recursive: true, force: true }); // scratch no longer needed
 
 // what actually happened, from the log this run appended — branch counts included, so a fast path that

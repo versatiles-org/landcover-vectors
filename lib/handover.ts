@@ -9,7 +9,7 @@
 //
 //   from_merged_vector [
 //     from_container filename="osm.versatiles" | <osmFilter()>,
-//     from_container filename="landcover.versatiles" | <landcoverFilter()>
+//     from_container filename="landcover-vectors.versatiles" | <landcoverFilter()>
 //   ]
 //
 // `vector_filter_features` exposes the tile's `zoom` to the expression from versatiles 4.15.0 on.

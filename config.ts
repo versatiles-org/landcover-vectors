@@ -49,7 +49,7 @@ export const file = {
 	log: path.join(datadir, 'blocks.log'), // per-block processing log (TSV), one row per block (build)
 	timings: path.join(datadir, 'timings.jsonl'), // how long every step and command took (download, build)
 	tiles: path.join(datadir, 'landcover.mbtiles'), // every block's tiles in one tileset (pack)
-	container: path.join(datadir, 'landcover.versatiles'), // brotli versatiles (pack)
+	container: path.join(datadir, 'landcover-vectors.versatiles'), // brotli versatiles, named as published (pack)
 	osm: path.join(datadir, 'osm.versatiles'), // OSM Shortbread base, downloaded on demand (merge)
 	merged: path.join(datadir, 'combined.versatiles'), // OSM + landcover feature-merge (merge)
 };
@@ -291,11 +291,18 @@ export const SEA_SHARE_MIN = 50;
 // section "What's in the tiles"). Stamped into the container by lib/assemble.ts and bin/merge.ts.
 export const SCHEMA = 'shortbread@1.1';
 
-// metadata embedded in the generated tilesets
+// metadata embedded in the generated tilesets; `description` carries ESA's required credit word for word
 export const meta = {
-	name: 'Versatiles Landcover',
+	name: 'VersaTiles Landcover Vectors',
 	attribution:
 		'<a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a> (<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>), coastline <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>',
-	description:
-		'Landcover vector tiles based on ESA Worldcover 2021, © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium',
+	description: `Global land cover for zoom levels 0–${MAXLEVEL} from ESA WorldCover 2021 (v200), in Shortbread's land and water_polygons layers. © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium`,
+	// the tileset's revision (MBTiles `version`): raise it with every published build whose tiles differ
+	version: '3',
+	// where a viewer opens the container: [lon, lat, zoom]
+	center: [10, 30, 2] as [number, number, number],
+	layers: {
+		land: 'ESA WorldCover classes as Shortbread land kinds',
+		water_polygons: "Permanent water and glaciers from ESA WorldCover; the sea is left to Shortbread's ocean layer",
+	} as Record<string, string>,
 };

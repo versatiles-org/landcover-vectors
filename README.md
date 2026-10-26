@@ -10,7 +10,7 @@ on, OSM takes over.
 
 **Download** from [download.versatiles.org](https://download.versatiles.org/):
 
-- [`landcover-vectors.versatiles`](https://download.versatiles.org/landcover-vectors.versatiles) (~2 GB) — this
+- [`landcover-vectors.versatiles`](https://download.versatiles.org/landcover-vectors.versatiles) (~4.7 GB) — this
   tileset, to [merge with OSM](#merging-with-osm) yourself
 - [`osm-landcover.versatiles`](https://download.versatiles.org/osm-landcover.versatiles) (~69 GB) — OSM
   Shortbread with it already merged in
@@ -138,7 +138,7 @@ versatiles convert -c brotli merge.vpl combined.versatiles
 
 For a local build, `npm run merge` does the same: it downloads the latest
 [OSM Shortbread container](https://download.versatiles.org/osm.versatiles) to `data/osm.versatiles` (~66 GB,
-once and resumable), merges it with `data/landcover.versatiles` into `data/combined.versatiles`, and refuses to
+once and resumable), merges it with `data/landcover-vectors.versatiles` into `data/combined.versatiles`, and refuses to
 run with versatiles below 4.15.0. Its filters are generated from `channels` in `config.ts` (`lib/handover.ts`),
 so they follow any change of a cutoff.
 
@@ -173,7 +173,7 @@ it starts:
 
 ```sh
 npm run download   # once: build the EPSG:3857 source raster from ESA's remote tiles, fetch and rasterize the ocean mask
-npm run build      # everything else → data/landcover.versatiles
+npm run build      # everything else → data/landcover-vectors.versatiles
 npm run merge      # optional: merge with OSM → data/combined.versatiles
 ```
 
@@ -219,11 +219,11 @@ flowchart TB
   end
   subgraph pack["npm run build: pack"]
     direction LR
-    zt2[("`2_tiles/z{*z*}.mbtiles`")]:::again --> pj("join zooms"):::step --> mb[("landcover.mbtiles")]:::data --> conv("convert"):::step --> vt[("landcover.versatiles")]:::data
+    zt2[("`2_tiles/z{*z*}.mbtiles`")]:::again --> pj("join zooms"):::step --> mb[("landcover.mbtiles")]:::data --> conv("convert"):::step --> vt[("landcover-vectors.versatiles")]:::data
   end
   subgraph merge["npm run merge (optional)"]
     direction LR
-    vt2[("landcover.versatiles")]:::again -.-> fm("feature-merge"):::step -.-> cv[("combined.versatiles")]:::data
+    vt2[("landcover-vectors.versatiles")]:::again -.-> fm("feature-merge"):::step -.-> cv[("combined.versatiles")]:::data
     sb[("osm.versatiles")]:::data -.-> fm
   end
   download ~~~ blocks ~~~ pack ~~~ merge
@@ -374,8 +374,11 @@ requires the histogram to count every pixel of the window as well.
 
 `lib/assemble.ts` copies the per-zoom tiles into `data/landcover.mbtiles` (zooms, like blocks, never share a
 tile, so this is a plain copy, nothing is decoded), and `versatiles convert -c brotli` packs
-it into `data/landcover.versatiles`, stamping `tile_schema: shortbread@1.1` so consumers can tell that a
-Shortbread style fits. The build ends with a per-zoom tally of how its blocks were processed, from
+it into `data/landcover-vectors.versatiles`, the name it is published under, stamping `tile_schema: shortbread@1.1`
+so consumers can tell that a Shortbread style fits. Name, description, attribution, revision (`version`) and the
+layer descriptions come from `meta` in `config.ts`. The container also names the build it came from, like the
+`planetiler:*` keys of `osm.versatiles`: `landcover:fingerprint` (the config), `landcover:githash` (the commit,
+`-dirty` with uncommitted changes) and `landcover:buildtime`. The build ends with a per-zoom tally of how its blocks were processed, from
 `data/blocks.log`.
 
 ## Development
