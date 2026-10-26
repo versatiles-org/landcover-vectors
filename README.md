@@ -115,6 +115,12 @@ kinds, so ESA's green covers parts of towns at z10 that turn plain residential a
 
 ### Merge with the VersaTiles CLI
 
+> **Don't merge without the filters.** This container fills every kind wall to wall up to z10, and OSM has its
+> own copies of many of them. A plain `from_merged_vector [ osm, landcover ]` keeps both, so up to z10 the
+> same `land` and `water_polygons` kinds come from two sources at once: OSM's sparse forest and glaciers on top
+> of ESA's, ESA's classified lakes on top of OSM's precise ones from z4, ESA's built-up area covering OSM's urban
+> detail at z10.
+
 Filter both sources on the way into `from_merged_vector`. The filter's CEL strings use single quotes, which a
 shell argument in single quotes cannot hold, so write the pipeline to a file:
 
