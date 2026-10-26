@@ -210,40 +210,19 @@ names what changed and refuses to mix old and new. `npm run clean` clears them (
 
 ## How it works
 
-`build` runs: **coverage index → for each zoom 0–10 ( per-block processing and tiling → join ) → pack**.
+Each step reads what an earlier one wrote; all files are under `data/`:
 
-```mermaid
-flowchart TB
-  classDef data fill:#4a72b026,stroke:#4a72b0
-  classDef step fill:#d4972a33,stroke:#b9832a
-  classDef again fill:#4a72b026,stroke:#4a72b0,stroke-dasharray:4 3
-  subgraph download["npm run download"]
-    direction LR
-    esa[("ESA WorldCover on S3")]:::data --> warp("reproject"):::step --> src[("worldcover-3857.tif")]:::data
-    osm[("OSM water polygons")]:::data --> rast("rasterize"):::step --> sea[("seashare-3857.tif")]:::data
-  end
-  subgraph blocks["npm run build: blocks, zoom by zoom"]
-    direction LR
-    src2[("worldcover-3857.tif<br/>seashare-3857.tif")]:::again --> block("process + tile each block"):::step --> bt[("`1_results/z{*z*}\_{*x*}\_{*y*}.mbtiles`")]:::data --> zj("join per zoom"):::step --> zt[("`2_tiles/z{*z*}.mbtiles`")]:::data
-  end
-  subgraph pack["npm run build: pack"]
-    direction LR
-    zt2[("`2_tiles/z{*z*}.mbtiles`")]:::again --> pj("join zooms"):::step --> mb[("landcover.mbtiles")]:::data --> conv("convert"):::step --> vt[("landcover-vectors.versatiles")]:::data
-  end
-  subgraph merge["npm run merge (optional)"]
-    direction LR
-    vt2[("landcover-vectors.versatiles")]:::again -.-> fm("feature-merge"):::step -.-> cv[("combined.versatiles")]:::data
-    sb[("osm.versatiles")]:::data -.-> fm
-  end
-  download ~~~ blocks ~~~ pack ~~~ merge
-  style download fill:#8c959f1a,stroke:#8c959f80
-  style blocks fill:#8c959f1a,stroke:#8c959f80
-  style pack fill:#8c959f1a,stroke:#8c959f80
-  style merge fill:#8c959f1a,stroke:#8c959f80
-```
+| command                    | step                                                                     | reads                                            | writes                                                   |
+| -------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------ | -------------------------------------------------------- |
+| `npm run download`         | [reproject ESA WorldCover](#source-raster)                               | ESA's 3° tiles on S3                             | `0_download/worldcover-3857.tif`, with overviews         |
+|                            | [rasterize the sea](#ocean-mask)                                         | OSM's water polygons                             | `0_download/seashare-3857.tif`, with overviews           |
+| `npm run build`            | [process and tile each block](#per-block-processing), for each zoom 0–10 | both rasters                                     | `1_results/z{z}_{x}_{y}.mbtiles`, one per block          |
+|                            | join each zoom                                                           | its blocks' tilesets                             | `2_tiles/z{z}.mbtiles`                                   |
+|                            | [pack](#pack)                                                            | `2_tiles/z{z}.mbtiles`                           | `landcover.mbtiles`, then `landcover-vectors.versatiles` |
+| `npm run merge` (optional) | [feature-merge, filtered](#merging-with-osm)                             | `landcover-vectors.versatiles`, `osm.versatiles` | `combined.versatiles`                                    |
 
-Blue cylinders are data (files under `data/`), orange boxes are the steps between them, and the grey frames say
-which command runs them. A dashed cylinder is a file from the row above, repeated where it is read.
+Before the blocks, `build` reads which 3° cells ESA has tiles for (the [coverage index](#coverage-index)) and
+skips every block that touches none of them.
 
 ### Blocks
 
