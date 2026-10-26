@@ -315,24 +315,17 @@ plus a margin from the source and the matching window of the sea share (see [oce
 straight from the pyramid level for its zoom (so a low-zoom block reads ≈100× less): a block's grid lines up with
 a level, so a small VRT points at the window's rectangle in it, with no warp and no resampling, then:
 
-```mermaid
-flowchart TD
-  classDef step fill:#d4972a33,stroke:#b9832a
-  classDef data fill:#4a72b026,stroke:#4a72b0
-  classDef decision fill:#8c959f1a,stroke:#8c959f
-  src[("worldcover-3857.tif")] --> read
-  sea[("seashare-3857.tif")] --> read
-  read["read window + sea share (VRTs)"] --> hist{"histograms"}
-  hist -- "all sea / nothing active" --> empty["write an empty tileset"]
-  hist -- "one kind, no sea" --> rect["window rectangle"] --> tile
-  hist -- "otherwise" --> classify["1 classify"] --> sieve["2 sieve 20 px → 80 px"] --> cut["3 cut at tile edges"]
-  cut --> poly["4 polygonize"] --> simp["5 simplify-coverage"] --> split["6 tag & split land / water"] --> tile["7 tippecanoe → keep own tiles"]
-  tile --> out[("`1_results/z{*z*}\_{*x*}\_{*y*}.mbtiles`")]
-  empty --> out
-  class read,empty,rect,classify,sieve,cut,poly,simp,split,tile step
-  class src,sea,out data
-  class hist decision
-```
+| step          | tool                            | what the block is afterwards                                                 |
+| ------------- | ------------------------------- | ---------------------------------------------------------------------------- |
+| read          | VRTs                            | the window plus margin, and its sea share — rasters                          |
+| fast paths    | `gdalinfo -hist`                | all sea: an empty tileset, done; one kind and no sea: one rectangle, go to 7 |
+| 1 classify    | `gdal_calc.py`                  | a raster of class indices, with sea and inactive classes as no-data          |
+| 2 sieve       | `gdal raster sieve`, two passes | the same raster without patches below the sieve size                         |
+| 3 cut         | VRT                             | the same raster, its codes shifted per tile so no patch crosses a tile edge  |
+| 4 polygonize  | `gdal raster polygonize`        | a gap-free polygon coverage, no-data included — vectors from here on         |
+| 5 simplify    | `gdal vector simplify-coverage` | the same coverage, its shared edges simplified to ≈ 1 px                     |
+| 6 tag & split | `ogr2ogr`                       | `land` and `water_polygons` with their `kind`, no-data dropped               |
+| 7 tile        | `tippecanoe`                    | `1_results/z{z}_{x}_{y}.mbtiles`, the block's own tiles                      |
 
 1. **Classify** — one `gdal_calc.py` call maps each pixel's ESA code to its class index. ESA's no-data,
    every inactive class and OSM's sea fold into the no-data class. Each pixel keeps its own class: there is no smoothing
