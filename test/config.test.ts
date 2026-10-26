@@ -204,14 +204,16 @@ describe('the resolution knobs', () => {
 				[
 					'--input-type=module',
 					'-e',
-					"import('./config.ts').then((c) => console.log(c.BLOCK_CONCURRENCY, c.CPU_CORES))",
+					"import('./config.ts').then((c) => console.log(JSON.stringify([c.BLOCK_CONCURRENCY, c.CPU_CORES])))",
 				],
 				{ cwd: repoRoot, encoding: 'utf8', env: { ...process.env, LANDCOVER_CONCURRENCY: '', ...env } },
 			);
-		const [blocks, cores] = read({}).stdout.trim().split(' ').map(Number);
+		// JSON, not bare numbers: with FORCE_COLOR set, console.log colours a number but never a string
+		const values = (env: Record<string, string>) => JSON.parse(read(env).stdout) as number[];
+		const [blocks, cores] = values({});
 		assert.equal(blocks, cores);
-		assert.equal(read({ LANDCOVER_CONCURRENCY: '4' }).stdout.trim().split(' ')[0], '4');
-		assert.equal(read({ LANDCOVER_CONCURRENCY: '2.7' }).stdout.trim().split(' ')[0], '2');
+		assert.equal(values({ LANDCOVER_CONCURRENCY: '4' })[0], 4);
+		assert.equal(values({ LANDCOVER_CONCURRENCY: '2.7' })[0], 2);
 		for (const bad of ['0', 'abc']) {
 			const r = read({ LANDCOVER_CONCURRENCY: bad });
 			assert.equal(r.status, 1, `LANDCOVER_CONCURRENCY=${bad} was accepted`);
@@ -233,14 +235,14 @@ describe('the resolution knobs', () => {
 				[
 					'--input-type=module',
 					'-e',
-					"import('./config.ts').then((c) => console.log(c.DETAIL_PX, c.simplifyForLevel(10)))",
+					"import('./config.ts').then((c) => console.log(JSON.stringify([c.DETAIL_PX, c.simplifyForLevel(10)])))",
 				],
 				{ cwd: repoRoot, encoding: 'utf8', env: { ...process.env, LANDCOVER_DETAIL_PX: value } },
 			);
 
 		const two = read('2');
 		assert.equal(two.status, 0, two.stderr);
-		const [detail, tolerance] = two.stdout.trim().split(' ').map(Number);
+		const [detail, tolerance] = JSON.parse(two.stdout) as number[];
 		assert.equal(detail, 2);
 		assert.equal(tolerance, simplifyForLevel(10) / 2, 'twice the detail is half the tolerance');
 
