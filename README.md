@@ -115,6 +115,7 @@ kinds, so ESA's green covers parts of towns at z10 that turn plain residential a
 
 ### Merge with the VersaTiles CLI
 
+> [!WARNING]
 > **Don't merge without the filters.** This container fills every kind wall to wall up to z10, and OSM has its
 > own copies of many of them. A plain `from_merged_vector [ osm, landcover ]` keeps both, so up to z10 the
 > same `land` and `water_polygons` kinds come from two sources at once: OSM's sparse forest and glaciers on top
@@ -138,6 +139,7 @@ EOF
 versatiles convert -c brotli merge.vpl combined.versatiles
 ```
 
+> [!WARNING]
 > **Needs versatiles ≥ 4.15.0.** `vector_filter_features` gained the tile's `zoom` in 4.15.0. Older versions do
 > not report an error: 4.14.0 silently drops every feature of the filtered layers, at every zoom, so the merged
 > tileset ends up without `land` and `water_polygons`.
@@ -183,6 +185,7 @@ npm run build      # everything else → data/landcover-vectors.versatiles
 npm run merge      # optional: merge with OSM → data/combined.versatiles
 ```
 
+> [!IMPORTANT]
 > **Resources.** A full z0–10 build needs roughly **60 GB** of disk under `data/` (the ~19 GB EPSG:3857 source,
 > the ~1.3 GB ocean polygons, the ~0.4 GB sea share, the per-block tilesets and, each about as large, the per-zoom
 > tilesets and the joined tileset) and on the order of **300 core-hours** of CPU. It's
