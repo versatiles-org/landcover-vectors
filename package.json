@@ -17,6 +17,7 @@
     "merge": "node bin/merge.ts",
     "verify-merge": "node bin/verify-merge.ts",
     "inspect": "node --disable-warning=ExperimentalWarning bin/inspect.ts",
+    "dev": "node bin/dev.ts",
     "preview": "node --disable-warning=ExperimentalWarning bin/preview.ts",
     "style": "node bin/style.ts",
     "stats": "node --disable-warning=ExperimentalWarning bin/stats.ts",

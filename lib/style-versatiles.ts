@@ -8,8 +8,9 @@
 
 import { osm, type StyleSpecification } from '@versatiles/style';
 
-export function versatilesStyle(tiles: string): StyleSpecification {
-	const style = osm({ features: { landcover: true } });
+// `landcover: false` is the stock style, i.e. OSM as it is drawn without this container (bin/dev.ts)
+export function versatilesStyle(tiles: string, landcover = true): StyleSpecification {
+	const style = osm({ features: { landcover } });
 	// osm() points its vector source at tiles.versatiles.org, where the glyphs and sprites stay; the tiles are ours
 	for (const source of Object.values(style.sources)) if (source.type === 'vector') source.url = tiles;
 	return style;

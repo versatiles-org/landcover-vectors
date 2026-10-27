@@ -373,17 +373,18 @@ the joined tileset; and, like the `planetiler:*` keys of `osm.versatiles`, the b
 
 ## Development
 
-| command                | what it does                                                                    |
-| ---------------------- | ------------------------------------------------------------------------------- |
-| `npm run preview`      | build one area, serve it next to real OSM data and open a viewer                |
-| `npm run stats`        | tile size distribution, worst tiles, and a baseline to diff builds against      |
-| `npm run timings`      | where a download or build spent its time, per step and per command              |
-| `npm run sweep`        | build an area once per parameter value and compare size and quality             |
-| `npm run inspect`      | compare one tile pixel by pixel with what it should show, as numbers and a PNG  |
-| `npm run verify-merge` | check the filtered merge on real tiles: every kind from one source per zoom     |
-| `npm run style`        | write a QGIS vector-tiles style (`landcover.qml`) in versatiles-style's colours |
-| `npm run clean`        | delete the build caches (keeps the download)                                    |
-| `npm run check`        | typecheck, formatting and tests                                                 |
+| command                | what it does                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------- |
+| `npm run dev`          | look at OSM, the land cover and the merge in versatiles-style, switching between them |
+| `npm run preview`      | build one area, serve it next to real OSM data and open a viewer                      |
+| `npm run stats`        | tile size distribution, worst tiles, and a baseline to diff builds against            |
+| `npm run timings`      | where a download or build spent its time, per step and per command                    |
+| `npm run sweep`        | build an area once per parameter value and compare size and quality                   |
+| `npm run inspect`      | compare one tile pixel by pixel with what it should show, as numbers and a PNG        |
+| `npm run verify-merge` | check the filtered merge on real tiles: every kind from one source per zoom           |
+| `npm run style`        | write a QGIS vector-tiles style (`landcover.qml`) in versatiles-style's colours       |
+| `npm run clean`        | delete the build caches (keeps the download)                                          |
+| `npm run check`        | typecheck, formatting and tests                                                       |
 
 ### Timings
 
@@ -393,6 +394,20 @@ Download, build and preview log how long every step and every external command t
 (with the average number of commands running at the same time, which wall times under load have to be read
 against) and the slowest single commands with their block or sea-share tile. `--zooms` keeps the zooms apart,
 `--runs` lists earlier runs and `--run <id>` picks one.
+
+### Dev
+
+```sh
+npm run dev             # the published landcover container
+npm run dev -- --local  # the local build, data/landcover-vectors.versatiles
+```
+
+Serves OSM's Shortbread container, the landcover container and their merge — filtered exactly like
+`npm run merge` — from one in-process server (`@versatiles/versatiles-rs`), without downloading anything. OSM
+always comes from `download.versatiles.org`. The map (`dev/map/`) switches between **osm**, **landcover** and
+**osm+landcover** (keys 1, 2, 3) at the same position, each drawn with versatiles-style's colorful style: osm
+without its `landcover` feature, as OSM looks today; the other two with it. The header shows the zoom and which
+side of the z10 → z11 handover it is on.
 
 ### Preview
 

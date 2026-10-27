@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>landcover dev</title>
+		<!-- pinned on purpose, like the preview viewer: a map that changes under you is not a comparison -->
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+		<style>
+			:root {
+				--bg: #1b1d21;
+				--panel: #24262b;
+				--line: #383b42;
+				--text: #e8e6e3;
+				--dim: #9b9aa0;
+				--accent: #66aa44;
+			}
+			* {
+				box-sizing: border-box;
+			}
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+				font:
+					12px/1.45 ui-monospace,
+					SFMono-Regular,
+					Menlo,
+					monospace;
+				color: var(--text);
+				background: var(--bg);
+			}
+			#map {
+				position: absolute;
+				inset: 0;
+			}
+			.panel {
+				position: absolute;
+				z-index: 2;
+				background: color-mix(in srgb, var(--panel) 92%, transparent);
+				border: 1px solid var(--line);
+				border-radius: 6px;
+				padding: 8px 10px;
+				backdrop-filter: blur(6px);
+			}
+			#head {
+				top: 10px;
+				left: 10px;
+				max-width: calc(100vw - 20px);
+			}
+			#head .dim {
+				color: var(--dim);
+			}
+			#switch {
+				top: 10px;
+				right: 10px;
+				display: flex;
+				padding: 3px;
+				gap: 3px;
+			}
+			#switch button {
+				font: inherit;
+				color: var(--text);
+				background: none;
+				border: 0;
+				border-radius: 4px;
+				padding: 5px 10px;
+				cursor: pointer;
+			}
+			#switch button:hover {
+				background: var(--line);
+			}
+			#switch button[aria-pressed='true'] {
+				background: var(--accent);
+				color: #111;
+			}
+			#switch kbd {
+				font: inherit;
+				opacity: 0.55;
+				margin-left: 4px;
+			}
+			@media (max-width: 560px) {
+				#switch {
+					top: auto;
+					bottom: 34px;
+					right: 10px;
+					left: 10px;
+					justify-content: stretch;
+				}
+				#switch button {
+					flex: 1;
+				}
+				#switch kbd {
+					display: none;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div id="map"></div>
+		<div id="head" class="panel">loading…</div>
+		<div id="switch" class="panel" role="group" aria-label="tiles">
+			<button data-view="osm">osm<kbd>1</kbd></button>
+			<button data-view="landcover">landcover<kbd>2</kbd></button>
+			<button data-view="merged">osm+landcover<kbd>3</kbd></button>
+		</div>
+		<script type="module">
+			const $ = (id) => document.getElementById(id);
+			const VIEWS = ['osm', 'landcover', 'merged'];
+			const state = await fetch('/gen/state.json').then((r) => r.json());
+			const styles = Object.fromEntries(
+				await Promise.all(VIEWS.map(async (v) => [v, await fetch(`/gen/style-${v}.json`).then((r) => r.json())])),
+			);
+
+			// the view: ?view= for a link, else the last one picked, else the merge
+			const KEY = 'landcover-dev-view';
+			let remembered = null;
+			try {
+				remembered = localStorage.getItem(KEY);
+			} catch {}
+			const wanted = new URLSearchParams(location.search).get('view') ?? remembered;
+			let view = VIEWS.includes(wanted) ? wanted : 'merged';
+
+			const map = new maplibregl.Map({
+				container: 'map',
+				style: styles[view],
+				hash: true, // #z/lat/lon, kept across a switch so the same place can be flicked between
+				// versatiles lists its tiles as /tiles/… paths, which MapLibre cannot fetch from its workers
+				transformRequest: (url) => (url.startsWith('/') ? { url: location.origin + url } : undefined),
+				center: [10, 50],
+				zoom: 4,
+			});
+			window.map = map; // for poking at it from the browser console
+			map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'bottom-right');
+			map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+
+			function show(next) {
+				if (next !== view) {
+					view = next;
+					map.setStyle(styles[view]);
+				}
+				for (const b of document.querySelectorAll('#switch button'))
+					b.setAttribute('aria-pressed', String(b.dataset.view === view));
+				try {
+					localStorage.setItem(KEY, view);
+				} catch {}
+				head();
+			}
+
+			// the land cover hands over to OSM at z10 → z11 (z4 for water, z10 for residential); say which side the map is on
+			function head() {
+				const z = map.getZoom();
+				const side = z < 11 ? 'below the handover z10 → z11' : 'above the handover z10 → z11';
+				$('head').innerHTML =
+					`<b>z${z.toFixed(1)}</b> <span class="dim">· tile z${Math.min(14, Math.floor(z))} · ${side}</span><br>` +
+					`<span class="dim">landcover:</span> <b>${state.landcover}</b> <span class="dim">${state.source}</span>`;
+			}
+
+			for (const b of document.querySelectorAll('#switch button'))
+				b.addEventListener('click', () => show(b.dataset.view));
+			addEventListener('keydown', (e) => {
+				if (e.target instanceof Element && e.target.closest('input, textarea')) return;
+				if (e.metaKey || e.ctrlKey || e.altKey) return;
+				const i = ['1', '2', '3'].indexOf(e.key);
+				if (i >= 0) show(VIEWS[i]);
+			});
+			map.on('zoom', head);
+			show(view);
+		</script>
+	</body>
+</html>
