@@ -56,6 +56,8 @@ export const file = {
 
 // upstream OSM-based Shortbread container the landcover is feature-merged into (bin/merge.ts)
 export const OSM_URL = 'https://download.versatiles.org/osm.versatiles';
+// this container as published, what `npm run verify-merge` checks by default
+export const LANDCOVER_URL = 'https://download.versatiles.org/landcover-vectors.versatiles';
 
 // OSM's sea, computed from its coastline: the polygons Shortbread's `ocean` layer is built from (planetiler-shortbread
 // reads this very file). Every block blanks them out of the ESA window as it classifies it (lib/ocean.ts), so the

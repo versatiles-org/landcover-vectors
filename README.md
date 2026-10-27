@@ -150,6 +150,13 @@ once and resumable), merges it with `data/landcover-vectors.versatiles` into `da
 run with versatiles below 4.15.0. Its filters are generated from `channels` in `config.ts` (`lib/handover.ts`),
 so they follow any change of a cutoff.
 
+`npm run verify-merge` checks a merge on real tiles, without downloading either container: it opens both
+published containers raw, each filtered, and merged, reads the tile under 13 sample points at z0–14 from each,
+and counts features per layer and `kind`. It fails when a kind still comes from both sources at a zoom, when a
+filter drops features of the kind its source should supply, or when the merged tile is not exactly the two
+filtered ones; it prints which source each kind comes from per zoom. `--landcover data/landcover-vectors.versatiles`
+checks a local build before upload, `--unfiltered` the unfiltered merge, which has to fail.
+
 ## Building
 
 ### Requirements
@@ -366,16 +373,17 @@ the joined tileset; and, like the `planetiler:*` keys of `osm.versatiles`, the b
 
 ## Development
 
-| command           | what it does                                                                    |
-| ----------------- | ------------------------------------------------------------------------------- |
-| `npm run preview` | build one area, serve it next to real OSM data and open a viewer                |
-| `npm run stats`   | tile size distribution, worst tiles, and a baseline to diff builds against      |
-| `npm run timings` | where a download or build spent its time, per step and per command              |
-| `npm run sweep`   | build an area once per parameter value and compare size and quality             |
-| `npm run inspect` | compare one tile pixel by pixel with what it should show, as numbers and a PNG  |
-| `npm run style`   | write a QGIS vector-tiles style (`landcover.qml`) in versatiles-style's colours |
-| `npm run clean`   | delete the build caches (keeps the download)                                    |
-| `npm run check`   | typecheck, formatting and tests                                                 |
+| command                | what it does                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------- |
+| `npm run preview`      | build one area, serve it next to real OSM data and open a viewer                |
+| `npm run stats`        | tile size distribution, worst tiles, and a baseline to diff builds against      |
+| `npm run timings`      | where a download or build spent its time, per step and per command              |
+| `npm run sweep`        | build an area once per parameter value and compare size and quality             |
+| `npm run inspect`      | compare one tile pixel by pixel with what it should show, as numbers and a PNG  |
+| `npm run verify-merge` | check the filtered merge on real tiles: every kind from one source per zoom     |
+| `npm run style`        | write a QGIS vector-tiles style (`landcover.qml`) in versatiles-style's colours |
+| `npm run clean`        | delete the build caches (keeps the download)                                    |
+| `npm run check`        | typecheck, formatting and tests                                                 |
 
 ### Timings
 
