@@ -2,6 +2,7 @@
 //
 //   npm run dev                # the published landcover container
 //   npm run dev -- --local     # the local build, data/landcover-vectors.versatiles
+//   npm run dev -- --landcover <path|url>   # any other landcover container, e.g. an experiment's
 //
 // Serves three sources from one in-process server (@versatiles/versatiles-rs, nothing downloaded): OSM's
 // Shortbread container, the landcover container, and their merge, filtered exactly like `npm run merge`
@@ -24,6 +25,7 @@ import { datadir, file, OSM_URL, LANDCOVER_URL } from '../config.ts';
 const { values: opt } = parseArgs({
 	options: {
 		local: { type: 'boolean', default: false },
+		landcover: { type: 'string' },
 		port: { type: 'string', default: '8080' },
 		'no-open': { type: 'boolean', default: false },
 		help: { type: 'boolean', default: false },
@@ -43,9 +45,14 @@ if (opt.help) {
 	process.exit(0);
 }
 
-const landcover = opt.local ? file.container : LANDCOVER_URL;
-if (opt.local && !(await fs.stat(landcover).catch(() => null)))
-	throw new Error(`missing ${landcover} — run "npm run build" first, or leave out --local`);
+if (opt.local && opt.landcover) throw new Error('--local and --landcover exclude each other');
+const remote = (p: string) => /^https?:\/\//.test(p);
+const landcover = opt.landcover ?? (opt.local ? file.container : LANDCOVER_URL);
+if (!remote(landcover) && !(await fs.stat(landcover).catch(() => null)))
+	throw new Error(
+		opt.local ? `missing ${landcover} — run "npm run build" first, or leave out --local` : `missing ${landcover}`,
+	);
+const where = remote(landcover) ? 'remote' : 'local';
 
 const sources = {
 	osm: await TileSource.fromPath(OSM_URL),
@@ -67,7 +74,7 @@ for (const [name, source] of Object.entries(sources)) {
 }
 await fs.writeFile(
 	path.join(genDir, 'state.json'),
-	JSON.stringify({ landcover: opt.local ? 'local' : 'remote', source: landcover, osm: OSM_URL }),
+	JSON.stringify({ landcover: where, source: landcover, osm: OSM_URL }),
 );
 
 // no-cache: --local and remote serve different tiles under the same URLs
@@ -78,7 +85,7 @@ await server.addStaticSource(genDir, '/gen');
 await server.start();
 
 const url = `http://localhost:${server.port}/`;
-console.error('→ %s  (landcover: %s %s)', url, opt.local ? 'local' : 'remote', landcover);
+console.error('→ %s  (landcover: %s %s)', url, where, landcover);
 if (!opt['no-open']) {
 	const opener = (await commandExists('open')) ? 'open' : (await commandExists('xdg-open')) ? 'xdg-open' : null;
 	if (opener) spawn(opener, [url], { stdio: 'ignore', detached: true }).unref();

@@ -398,8 +398,9 @@ against) and the slowest single commands with their block or sea-share tile. `--
 ### Dev
 
 ```sh
-npm run dev             # the published landcover container
-npm run dev -- --local  # the local build, data/landcover-vectors.versatiles
+npm run dev                                # the published landcover container
+npm run dev -- --local                     # the local build, data/landcover-vectors.versatiles
+npm run dev -- --landcover <path|url>      # any other, e.g. an experiment's build
 ```
 
 Serves OSM's Shortbread container, the landcover container and their merge — filtered exactly like
