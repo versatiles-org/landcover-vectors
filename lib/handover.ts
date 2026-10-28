@@ -19,9 +19,9 @@ import { channels, type Channel } from '../config.ts';
 type Drop = { layer: string; zoom: number; kinds: string[] };
 
 // the kinds per layer that a filter drops, grouped by the zoom `pick` returns (undefined = not dropped)
-function drops(pick: (c: Channel) => number | undefined): Drop[] {
+function drops(pick: (c: Channel) => number | undefined, chans: Channel[]): Drop[] {
 	const groups = new Map<string, Drop>();
-	for (const c of channels) {
+	for (const c of chans) {
 		const zoom = pick(c);
 		if (!c.layer || !c.kind || zoom === undefined) continue;
 		const key = `${c.layer}@${zoom}`;
@@ -32,8 +32,9 @@ function drops(pick: (c: Channel) => number | undefined): Drop[] {
 }
 
 // OSM loses a kind up to the landcover's cutoff; the landcover loses a kind from its `osmFrom` on
-const osmDrops = (): Drop[] => drops((c) => (c.osmFrom === undefined ? c.maxZoom : undefined));
-const landcoverDrops = (): Drop[] => drops((c) => c.osmFrom);
+// (`chans` is the channel table; an experiment passes one with other handovers, bin/experiment.ts)
+const osmDrops = (chans = channels): Drop[] => drops((c) => (c.osmFrom === undefined ? c.maxZoom : undefined), chans);
+const landcoverDrops = (chans = channels): Drop[] => drops((c) => c.osmFrom, chans);
 
 // CEL: true for a feature that is kept — i.e. not one of `drop`'s kinds at a zoom `cmp` its zoom
 function keepExpr(drop: Drop[], layer: string, cmp: '<=' | '>='): string {
@@ -56,16 +57,16 @@ export const osmKeepExpr = (layer: string): string => keepExpr(osmDrops(), layer
 export const landcoverKeepExpr = (layer: string): string => keepExpr(landcoverDrops(), layer, '>=');
 
 // the VPL steps that remove OSM's copies of the landcover kinds
-export const osmFilter = (): string => steps(osmDrops(), '<=');
+export const osmFilter = (chans = channels): string => steps(osmDrops(chans), '<=');
 // the VPL steps that remove the landcover's copies of the kinds OSM supplies
-export const landcoverFilter = (): string => steps(landcoverDrops(), '>=');
+export const landcoverFilter = (chans = channels): string => steps(landcoverDrops(chans), '>=');
 
 // the whole merge as one VPL source: both containers (paths or URLs), each filtered — what `npm run merge`
 // converts and what the preview serves for versatiles-style
-export function mergePipeline(osm: string, landcover: string): string {
+export function mergePipeline(osm: string, landcover: string, chans = channels): string {
 	const filtered = (filename: string, filter: string): string =>
 		`from_container filename="${filename}"` + (filter ? ` | ${filter}` : '');
-	return `from_merged_vector [ ${filtered(osm, osmFilter())}, ${filtered(landcover, landcoverFilter())} ]`;
+	return `from_merged_vector [ ${filtered(osm, osmFilter(chans))}, ${filtered(landcover, landcoverFilter(chans))} ]`;
 }
 
 // Older versatiles do not fail on `zoom`: 4.14.0 silently drops every feature of a filtered layer, at

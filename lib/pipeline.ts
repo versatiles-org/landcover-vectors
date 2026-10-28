@@ -16,6 +16,7 @@ import type { Progress } from './progress.ts';
 
 export type PipelineCtx = {
 	src: string; // the EPSG:3857 source raster
+	seaShare?: string; // its sea-share pyramid (default: the downloaded one)
 	tmpdir: string; // per-block scratch (wiped by the caller)
 	resultsdir: string; // cached per-block tilesets
 	tilesdir: string; // cached per-zoom tilesets
@@ -72,6 +73,7 @@ async function runZoom(
 					const block = () =>
 						deps.processBlock(z, bx, by, {
 							src: ctx.src,
+							seaShare: ctx.seaShare,
 							tmpdir: ctx.tmpdir,
 							resultsdir: ctx.resultsdir,
 							logFile: ctx.logFile,

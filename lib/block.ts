@@ -24,6 +24,7 @@ import {
 
 export type BlockCtx = {
 	src: string;
+	seaShare?: string; // the sea-share pyramid (default: the downloaded one, lib/ocean.ts)
 	tmpdir: string;
 	resultsdir: string;
 	logFile?: string; // optional TSV log: one row per block (how it was processed, timing, sizes, histogram)
@@ -161,7 +162,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		//     in the class index (2), so the land cover ends at OSM's coastline and ESA's coastal sea never
 		//     becomes `water`.
 		const share = tmp('share.vrt');
-		await seaShareWindow(share, w, px.width, px.height);
+		await seaShareWindow(share, w, px.width, px.height, ctx.seaShare);
 		scratch.push(share + '.aux.xml');
 
 		// Histogram-gate the work (see fastPath): which active kinds occur in this window (incl. margin, which
