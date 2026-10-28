@@ -1,0 +1,268 @@
+// An experiment's source: the pipeline's pyramids (lib/window.ts), but only around the test regions.
+//
+// The build reads a block's window out of two world-sized pyramids on one grid (FULL_PX², EPSG:3857): the ESA
+// classes and the sea share. Building those for the planet takes hours and 23 GB; an experiment needs a few windows.
+// So each region gets small rasters of its own, cut on that same grid and aligned to whole z10 tiles (1024 px, the
+// coarsest overview's pixel), with overviews of their own. A VRT per pyramid level then places every region's level
+// at its offset in the world, and the blocks read it like the real thing: outside the regions, every pixel is 0.
+//
+// Per region, once (prepareRegion):
+//   esa.tif        ESA WorldCover, warped from the bucket exactly like the download warps the world (mode, -dstnodata 0)
+//   osm-z11.mbtiles  the OSM container's z11 tiles over the extent: the zoom the map shows right after the handover
+//   land.fgb       their `land` polygons, which a variant burns from
+//   seashare.tif   their `ocean` polygons as the sea share (100 = sea), with average overviews, like lib/ocean.ts
+// Per variant (variantSource): esa.tif with the burns, its overviews, and both pyramids as VRTs.
+
+import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+
+import { runQuiet, atomic, listSourceKeys, BUCKET } from './worldcover.ts';
+import { parseCorner, CELL } from './coverage.ts';
+import { extent3857, extentLonLat, extentTiles, type Region } from './regions.ts';
+import type { Burn } from './variants.ts';
+import { MERC, FULL_PX, TILE_PX, OSM_URL, MAXLEVEL } from '../config.ts';
+
+const PX = (2 * MERC) / FULL_PX; // metres per source pixel
+const OVERVIEWS = Array.from({ length: MAXLEVEL }, (_, i) => 2 ** (i + 1)); // as the download builds them
+const GTIFF = ['-co', 'TILED=YES', '-co', 'COMPRESS=ZSTD', '-co', 'BIGTIFF=IF_SAFER'];
+
+// the bucket's tile list, fetched once per experiment directory
+export async function sourceKeys(dir: string): Promise<string[]> {
+	const list = path.join(dir, '_source-tiles.txt');
+	if (!existsSync(list)) {
+		const keys = await listSourceKeys();
+		await atomic(list, (tmp) => fs.writeFile(tmp, keys.join('\n') + '\n'));
+	}
+	return (await fs.readFile(list, 'utf8')).split('\n').filter(Boolean);
+}
+
+// the ESA tiles a region's extent touches
+export function regionKeys(region: Region, keys: string[]): string[] {
+	const e = extentLonLat(region.window);
+	return keys.filter((k) => {
+		const c = parseCorner(path.basename(k));
+		return c && c.lon < e.east && c.lon + CELL > e.west && c.lat < e.north && c.lat + CELL > e.south;
+	});
+}
+
+// the region's extent on the source grid: offset into the world, and size, in source pixels
+export function regionGrid(region: Region) {
+	const t = extentTiles(region.window);
+	return { x: t.x0 * TILE_PX, y: t.y0 * TILE_PX, width: (t.x1 - t.x0) * TILE_PX, height: (t.y1 - t.y0) * TILE_PX };
+}
+
+const te = (region: Region) => {
+	const e = extent3857(region.window);
+	return ['-te', e.minx, e.miny, e.maxx, e.maxy];
+};
+
+export async function prepareRegion(dir: string, region: Region, keys: string[]): Promise<void> {
+	await fs.mkdir(dir, { recursive: true });
+	const g = regionGrid(region);
+
+	const esa = path.join(dir, 'esa.tif');
+	if (!existsSync(esa)) {
+		const vrt = path.join(dir, 'esa-remote.vrt');
+		const e = extentLonLat(region.window);
+		const pad = 0.05; // degrees, so the warp's mode sees whole source pixels at the edge
+		await runQuiet(
+			'gdalbuildvrt',
+			'-q',
+			'-overwrite',
+			['-te', e.west - pad, e.south - pad, e.east + pad, e.north + pad],
+			vrt,
+			keys.map((k) => `/vsicurl/${BUCKET}/${k}`),
+		);
+		await atomic(esa, (tmp) =>
+			runQuiet(
+				'gdalwarp',
+				'-q',
+				['-t_srs', 'EPSG:3857'],
+				te(region),
+				['-ts', g.width, g.height],
+				['-r', 'mode'],
+				['-ot', 'Byte'],
+				['-dstnodata', 0],
+				['-of', 'GTiff'],
+				GTIFF,
+				vrt,
+				tmp,
+			),
+		);
+		await fs.rm(vrt, { force: true });
+	}
+
+	const osm = path.join(dir, 'osm-z11.mbtiles');
+	if (!existsSync(osm)) {
+		const e = extentLonLat(region.window);
+		await atomic(osm, (tmp) =>
+			runQuiet(
+				'versatiles',
+				'convert',
+				['--min-zoom', 11],
+				['--max-zoom', 11],
+				['--bbox', [e.west, e.south, e.east, e.north].join(',')],
+				['--compress', 'gzip'], // MBTiles holds gzip, which GDAL's MVT driver reads
+				OSM_URL,
+				tmp,
+			),
+		);
+	}
+
+	// CLIP=NO: clipping every tile's polygons to its edge fails on some invalid ones (GEOS side location conflict),
+	// and the copies in the tiles' buffers burn the same pixels anyway
+	const layer = (name: string, out: string) =>
+		atomic(out, (tmp) =>
+			runQuiet(
+				'ogr2ogr',
+				['-f', 'FlatGeobuf'],
+				['-oo', 'ZOOM_LEVEL=11'],
+				['-oo', 'CLIP=NO'],
+				['-nln', name],
+				['-nlt', 'PROMOTE_TO_MULTI'],
+				tmp,
+				osm,
+				name,
+			),
+		);
+	const land = path.join(dir, 'land.fgb');
+	if (!existsSync(land)) await layer('land', land);
+
+	const share = path.join(dir, 'seashare.tif');
+	if (!existsSync(share)) {
+		const ocean = path.join(dir, 'ocean.fgb');
+		await layer('ocean', ocean);
+		await atomic(share, async (tmp) => {
+			await runQuiet(
+				'gdal_rasterize',
+				'-q',
+				['-burn', 100],
+				['-init', 0],
+				['-l', 'ocean'],
+				['-a_srs', 'EPSG:3857'],
+				te(region),
+				['-ts', g.width, g.height],
+				['-ot', 'Byte'],
+				['-of', 'GTiff'],
+				GTIFF,
+				ocean,
+				tmp,
+			);
+			// average overviews: every level holds the sea share of its pixels, as in lib/ocean.ts
+			await runQuiet('gdaladdo', '-q', ['-r', 'average'], tmp, OVERVIEWS);
+		});
+		await fs.rm(ocean, { force: true });
+	}
+}
+
+// the region's ESA classes with a variant's burns, and overviews: `out`
+export async function burnedSource(regionDir: string, burns: Burn[], out: string, tmpdir: string): Promise<void> {
+	if (existsSync(out)) return;
+	await atomic(out, async (tmp) => {
+		await fs.copyFile(path.join(regionDir, 'esa.tif'), tmp);
+		for (const [i, b] of burns.entries()) {
+			const polygons = path.join(tmpdir, `${path.basename(out, '.tif')}-burn${i}.fgb`);
+			await fs.rm(polygons, { force: true });
+			const kinds = b.kinds.map((k) => `'${k}'`).join(',');
+			// closing: grow the union by `close` pixels and shrink it back, which fills gaps narrower than twice that
+			// and leaves the outline where it was. A region without any of the kinds unions to NULL.
+			const d = (b.close ?? 0) * PX;
+			const sql = d
+				? `SELECT * FROM (SELECT ST_Buffer(ST_Buffer(ST_Union(geometry), ${d}), ${-d}) AS geometry ` +
+					`FROM land WHERE kind IN (${kinds})) WHERE geometry IS NOT NULL`
+				: `SELECT geometry FROM land WHERE kind IN (${kinds})`;
+			await runQuiet(
+				'ogr2ogr',
+				['-f', 'FlatGeobuf'],
+				['-lco', 'SPATIAL_INDEX=NO'], // read once, by gdal_rasterize
+				['-dialect', 'SQLite'],
+				['-sql', sql],
+				['-nln', 'burn'],
+				['-nlt', 'PROMOTE_TO_MULTI'],
+				polygons,
+				path.join(regionDir, 'land.fgb'),
+			);
+			const before = path.join(tmpdir, `${path.basename(out, '.tif')}-before${i}.tif`);
+			if (b.keep) await fs.copyFile(tmp, before);
+			await runQuiet('gdal_rasterize', '-q', ['-burn', b.esa], ['-l', 'burn'], polygons, tmp);
+			await fs.rm(polygons, { force: true });
+			if (b.keep) {
+				// back to the class before the burn under the `keep` kinds: marked 255, which ESA never uses
+				const mask = path.join(tmpdir, `${path.basename(out, '.tif')}-keep${i}.tif`);
+				const burned = path.join(tmpdir, `${path.basename(out, '.tif')}-burned${i}.tif`);
+				await fs.copyFile(before, mask);
+				await fs.rename(tmp, burned);
+				await runQuiet(
+					'gdal_rasterize',
+					'-q',
+					['-burn', 255],
+					['-l', 'land'],
+					['-where', `kind IN (${b.keep.map((k) => `'${k}'`).join(',')})`],
+					path.join(regionDir, 'land.fgb'),
+					mask,
+				);
+				await runQuiet(
+					'gdal_calc.py',
+					['-A', before],
+					['-B', burned],
+					['-M', mask],
+					['--calc', 'where(M==255, A, B)'],
+					['--type', 'Byte'],
+					['--NoDataValue', 0],
+					['--co', 'TILED=YES'],
+					['--co', 'COMPRESS=ZSTD'],
+					'--overwrite',
+					'--quiet',
+					['--outfile', tmp],
+				);
+				await Promise.all([before, mask, burned].map((f) => fs.rm(f, { force: true })));
+			}
+		}
+		// mode, as the download builds the world's: aligned to 1024 px, every level's pixels are the world's
+		await runQuiet('gdaladdo', '-q', ['-r', 'mode'], tmp, OVERVIEWS);
+	});
+}
+
+export type Part = { file: string; x: number; y: number; width: number; height: number }; // source pixels
+
+// A world-sized pyramid as VRTs: `out` is the base, and `out`.levels/ holds one VRT per overview, each placing
+// the parts' matching overview. `nodata` as the real pyramid has it: 0 for the classes, none for the sea share.
+export async function pyramidVrt(out: string, parts: Part[], nodata?: number): Promise<void> {
+	const levels = out + '.levels';
+	await fs.mkdir(levels, { recursive: true });
+	const vrt = (f: number, sources: string, overviews = '') => {
+		const n = FULL_PX / f;
+		const nd = nodata === undefined ? '' : `\n    <NoDataValue>${nodata}</NoDataValue>`;
+		return `<VRTDataset rasterXSize="${n}" rasterYSize="${n}">
+  <SRS>EPSG:3857</SRS>
+  <GeoTransform>${-MERC}, ${(2 * MERC) / n}, 0, ${MERC}, 0, ${(-2 * MERC) / n}</GeoTransform>
+  <VRTRasterBand dataType="Byte" band="1">${nd}${sources}${overviews}
+  </VRTRasterBand>
+</VRTDataset>
+`;
+	};
+	const sources = (f: number, overview: number | null) =>
+		parts
+			.map((p) => {
+				const open =
+					overview === null ? '' : `<OpenOptions><OOI key="OVERVIEW_LEVEL">${overview}</OOI></OpenOptions>`;
+				const [x, y, w, h] = [p.x / f, p.y / f, p.width / f, p.height / f];
+				if (![x, y, w, h].every(Number.isInteger)) throw new Error(`${p.file}: not aligned to the 1:${f} level`);
+				return `
+    <SimpleSource>
+      <SourceFilename relativeToVRT="0">${path.resolve(p.file)}</SourceFilename>${open}
+      <SourceBand>1</SourceBand>
+      <SrcRect xOff="0" yOff="0" xSize="${w}" ySize="${h}"/>
+      <DstRect xOff="${x}" yOff="${y}" xSize="${w}" ySize="${h}"/>
+    </SimpleSource>`;
+			})
+			.join('');
+	let overviews = '';
+	for (const [i, f] of OVERVIEWS.entries()) {
+		const level = path.resolve(levels, `1-${f}.vrt`);
+		await fs.writeFile(level, vrt(f, sources(f, i)));
+		overviews += `\n    <Overview><SourceFilename relativeToVRT="0">${level}</SourceFilename><SourceBand>1</SourceBand></Overview>`;
+	}
+	await fs.writeFile(out, vrt(1, sources(1, null), overviews));
+}

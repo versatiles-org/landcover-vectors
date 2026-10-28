@@ -382,6 +382,7 @@ the joined tileset; and, like the `planetiler:*` keys of `osm.versatiles`, the b
 | `npm run sweep`        | build an area once per parameter value and compare size and quality                   |
 | `npm run inspect`      | compare one tile pixel by pixel with what it should show, as numbers and a PNG        |
 | `npm run verify-merge` | check the filtered merge on real tiles: every kind from one source per zoom           |
+| `npm run experiment`   | build variants of the pipeline over test regions and measure the handover             |
 | `npm run style`        | write a QGIS vector-tiles style (`landcover.qml`) in versatiles-style's colours       |
 | `npm run clean`        | delete the build caches (keeps the download)                                          |
 | `npm run check`        | typecheck, formatting and tests                                                       |
@@ -409,6 +410,24 @@ always comes from `download.versatiles.org`. The map (`dev/map/`) switches betwe
 **osm+landcover** (keys 1, 2, 3) at the same position, each drawn with versatiles-style's colorful style: osm
 without its `landcover` feature, as OSM looks today; the other two with it. The header shows the zoom and which
 side of the z10 → z11 handover it is on.
+
+### Experiments
+
+```sh
+npm run experiment                      # build and measure every variant (lib/variants.ts)
+npm run experiment -- burn-z11 baseline # just these
+npm run experiment -- --report          # the tables of everything measured so far
+```
+
+Compares variants of the pipeline — OSM land use burned into ESA's classes, other handover zooms — on ten test
+regions (`lib/regions.ts`), each picked for one way the land cover and OSM disagree. Nothing needs downloading:
+each region gets a small source of its own on the build's pixel grid, ESA from the bucket and OSM's land use and
+sea from the OSM container's z11 tiles (`lib/regionsource.ts`). A variant builds z8–10 with the build's own
+pipeline, and `lib/measure.ts` paints the merge at z8–13 the way versatiles-style draws it and compares the zooms
+pixel by pixel: how often z10 shows what z11 shows, holes, towns, forest, tile size — per region, and per
+Shortbread `land` and `water_polygons` kind, located with OSM's z14 tiles. The tables go to
+`data/experiment/results/report.md`. The `baseline` variant matches the published container to within half a
+point at z10 (1–2 points at z8), which is the noise to read differences against.
 
 ### Preview
 
