@@ -6,8 +6,9 @@
 //   npm run experiment -- --report          # the tables of everything measured so far
 //   npm run experiment -- --list            # the variants and the regions
 //
-// Nothing needs downloading first: each region gets its own small source (lib/regionsource.ts), ESA from the bucket
-// and OSM's land use and sea from the OSM container's z11 tiles, cached in data/experiment/regions/. A variant builds
+// Each region gets its own small source (lib/regionsource.ts), cached in data/experiment/regions/: ESA from the
+// bucket, OSM's sea from the download's water polygons (fetched here if missing), and OSM's land use imported from
+// the planet, which `npm run download -- --landuse` fetches once (lib/osmland.ts). A variant builds
 // z8–10 — the zooms around the handover — with the build's own pipeline (lib/pipeline.ts) into
 // data/experiment/variants/<fingerprint>/, so variants with the same source share one build. The measurement
 // (lib/measure.ts) goes to data/experiment/results/<variant>.json, and the tables to results/report.md.
@@ -27,6 +28,8 @@ import { runZooms } from '../lib/pipeline.ts';
 import { joinTilesets } from '../lib/assemble.ts';
 import { progress } from '../lib/progress.ts';
 import { cacheValues, fingerprint } from '../lib/fingerprint.ts';
+import { downloadOcean, seaShareValues } from '../lib/ocean.ts';
+import { findLanduse } from '../lib/osmland.ts';
 import { mergePipeline } from '../lib/handover.ts';
 import { REGIONS, extentLonLat } from '../lib/regions.ts';
 import { VARIANTS, channelsFor, type Variant } from '../lib/variants.ts';
@@ -36,11 +39,13 @@ import {
 	regionKeys,
 	regionGrid,
 	prepareRegion,
+	regionLand,
+	regionLandPath,
 	burnedSource,
 	pyramidVrt,
 	type Part,
 } from '../lib/regionsource.ts';
-import { datadir, OSM_URL, BLOCK_CONCURRENCY } from '../config.ts';
+import { datadir, file, OSM_URL, BLOCK_CONCURRENCY } from '../config.ts';
 
 const { values: opt, positionals } = parseArgs({
 	allowPositionals: true,
@@ -87,7 +92,12 @@ if (!opt.report) {
 	const names = positionals.length ? positionals : Object.keys(VARIANTS);
 	const unknown = names.filter((n) => !VARIANTS[n]);
 	if (unknown.length) throw new Error(`unknown variant(s) ${unknown.join(', ')} — see --list`);
-	if (names.some((n) => !VARIANTS[n].container)) await requireTools(['gdal', 'gdal_calc', 'tippecanoe', 'versatiles']);
+	if (names.some((n) => !VARIANTS[n].container)) {
+		await requireTools(['gdal', 'gdal_calc', 'tippecanoe', 'versatiles', 'osmium', 'curl']);
+		if (!(await findLanduse()))
+			throw new Error('no OSM land use — run "npm run download -- --landuse" first (the planet, ~95 GB, once)');
+		if (!existsSync(file.ocean)) await downloadOcean();
+	}
 	await fs.mkdir(resultsDir, { recursive: true });
 	for (const name of names) {
 		const result = await runVariant(name, VARIANTS[name]);
@@ -138,10 +148,15 @@ async function build(v: Variant): Promise<{ landcover: string; fp: string }> {
 		if (!existsSync(path.join(r.dir, 'seashare.tif'))) console.error('  preparing region %s …', r.name);
 		await prepareRegion(r.dir, r.region, r.keys);
 	});
+	const landuse = (await findLanduse())!;
+	await regionLand(regions, landuse, path.join(root, 'tmp'));
 
-	// what the blocks depend on: the pipeline's settings, the burns, and which regions share the source
+	// what the blocks depend on: the pipeline's settings, the sea and the land use, the burns, and which regions
+	// share the source
 	const fp = fingerprint({
 		cache: cacheValues(),
+		sea: await seaShareValues(),
+		landuse: landuse.date,
 		burn: v.burn ?? [],
 		regions: Object.fromEntries(regions.map((r) => [r.name, r.region.window])),
 	});
@@ -161,7 +176,7 @@ async function build(v: Variant): Promise<{ landcover: string; fp: string }> {
 	const sea: Part[] = [];
 	for (const r of regions) {
 		const tif = path.join(sourceDir, `${r.name}.tif`);
-		await burnedSource(r.dir, v.burn ?? [], tif, tmpdir);
+		await burnedSource(r.dir, regionLandPath(r.dir, landuse.date), v.burn ?? [], tif, tmpdir);
 		classes.push({ file: tif, ...regionGrid(r.region) });
 		sea.push({ file: path.join(r.dir, 'seashare.tif'), ...regionGrid(r.region) });
 	}

@@ -6,12 +6,14 @@
 // coarsest overview's pixel), with overviews of their own. A VRT per pyramid level then places every region's level
 // at its offset in the world, and the blocks read it like the real thing: outside the regions, every pixel is 0.
 //
-// Per region, once (prepareRegion):
-//   esa.tif        ESA WorldCover, warped from the bucket exactly like the download warps the world (mode, -dstnodata 0)
-//   osm-z11.mbtiles  the OSM container's z11 tiles over the extent: the zoom the map shows right after the handover
-//   land.fgb       their `land` polygons, which a variant burns from
-//   seashare.tif   their `ocean` polygons as the sea share (100 = sea), with average overviews, like lib/ocean.ts
-// Per variant (variantSource): esa.tif with the burns, its overviews, and both pyramids as VRTs.
+// Per region, once:
+//   esa.tif           ESA WorldCover, warped from the bucket exactly like the download warps the world (mode,
+//                     -dstnodata 0)
+//   seashare.tif      OSM's water polygons (the download's ocean mask) as the sea share (100 = sea), simplified
+//                     and with average overviews, exactly like the download's pyramid (lib/ocean.ts)
+//   land-<date>.fgb   OSM's land use, imported from that planet's land-use file (lib/osmland.ts): what a variant
+//                     burns from (regionLand, for all regions in one pass)
+// Per variant (burnedSource): esa.tif with the burns, its overviews, and both pyramids as VRTs (pyramidVrt).
 
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -19,9 +21,10 @@ import path from 'node:path';
 
 import { runQuiet, atomic, listSourceKeys, BUCKET } from './worldcover.ts';
 import { parseCorner, CELL } from './coverage.ts';
+import { extractBoxes, importLand } from './osmland.ts';
 import { extent3857, extentLonLat, extentTiles, type Region } from './regions.ts';
 import type { Burn } from './variants.ts';
-import { MERC, FULL_PX, TILE_PX, OSM_URL, MAXLEVEL } from '../config.ts';
+import { MERC, FULL_PX, TILE_PX, MAXLEVEL, file } from '../config.ts';
 
 const PX = (2 * MERC) / FULL_PX; // metres per source pixel
 const OVERVIEWS = Array.from({ length: MAXLEVEL }, (_, i) => 2 ** (i + 1)); // as the download builds them
@@ -93,46 +96,23 @@ export async function prepareRegion(dir: string, region: Region, keys: string[])
 		await fs.rm(vrt, { force: true });
 	}
 
-	const osm = path.join(dir, 'osm-z11.mbtiles');
-	if (!existsSync(osm)) {
-		const e = extentLonLat(region.window);
-		await atomic(osm, (tmp) =>
-			runQuiet(
-				'versatiles',
-				'convert',
-				['--min-zoom', 11],
-				['--max-zoom', 11],
-				['--bbox', [e.west, e.south, e.east, e.north].join(',')],
-				['--compress', 'gzip'], // MBTiles holds gzip, which GDAL's MVT driver reads
-				OSM_URL,
-				tmp,
-			),
-		);
-	}
-
-	// CLIP=NO: clipping every tile's polygons to its edge fails on some invalid ones (GEOS side location conflict),
-	// and the copies in the tiles' buffers burn the same pixels anyway
-	const layer = (name: string, out: string) =>
-		atomic(out, (tmp) =>
-			runQuiet(
-				'ogr2ogr',
-				['-f', 'FlatGeobuf'],
-				['-oo', 'ZOOM_LEVEL=11'],
-				['-oo', 'CLIP=NO'],
-				['-nln', name],
-				['-nlt', 'PROMOTE_TO_MULTI'],
-				tmp,
-				osm,
-				name,
-			),
-		);
-	const land = path.join(dir, 'land.fgb');
-	if (!existsSync(land)) await layer('land', land);
-
 	const share = path.join(dir, 'seashare.tif');
 	if (!existsSync(share)) {
+		const e = extent3857(region.window);
 		const ocean = path.join(dir, 'ocean.fgb');
-		await layer('ocean', ocean);
+		await fs.rm(ocean, { force: true });
+		await runQuiet(
+			'ogr2ogr',
+			['-spat', e.minx, e.miny, e.maxx, e.maxy],
+			['-simplify', PX / 2], // as the download's pyramid simplifies them
+			['-f', 'FlatGeobuf'],
+			['-lco', 'SPATIAL_INDEX=NO'],
+			['-nln', 'ocean'],
+			['-nlt', 'PROMOTE_TO_MULTI'],
+			ocean,
+			file.ocean,
+			'ocean',
+		);
 		await atomic(share, async (tmp) => {
 			await runQuiet(
 				'gdal_rasterize',
@@ -149,6 +129,8 @@ export async function prepareRegion(dir: string, region: Region, keys: string[])
 				ocean,
 				tmp,
 			);
+			// gdal_rasterize marks 0 as no-data on what it creates; here 0 is land and has to count in the averages
+			await runQuiet('gdal', 'raster', 'edit', ['--nodata', 'none'], tmp);
 			// average overviews: every level holds the sea share of its pixels, as in lib/ocean.ts
 			await runQuiet('gdaladdo', '-q', ['-r', 'average'], tmp, OVERVIEWS);
 		});
@@ -156,8 +138,38 @@ export async function prepareRegion(dir: string, region: Region, keys: string[])
 	}
 }
 
-// the region's ESA classes with a variant's burns, and overviews: `out`
-export async function burnedSource(regionDir: string, burns: Burn[], out: string, tmpdir: string): Promise<void> {
+// a region's land use from the planet of `date`
+export const regionLandPath = (regionDir: string, date: string) => path.join(regionDir, `land-${date}.fgb`);
+
+// OSM's land use for every region that lacks it: one extract pass over the land-use file, then an import each
+export async function regionLand(
+	regions: { dir: string; region: Region }[],
+	landuse: { file: string; date: string },
+	tmpdir: string,
+): Promise<void> {
+	const missing = regions.filter((r) => !existsSync(regionLandPath(r.dir, landuse.date)));
+	if (!missing.length) return;
+	console.error('  importing OSM land use for %d region(s) from %s …', missing.length, landuse.file);
+	const pbf = (r: { dir: string }) => path.join(r.dir, `landuse-${landuse.date}.osm.pbf`);
+	await extractBoxes(
+		landuse.file,
+		missing.map((r) => ({ box: extentLonLat(r.region.window), out: pbf(r) })),
+		tmpdir,
+	);
+	for (const r of missing) {
+		await importLand(pbf(r), regionLandPath(r.dir, landuse.date), path.join(tmpdir, 'osm'));
+		await fs.rm(pbf(r), { force: true });
+	}
+}
+
+// the region's ESA classes with a variant's burns from `land`, and overviews: `out`
+export async function burnedSource(
+	regionDir: string,
+	land: string,
+	burns: Burn[],
+	out: string,
+	tmpdir: string,
+): Promise<void> {
 	if (existsSync(out)) return;
 	await atomic(out, async (tmp) => {
 		await fs.copyFile(path.join(regionDir, 'esa.tif'), tmp);
@@ -165,11 +177,12 @@ export async function burnedSource(regionDir: string, burns: Burn[], out: string
 			const polygons = path.join(tmpdir, `${path.basename(out, '.tif')}-burn${i}.fgb`);
 			await fs.rm(polygons, { force: true });
 			const kinds = b.kinds.map((k) => `'${k}'`).join(',');
-			// closing: grow the union by `close` pixels and shrink it back, which fills gaps narrower than twice that
-			// and leaves the outline where it was. A region without any of the kinds unions to NULL.
+			// closing: grow every polygon by `close` pixels, union, and shrink back, which fills gaps narrower than
+			// twice that and leaves the outline where it was. Growing each before the union also mends OSM's invalid
+			// rings, on which a union of the polygons themselves gives NULL. No polygons of the kinds union to NULL.
 			const d = (b.close ?? 0) * PX;
 			const sql = d
-				? `SELECT * FROM (SELECT ST_Buffer(ST_Buffer(ST_Union(geometry), ${d}), ${-d}) AS geometry ` +
+				? `SELECT * FROM (SELECT ST_Buffer(ST_Union(ST_Buffer(geometry, ${d})), ${-d}) AS geometry ` +
 					`FROM land WHERE kind IN (${kinds})) WHERE geometry IS NOT NULL`
 				: `SELECT geometry FROM land WHERE kind IN (${kinds})`;
 			await runQuiet(
@@ -181,7 +194,7 @@ export async function burnedSource(regionDir: string, burns: Burn[], out: string
 				['-nln', 'burn'],
 				['-nlt', 'PROMOTE_TO_MULTI'],
 				polygons,
-				path.join(regionDir, 'land.fgb'),
+				land,
 			);
 			const before = path.join(tmpdir, `${path.basename(out, '.tif')}-before${i}.tif`);
 			if (b.keep) await fs.copyFile(tmp, before);
@@ -199,7 +212,7 @@ export async function burnedSource(regionDir: string, burns: Burn[], out: string
 					['-burn', 255],
 					['-l', 'land'],
 					['-where', `kind IN (${b.keep.map((k) => `'${k}'`).join(',')})`],
-					path.join(regionDir, 'land.fgb'),
+					land,
 					mask,
 				);
 				await runQuiet(

@@ -164,7 +164,7 @@ checks a local build before upload, `--unfiltered` the unfiltered merge, which h
 The quickest way is [pixi](https://pixi.sh) (`brew install pixi`, or `curl -fsSL https://pixi.sh/install.sh | sh`):
 
 ```sh
-pixi install       # GDAL, tippecanoe, curl and Node.js from conda-forge, the versions pinned in pixi.lock
+pixi install       # GDAL, tippecanoe, curl, osmium and Node.js from conda-forge, the versions pinned in pixi.lock
 pixi run doctor    # checks every tool the pipeline runs, and says how to fix what is missing
 ```
 
@@ -182,6 +182,7 @@ it starts:
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`) — `tippecanoe-decode`, which ships with it, is used by `npm run inspect` and `npm run stats -- --attribute`
 - [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install) ≥ 5.0.0, the first to know the `shortbread@1.1` schema the build and the merge write
 - `curl`, for the ocean mask and the OSM base
+- for `npm run experiment`: [`osmium`](https://osmcode.org/osmium-tool/) (e.g. `brew install osmium-tool`), which cuts OSM's land use out of the planet
 - for `npm run preview`: a browser, and internet access for MapLibre GL from a CDN, the OSM container and versatiles-style's fonts and icons (the land cover tiles themselves are served locally)
 
 ### Run
@@ -420,10 +421,15 @@ npm run experiment -- --report          # the tables of everything measured so f
 ```
 
 Compares variants of the pipeline — OSM land use burned into ESA's classes, other handover zooms — on ten test
-regions (`lib/regions.ts`), each picked for one way the land cover and OSM disagree. Nothing needs downloading:
-each region gets a small source of its own on the build's pixel grid, ESA from the bucket and OSM's land use and
-sea from the OSM container's z11 tiles (`lib/regionsource.ts`). A variant builds z8–10 with the build's own
-pipeline, and `lib/measure.ts` paints the merge at z8–13 the way versatiles-style draws it and compares the zooms
+regions (`lib/regions.ts`), each picked for one way the land cover and OSM disagree. Each region gets a small
+source of its own on the build's pixel grid (`lib/regionsource.ts`): ESA from the bucket, OSM's sea from the
+download's water polygons (fetched if missing), and OSM's land use imported from the planet. That needs one
+download first, `npm run download -- --landuse`: the newest planet (~95 GB, an hour or two), cut by
+`osmium tags-filter` to the areas Shortbread's `land` layer is built from (~16 GB,
+`data/0_download/osm-landuse-<date>.osm.pbf`); the planet itself is removed after. The experiment cuts its
+regions out of that, and GDAL's OSM driver gives every area its kind by planetiler-shortbread's rules
+(`lib/osmland.ts`), cemeteries and polygons under a pixel at z11 included, which the tiles lack. A variant
+builds z8–10 with the build's own pipeline, and `lib/measure.ts` paints the merge at z8–13 the way versatiles-style draws it and compares the zooms
 pixel by pixel: how often z10 shows what z11 shows, holes, towns, forest, tile size — per region, and per
 Shortbread `land` and `water_polygons` kind, located with OSM's z14 tiles. The tables go to
 `data/experiment/results/report.md`. The `baseline` variant matches the published container to within half a

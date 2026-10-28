@@ -64,6 +64,10 @@ export const LANDCOVER_URL = 'https://download.versatiles.org/landcover-vectors.
 // land cover ends at OSM's coastline instead of ESA's, and ESA's class-80 sea inside coastal 3° tiles never becomes `water`.
 export const OCEAN_URL = 'https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip';
 
+// where OSM's weekly planet files are (planet-YYMMDD.osm.pbf, and an .md5 each): OSM's land use is imported from
+// the newest one (lib/osmland.ts)
+export const PLANET_DIR_URL = 'https://planet.openstreetmap.org/pbf/';
+
 // EPSG:3857 (Web Mercator) world half-extent in metres (±MERC ≈ ±85.0511°)
 export const MERC = 20037508.342789244;
 const WORLD = 2 * MERC; // full extent (= circumference) in metres

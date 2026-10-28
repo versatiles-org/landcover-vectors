@@ -9,7 +9,8 @@ import path from 'node:path';
 import { gdalEnv, commandExists } from './worldcover.ts';
 import { versionAtLeast } from './handover.ts';
 
-export type ToolName = 'node' | 'gdal' | 'gdal_calc' | 'tippecanoe' | 'tippecanoe-decode' | 'versatiles' | 'curl';
+export type ToolName =
+	'node' | 'gdal' | 'gdal_calc' | 'tippecanoe' | 'tippecanoe-decode' | 'versatiles' | 'curl' | 'osmium';
 
 // version: what was found; problem: why it cannot be used; warning: usable, but not as tested
 export type CheckResult = { version?: string; problem?: string; warning?: string };
@@ -121,6 +122,11 @@ export const TOOLS: Record<ToolName, Tool> = {
 		neededBy: 'download, merge',
 		hint: PIXI,
 		check: versioned('curl'),
+	},
+	osmium: {
+		neededBy: 'download --landuse, experiment',
+		hint: `${PIXI}, or brew install osmium-tool`,
+		check: versioned('osmium', { tested: '1.19.0' }),
 	},
 };
 

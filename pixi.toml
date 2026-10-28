@@ -1,5 +1,5 @@
 # Everything the pipeline runs, from conda-forge, pinned for macOS and Linux in pixi.lock:
-#   pixi install        # GDAL, tippecanoe, curl, Node.js
+#   pixi install        # GDAL, tippecanoe, curl, osmium, Node.js
 #   pixi run doctor     # checks every tool, versatiles included (not on conda-forge yet, see the README)
 #   pixi run build      # or download, merge, preview, stats, test, check …
 # CI builds its test environment from the same lockfile (.github/workflows/ci.yml).
@@ -14,6 +14,7 @@ gdal = ">=3.13" # the gdal raster / gdal vector subcommands, and gdal_calc.py
 numpy = "*" # for gdal_calc.py
 tippecanoe = ">=2.79"
 curl = "*"
+osmium-tool = ">=1.16" # cuts the planet to its land use (lib/osmland.ts)
 nodejs = ">=22.18"
 
 [tasks]
