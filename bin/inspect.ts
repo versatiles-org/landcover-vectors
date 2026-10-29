@@ -55,6 +55,7 @@ import {
 import { listSourceKeys } from '../lib/worldcover.ts';
 import { requireTools } from '../lib/tools.ts';
 import { requireOcean, requireSeaShare } from '../lib/ocean.ts';
+import { requireClasses } from '../lib/landburn.ts';
 import { channels, datadir, file, MAXLEVEL, MERC, TILE_PX } from '../config.ts';
 
 const { values: opt, positionals } = parseArgs({
@@ -172,16 +173,9 @@ async function inspectTarget(): Promise<void> {
 	// ---------------------------------------------------------------- render and compare
 	await requireTools(['node', 'gdal', 'tippecanoe-decode']);
 	await requireSeaShare(); // the target is sea-masked like a block reads its window (lib/inspect.ts)
-	if (
-		!(await fs.stat(file.source).then(
-			() => true,
-			() => false,
-		))
-	) {
-		throw new Error(`missing ${file.source} — the target is rendered from the source raster; run "npm run download"`);
-	}
+	await requireClasses(); // the target is rendered from the classes the blocks read
 
-	const source = await renderSource(file.source, z, x, y);
+	const source = await renderSource(file.classes, z, x, y);
 	const target = targetFor(source, z);
 	// the scale the simplify tolerance is calibrated to: one pixel of a 256-px tile
 	const COARSE = TILE_PX / 256;

@@ -11,7 +11,7 @@
 //                     -dstnodata 0)
 //   seashare.tif      OSM's water polygons (the download's ocean mask) as the sea share (100 = sea), simplified
 //                     and with average overviews, exactly like the download's pyramid (lib/ocean.ts)
-//   land-<date>.fgb   OSM's land use, imported from that planet's land-use file (lib/osmland.ts): what a variant
+//   land-<date>.vrt   OSM's land use, imported from that planet's land-use file (lib/osmland.ts): what a variant
 //                     burns from (regionLand, for all regions in one pass)
 // Per variant (burnedSource): esa.tif with the burns, its overviews, and both pyramids as VRTs (pyramidVrt).
 
@@ -23,8 +23,8 @@ import { runQuiet, atomic, listSourceKeys, BUCKET } from './worldcover.ts';
 import { parseCorner, CELL } from './coverage.ts';
 import { extractBoxes, importLand } from './osmland.ts';
 import { extent3857, extentLonLat, extentTiles, type Region } from './regions.ts';
-import type { Burn } from './variants.ts';
-import { MERC, FULL_PX, TILE_PX, MAXLEVEL, file } from '../config.ts';
+import { burnLand } from './landburn.ts';
+import { MERC, FULL_PX, TILE_PX, MAXLEVEL, file, type Burn } from '../config.ts';
 
 const PX = (2 * MERC) / FULL_PX; // metres per source pixel
 const OVERVIEWS = Array.from({ length: MAXLEVEL }, (_, i) => 2 ** (i + 1)); // as the download builds them
@@ -139,7 +139,7 @@ export async function prepareRegion(dir: string, region: Region, keys: string[])
 }
 
 // a region's land use from the planet of `date`
-export const regionLandPath = (regionDir: string, date: string) => path.join(regionDir, `land-${date}.fgb`);
+export const regionLandPath = (regionDir: string, date: string) => path.join(regionDir, `land-${date}.vrt`);
 
 // OSM's land use for every region that lacks it: one extract pass over the land-use file, then an import each
 export async function regionLand(
@@ -162,7 +162,8 @@ export async function regionLand(
 	}
 }
 
-// the region's ESA classes with a variant's burns from `land`, and overviews: `out`
+// the region's ESA classes with a variant's burns from `land` (lib/landburn.ts, as the download burns the world),
+// and overviews: `out`
 export async function burnedSource(
 	regionDir: string,
 	land: string,
@@ -173,65 +174,7 @@ export async function burnedSource(
 	if (existsSync(out)) return;
 	await atomic(out, async (tmp) => {
 		await fs.copyFile(path.join(regionDir, 'esa.tif'), tmp);
-		for (const [i, b] of burns.entries()) {
-			const polygons = path.join(tmpdir, `${path.basename(out, '.tif')}-burn${i}.fgb`);
-			await fs.rm(polygons, { force: true });
-			const kinds = b.kinds.map((k) => `'${k}'`).join(',');
-			// closing: grow every polygon by `close` pixels, union, and shrink back, which fills gaps narrower than
-			// twice that and leaves the outline where it was. Growing each before the union also mends OSM's invalid
-			// rings, on which a union of the polygons themselves gives NULL. No polygons of the kinds union to NULL.
-			const d = (b.close ?? 0) * PX;
-			const sql = d
-				? `SELECT * FROM (SELECT ST_Buffer(ST_Union(ST_Buffer(geometry, ${d})), ${-d}) AS geometry ` +
-					`FROM land WHERE kind IN (${kinds})) WHERE geometry IS NOT NULL`
-				: `SELECT geometry FROM land WHERE kind IN (${kinds})`;
-			await runQuiet(
-				'ogr2ogr',
-				['-f', 'FlatGeobuf'],
-				['-lco', 'SPATIAL_INDEX=NO'], // read once, by gdal_rasterize
-				['-dialect', 'SQLite'],
-				['-sql', sql],
-				['-nln', 'burn'],
-				['-nlt', 'PROMOTE_TO_MULTI'],
-				polygons,
-				land,
-			);
-			const before = path.join(tmpdir, `${path.basename(out, '.tif')}-before${i}.tif`);
-			if (b.keep) await fs.copyFile(tmp, before);
-			await runQuiet('gdal_rasterize', '-q', ['-burn', b.esa], ['-l', 'burn'], polygons, tmp);
-			await fs.rm(polygons, { force: true });
-			if (b.keep) {
-				// back to the class before the burn under the `keep` kinds: marked 255, which ESA never uses
-				const mask = path.join(tmpdir, `${path.basename(out, '.tif')}-keep${i}.tif`);
-				const burned = path.join(tmpdir, `${path.basename(out, '.tif')}-burned${i}.tif`);
-				await fs.copyFile(before, mask);
-				await fs.rename(tmp, burned);
-				await runQuiet(
-					'gdal_rasterize',
-					'-q',
-					['-burn', 255],
-					['-l', 'land'],
-					['-where', `kind IN (${b.keep.map((k) => `'${k}'`).join(',')})`],
-					land,
-					mask,
-				);
-				await runQuiet(
-					'gdal_calc.py',
-					['-A', before],
-					['-B', burned],
-					['-M', mask],
-					['--calc', 'where(M==255, A, B)'],
-					['--type', 'Byte'],
-					['--NoDataValue', 0],
-					['--co', 'TILED=YES'],
-					['--co', 'COMPRESS=ZSTD'],
-					'--overwrite',
-					'--quiet',
-					['--outfile', tmp],
-				);
-				await Promise.all([before, mask, burned].map((f) => fs.rm(f, { force: true })));
-			}
-		}
+		await burnLand(tmp, land, burns, tmpdir);
 		// mode, as the download builds the world's: aligned to 1024 px, every level's pixels are the world's
 		await runQuiet('gdaladdo', '-q', ['-r', 'mode'], tmp, OVERVIEWS);
 	});

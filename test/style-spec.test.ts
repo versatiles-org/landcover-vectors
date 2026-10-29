@@ -71,10 +71,7 @@ describe('maplibreStyle', () => {
 	});
 
 	test("next to OSM, the landcover's copy of a kind OSM supplies stops where OSM's begins", () => {
-		for (const [id, maxzoom] of [
-			['landcover-water_polygons-water', 4],
-			['landcover-land-residential', 10],
-		] as const) {
+		for (const [id, maxzoom] of [['landcover-water_polygons-water', 4]] as const) {
 			const layer = layers(withOsm).find((l) => l.id === id);
 			assert.ok(layer, id);
 			assert.equal(layer.maxzoom, maxzoom, `${id}: MapLibre maxzoom is exclusive, drawn up to z${maxzoom - 1}`);
@@ -116,7 +113,7 @@ describe('maplibreStyle', () => {
 		// the legend's "≤ z" is where the landcover stops being drawn, which next to OSM is the merge's handover
 		const drawnTo = Object.fromEntries(legend.map((k) => [k.kind, k.drawnTo]));
 		assert.equal(drawnTo.water, 3);
-		assert.equal(drawnTo.residential, 9);
+		assert.equal(drawnTo.residential, 10); // OSM's from z11, like every other kind
 		assert.equal(drawnTo.forest, 10);
 		const alone = (local.metadata as Record<string, unknown>)['landcover:kinds'] as typeof legend;
 		assert.ok(

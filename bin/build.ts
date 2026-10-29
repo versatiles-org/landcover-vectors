@@ -12,6 +12,7 @@ import { setGdalThreads } from '../lib/worldcover.ts';
 import { requireTools } from '../lib/tools.ts';
 import { startTimingLog, timed } from '../lib/timing.ts';
 import { requireSeaShare } from '../lib/ocean.ts';
+import { requireClasses } from '../lib/landburn.ts';
 import { progress } from '../lib/progress.ts';
 import { buildCoverage } from '../lib/coverage.ts';
 import { planBlocks, countBlocks } from '../lib/plan.ts';
@@ -29,13 +30,9 @@ await requireTools(['node', 'gdal', 'gdal_calc', 'tippecanoe', 'versatiles']);
 // the commit stamped into the container, read now: the checkout may move on during an hours-long build
 const commit = await gitCommit();
 
-// the single reprojected source raster (with overview pyramid) is built by `npm run download`;
-// blocks read their window from it — coarse levels at low zoom, full detail at high zoom
-const haveSource = await fs.stat(file.source).then(
-	() => true,
-	() => false,
-);
-if (!haveSource) throw new Error(`missing ${file.source} — run "npm run download" first`);
+// the classes — the reprojected source raster with OSM's land use burned in, with its overview pyramid — are built
+// by `npm run download`; blocks read their window from them — coarse levels at low zoom, full detail at high zoom
+await requireClasses();
 await requireSeaShare();
 
 // The source raster is built for one specific FULL_PX; a stamped mismatch means it was produced by a
@@ -80,7 +77,7 @@ console.error('Config fingerprint: %s — data dir: %s', fp, datadir);
 console.error('Per-block log: %s', file.log);
 
 const coverage = await buildCoverage();
-console.error('Source: %s — %d occupied 3° cells', file.source, coverage.cells);
+console.error('Source: %s — %d occupied 3° cells', file.classes, coverage.cells);
 
 // determine up front, per zoom, the blocks that actually have source data (skip-empty), so the
 // progress total reflects real work rather than the mostly-empty ocean blocks
@@ -93,7 +90,7 @@ const bar = progress(countBlocks(plan), 'blocks');
 setGdalThreads(1);
 const zooms = await timed('build', () =>
 	runZooms(plan, {
-		src: file.source,
+		src: file.classes,
 		tmpdir: dir.tmp,
 		resultsdir: dir.results,
 		tilesdir: dir.tiles,

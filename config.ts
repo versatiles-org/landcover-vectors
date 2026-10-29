@@ -43,6 +43,7 @@ export const dir = {
 
 export const file = {
 	source: path.join(sourcedir, 'worldcover-3857.tif'), // single EPSG:3857 source + overviews (download)
+	classes: path.join(sourcedir, 'worldcover-osm-3857.tif'), // the source with OSM's land use burned in: what blocks read (download)
 	seaShare: path.join(sourcedir, 'seashare-3857.tif'), // OSM's sea share on the source's grid + overviews (download)
 	sourceList: path.join(sourcedir, '_source-tiles.txt'), // remote tile list, read for skip-empty (download)
 	ocean: path.join(sourcedir, 'water-polygons-3857.fgb'), // OSM's sea polygons, rasterized into seaShare (download)
@@ -277,7 +278,7 @@ export const channels: Channel[] = [
 	{ esa: [0], layer: null, kind: null, maxZoom: -1 }, // no data / OSM's sea (dropped)
 	{ esa: [10], layer: 'land', kind: 'forest', maxZoom: 10, color: '#66AA44' }, // tree cover
 	{ esa: [40], layer: 'land', kind: 'farmland', maxZoom: 10, color: '#F0E7D1' }, // cropland
-	{ esa: [50], layer: 'land', kind: 'residential', maxZoom: 10, osmFrom: 10, color: '#EAE6E1' }, // built-up (OSM's from z10, where Shortbread starts every urban kind)
+	{ esa: [50], layer: 'land', kind: 'residential', maxZoom: 10, osmFrom: 11, color: '#EAE6E1' }, // built-up (OSM's from z11: at z10 OSM's urban land use is burned in, see OSM_BURNS)
 	{ esa: [60], layer: 'land', kind: 'bare_rock', maxZoom: 10, color: '#D9D5CE' }, // bare / sparse vegetation
 	{ esa: [100], layer: 'land', kind: 'heath', maxZoom: 10, color: '#CFD3B0' }, // moss & lichen (tundra)
 	{ esa: [20], layer: 'land', kind: 'scrub', maxZoom: 10, color: '#E0E4E5' }, // shrubland
@@ -286,6 +287,35 @@ export const channels: Channel[] = [
 	{ esa: [95], layer: 'land', kind: 'swamp', maxZoom: 10, color: '#C6DCC6' }, // mangroves
 	{ esa: [70], layer: 'water_polygons', kind: 'glacier', maxZoom: 10, color: '#FFFFFF' }, // snow & ice
 	{ esa: [80], layer: 'water_polygons', kind: 'water', maxZoom: 10, osmFrom: 4, color: '#B3D9E6' }, // permanent water (OSM's from z4, where Shortbread starts it)
+];
+
+// OSM's land use, burned into the source's ESA classes before the overviews (lib/landburn.ts), so it is resampled,
+// sieved and simplified exactly like ESA's own pixels, and z10 shows what OSM draws from z11 on: the town where OSM
+// maps one, the park, the allotments. Each burn writes one ESA class over the polygons of its Shortbread `land`
+// kinds (lib/osmland.ts), in versatiles-style's draw order, so where two overlap the one drawn on top wins, as at
+// z11. Left out: cemeteries and grave yards (drawn only from z13), brownfield and greenfield (not drawn), and
+// water (OSM's from z4 anyway). Measured as the experiment's `baseline` against ESA alone (`esa`): where OSM paints
+// at z11, z10 shows the same on 86–98 % of it in nine of the ten test regions (Tokyo, which OSM maps sparsely: 73 %),
+// against 30–95 % with ESA alone (npm run experiment, README "Experiments").
+// `close` (pixels) closes the gaps between the polygons first; `keep` lists kinds under which ESA's class stays.
+export type Burn = { kinds: string[]; esa: number; close?: number; keep?: string[] };
+export const OSM_BURNS: Burn[] = [
+	{ kinds: ['commercial', 'retail', 'industrial', 'quarry', 'railway', 'residential', 'garages'], esa: 50 },
+	{ kinds: ['farmland', 'farmyard', 'greenhouse_horticulture', 'orchard', 'plant_nursery', 'vineyard'], esa: 40 },
+	{ kinds: ['landfill'], esa: 50 },
+	{
+		kinds: [
+			...['park', 'village_green', 'recreation_ground', 'allotments', 'garden'],
+			...['golf_course', 'playground', 'miniature_golf'],
+		],
+		esa: 30,
+	},
+	{ kinds: ['bare_rock', 'scree', 'shingle'], esa: 60 },
+	{ kinds: ['forest'], esa: 10 },
+	{ kinds: ['grass', 'grassland', 'meadow', 'wet_meadow'], esa: 30 },
+	{ kinds: ['heath', 'scrub'], esa: 20 },
+	{ kinds: ['beach', 'sand'], esa: 60 },
+	{ kinds: ['bog', 'marsh', 'string_bog', 'swamp'], esa: 90 },
 ];
 
 // A pixel is sea, and so no-data, when at least this share of it (in percent) is OSM's sea: the sea-share
@@ -301,10 +331,10 @@ export const SCHEMA = 'shortbread@1.1';
 export const meta = {
 	name: 'VersaTiles Landcover Vectors',
 	attribution:
-		'<a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a> (<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>), coastline <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>',
-	description: `Global land cover for zoom levels 0-${MAXLEVEL} from ESA WorldCover 2021 (v200), in Shortbread's land and water_polygons layers. © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium`,
+		'<a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a> (<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>), coastline and land use <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>',
+	description: `Global land cover for zoom levels 0-${MAXLEVEL} from ESA WorldCover 2021 (v200) with OpenStreetMap's land use burned in, in Shortbread's land and water_polygons layers. © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium`,
 	// the tileset's revision (MBTiles `version`): raise it with every published build whose tiles differ
-	version: '3',
+	version: '4',
 	// where a viewer opens the container: [lon, lat, zoom]
 	center: [10, 30, 2] as [number, number, number],
 	layers: {

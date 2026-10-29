@@ -10,7 +10,7 @@ import path from 'node:path';
 
 import { REGIONS, windowAt, extentTiles, extentLonLat, WINDOW_ZOOM } from '../lib/regions.ts';
 import { regionGrid, regionKeys, pyramidVrt } from '../lib/regionsource.ts';
-import { VARIANTS, channelsFor } from '../lib/variants.ts';
+import { VARIANTS, channelsFor, burnsOf } from '../lib/variants.ts';
 import {
 	compare,
 	paint,
@@ -24,7 +24,7 @@ import {
 } from '../lib/measure.ts';
 import { rings } from '../lib/mvt.ts';
 import { mergePipeline, landcoverKeepExpr } from '../lib/handover.ts';
-import { channels, TILE_PX, FULL_PX } from '../config.ts';
+import { channels, TILE_PX, FULL_PX, OSM_BURNS } from '../config.ts';
 
 describe('the test regions', () => {
 	test('each window holds its centre, and its source extent holds the window', () => {
@@ -85,12 +85,18 @@ test('pyramidVrt places a region at its offset on every level', async () => {
 
 describe('variants', () => {
 	test("a variant's osmFrom reaches the merge, and nothing else changes", () => {
-		const chans = channelsFor(VARIANTS['handover-z11']);
-		assert.equal(chans.find((c) => c.kind === 'residential')!.osmFrom, 11);
+		const chans = channelsFor(VARIANTS.esa);
+		assert.equal(chans.find((c) => c.kind === 'residential')!.osmFrom, 10);
 		assert.equal(chans.find((c) => c.kind === 'water')!.osmFrom, 4);
-		assert.match(landcoverKeepExpr('land'), /zoom >= 10 && kind in \['residential'\]/);
-		assert.match(mergePipeline('o', 'l', chans), /zoom >= 11 && kind in \['residential'\]/);
+		assert.match(landcoverKeepExpr('land'), /zoom >= 11 && kind in \['residential'\]/);
+		assert.match(mergePipeline('o', 'l', chans), /zoom >= 10 && kind in \['residential'\]/);
 		assert.deepEqual(channelsFor(VARIANTS.baseline), channels);
+	});
+
+	test("a variant burns its own table, none, or the pipeline's", () => {
+		assert.deepEqual(burnsOf(VARIANTS.baseline), OSM_BURNS);
+		assert.deepEqual(burnsOf(VARIANTS.esa), []);
+		assert.equal(burnsOf(VARIANTS['burn-z11'])[0].esa, 50);
 	});
 
 	test('null hands a kind to the landcover at every zoom', () => {

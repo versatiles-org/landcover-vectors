@@ -7,8 +7,10 @@
 //   downloadLanduse   the planet (~95 GB), checked against its MD5, then cut by `osmium tags-filter` to the areas
 //                     the rules below accept (~16 GB), osm-landuse-<date>.osm.pbf; the planet itself is removed
 //   extractBoxes      `osmium extract` of boxes out of that, for the experiment's regions (one pass for all)
-//   importLand        GDAL's OSM driver assembles the areas, and one SQL CASE picks each one's kind, into a
-//                     FlatGeobuf in EPSG:3857 with a `kind` field: what lib/regionsource.ts burns from
+//   importLand        osmium assembles the areas, and the rules below give each its kind, into FlatGeobufs in
+//                     EPSG:3857 with a `kind` field, and a VRT that reads them as one layer `land`: what
+//                     lib/landburn.ts burns from — the whole cut for the download (osm-landuse-<date>.vrt), each
+//                     region's extract for the experiment
 //
 // The rules are planetiler-shortbread's (src/main/java/org/versatiles/shortbread/layers/Land.java), which builds
 // the OSM container's `land` layer, and must follow it when it changes.
@@ -17,8 +19,10 @@ import fs from 'node:fs/promises';
 import { createReadStream, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
+import { createInterface } from 'node:readline';
+import type { Readable, Writable } from 'node:stream';
 
-import { run, runQuiet, runProgress, atomic, type Arg } from './worldcover.ts';
+import { run, runQuiet, spawnPiped, atomic } from './worldcover.ts';
 import { timed } from './timing.ts';
 import type { LonLat } from './coverage.ts';
 import { dir, PLANET_DIR_URL } from '../config.ts';
@@ -76,39 +80,38 @@ export function tagsFilterExpressions(rules = LAND_RULES): string[] {
 	return [...valuesByKey(rules)].map(([k, vs]) => `a/${k}=${vs.join(',')}`);
 }
 
-// the SELECT that turns `layer`'s features, with the rules' keys as fields, into `kind` and geometry
-export function kindSql(layer: string, rules = LAND_RULES): string {
-	const field = (k: string) => `"${k}"`; // `natural` is an SQL keyword
-	const list = (vs: string[]) => vs.map((v) => `'${v}'`).join(',');
-	const when = rules.map((r) => {
-		const tags = Object.entries(r.tags);
-		const cond = tags.map(([k, vs]) => `${field(k)} IN (${list(vs)})`).join(' OR ');
-		const kind = r.kind ? `'${r.kind}'` : field(tags[0][0]);
-		if (!r.kind && tags.length > 1) throw new Error('a rule over several keys needs a kind');
-		return `WHEN ${cond} THEN ${kind}`;
-	});
-	return `SELECT * FROM (SELECT geometry, CASE ${when.join(' ')} END AS kind FROM ${layer}) WHERE kind IS NOT NULL`;
+// a feature's kind by the rules, from its tags; null if it has none
+export function kindOf(tags: Record<string, unknown>, rules = LAND_RULES): string | null {
+	for (const r of rules) {
+		const entries = Object.entries(r.tags);
+		if (!r.kind && entries.length > 1) throw new Error('a rule over several keys needs a kind');
+		for (const [k, vs] of entries) {
+			const v = tags[k];
+			if (typeof v === 'string' && vs.includes(v)) return r.kind ?? v;
+		}
+	}
+	return null;
 }
 
-// GDAL's OSM driver configuration: closed ways with one of the keys are areas, and the keys are the fields of its
-// `multipolygons` layer, which holds both those and the multipolygon relations. Nothing else is read.
-export function osmconf(rules = LAND_RULES): string {
-	const keys = [...valuesByKey(rules).keys()].join(',');
-	const none = (layer: string) => `[${layer}]\nosm_id=no\nattributes=\nother_tags=no\n`;
-	return [
-		`[general]\nclosed_ways_are_polygons=${keys}\nreport_all_nodes=no\nreport_all_ways=no\n`,
-		none('points'),
-		none('lines'),
-		`[multipolygons]\nosm_id=no\nattributes=${keys}\nother_tags=no\n`,
-		none('multilinestrings'),
-		none('other_relations'),
-	].join('\n');
+// osmium export's configuration: every closed way and multipolygon is an area (the cut holds only those with a
+// value the rules accept), and the rules' keys are its only properties
+export function exportConfig(rules = LAND_RULES): object {
+	const attributes = ['type', 'id', 'version', 'changeset', 'timestamp', 'uid', 'user', 'way_nodes'];
+	return {
+		attributes: Object.fromEntries(attributes.map((a) => [a, false])),
+		format_options: {},
+		linear_tags: false,
+		area_tags: true,
+		include_tags: [...valuesByKey(rules).keys()],
+	};
 }
 
 // ---------------------------------------------------------------- the planet
 
 const LANDUSE_PREFIX = 'osm-landuse-';
 const landusePath = (date: string) => path.join(dir.source, `${LANDUSE_PREFIX}${date}.osm.pbf`);
+// its import (importLand), what the download burns into the source
+export const landuseImport = (date: string) => path.join(dir.source, `${LANDUSE_PREFIX}${date}.vrt`);
 
 // the newest land-use file downloaded, and its planet's date (YYMMDD), or null
 export async function findLanduse(): Promise<{ file: string; date: string } | null> {
@@ -138,11 +141,11 @@ async function md5(file: string): Promise<string> {
 // Fetch the newest planet and cut it to the land use (an hour or two, most of it the download), unless a land-use
 // file is there already. Needs ~110 GB on the way: the planet and the cut, before the planet is removed. A broken
 // download resumes where it stopped; one that does not match its MD5 is removed.
-export async function downloadLanduse(): Promise<string> {
+export async function downloadLanduse(): Promise<{ file: string; date: string }> {
 	const present = await findLanduse();
 	if (present) {
 		console.error('OSM land use present: %s (delete it to refresh)', present.file);
-		return present.file;
+		return present;
 	}
 	const { date, url } = await latestPlanet();
 	const planet = path.join(dir.source, `planet-${date}.osm.pbf`);
@@ -179,7 +182,7 @@ export async function downloadLanduse(): Promise<string> {
 	);
 	await fs.rm(planet, { force: true });
 	console.error('✓ OSM land use ready: %s', out);
-	return out;
+	return { file: out, date };
 }
 
 // ---------------------------------------------------------------- extracts and the import
@@ -187,7 +190,8 @@ export async function downloadLanduse(): Promise<string> {
 export type Box = { box: LonLat; out: string };
 
 // cut boxes out of a PBF in one pass. `smart` completes every multipolygon that reaches into a box, so an area
-// is never cut off at the edge.
+// is never cut off at the edge — and, told to, every boundary: osmium export makes areas of those too, and some,
+// national parks above all, carry a land use (the Lower Oder Valley is natural=grassland).
 export async function extractBoxes(pbf: string, boxes: Box[], tmpdir: string): Promise<void> {
 	if (!boxes.length) return;
 	await fs.mkdir(tmpdir, { recursive: true });
@@ -199,30 +203,170 @@ export async function extractBoxes(pbf: string, boxes: Box[], tmpdir: string): P
 		bbox: [b.box.west, b.box.south, b.box.east, b.box.north],
 	}));
 	await fs.writeFile(config, JSON.stringify({ extracts }));
-	await runQuiet('osmium', 'extract', '--overwrite', ['-s', 'smart'], ['-c', config], pbf);
+	await runQuiet(
+		'osmium',
+		'extract',
+		'--overwrite',
+		['-s', 'smart'],
+		['-S', 'types=multipolygon,boundary'],
+		['-c', config],
+		pbf,
+	);
 	for (const b of boxes) await fs.rename(tmp(b), b.out);
 	await fs.rm(config, { force: true });
 }
 
-// Assemble a PBF's areas and give each its kind: `out`, a FlatGeobuf (EPSG:3857, layer `land`, field `kind`).
-// The driver keeps its node index in temp files, which go to `tmpdir`.
-export async function importLand(pbf: string, out: string, tmpdir: string, opts: { progress?: boolean } = {}) {
+// Assemble a PBF's areas and give each its kind: `out`, a VRT that reads them as one layer `land` (EPSG:3857, field
+// `kind`) from FlatGeobufs in `out`.parts/. osmium assembles the areas, with every node's location in an index in
+// memory, 16 bytes a node. The planet's cut has 2.2 billion: ~35 GB, more than a machine of this pipeline's size
+// has, and with the index as a file the export waits on the disk: ~17 hours at the rate it ran. So a PBF larger than
+// `partBytes` is split first, in halves of its box, again and again, until each part's index fits (~4.5 GB at the
+// default): about 16 parts for the planet. `osmium extract` keeps every area that reaches into a half whole, so
+// one across a cut is in both parts, and burns the same pixels twice. The halves go to `tmpdir`, each removed once
+// it is split or imported.
+export async function importLand(
+	pbf: string,
+	out: string,
+	tmpdir: string,
+	opts: { progress?: boolean; partBytes?: number } = {},
+): Promise<void> {
+	const partBytes = opts.partBytes ?? PART_BYTES;
+	const partsDir = out + '.parts';
+	await fs.rm(partsDir, { recursive: true, force: true });
+	await fs.mkdir(partsDir, { recursive: true });
 	await fs.mkdir(tmpdir, { recursive: true });
-	const conf = path.join(tmpdir, 'osmconf.ini');
-	await fs.writeFile(conf, osmconf());
-	const args: Arg[] = [
-		['--config', 'CPL_TMPDIR', tmpdir],
-		['-oo', `CONFIG_FILE=${conf}`],
-		['-f', 'FlatGeobuf'],
-		['-t_srs', 'EPSG:3857'],
-		['-nln', 'land'],
-		['-nlt', 'PROMOTE_TO_MULTI'],
-		['-dialect', 'SQLite'],
-		['-sql', kindSql('multipolygons')],
+	const parts: string[] = [];
+	const log = (...args: unknown[]) => opts.progress && console.error(...args);
+
+	// split `file` (of `box`) until it is small enough, and import each part; `file` is removed unless it is the input
+	const importPart = async (file: string, box: LonLat, depth: number): Promise<void> => {
+		const size = (await fs.stat(file)).size;
+		if (size > partBytes && depth < MAX_SPLITS) {
+			const halves = halve(box);
+			const files = halves.map((_, i) => path.join(tmpdir, `part-${depth + 1}-${parts.length}-${i}.osm.pbf`));
+			log('  splitting %s (%s GB) …', boxName(box), (size / 1e9).toFixed(1));
+			await extractBoxes(
+				file,
+				halves.map((b, i) => ({ box: b, out: files[i] })),
+				tmpdir,
+			);
+			if (file !== pbf) await fs.rm(file, { force: true });
+			for (const [i, b] of halves.entries()) await importPart(files[i], b, depth + 1);
+			return;
+		}
+		const part = path.join(partsDir, `${parts.length}.fgb`);
+		log('  importing part %d, %s (%s GB) …', parts.length, boxName(box), (size / 1e9).toFixed(1));
+		await exportKinds(file, part, tmpdir);
+		parts.push(part);
+		if (file !== pbf) await fs.rm(file, { force: true });
+	};
+	await importPart(pbf, WORLD, 0);
+	await atomic(out, (tmp) => fs.writeFile(tmp, unionVrt(parts, path.dirname(out))));
+}
+
+const PART_BYTES = 1.5e9; // ~200 million nodes: osmium peaked at 4.4 GB on Europe's 1.5 GB part
+const MAX_SPLITS = 12; // a part that is still too large then is imported as it is
+const WORLD: LonLat = { west: -180, south: -90, east: 180, north: 90 };
+const boxName = (b: LonLat) => `${b.west},${b.south},${b.east},${b.north}`;
+
+// the two halves of a box, across its longer side (in degrees)
+export function halve(b: LonLat): [LonLat, LonLat] {
+	if (b.east - b.west >= b.north - b.south) {
+		const mid = (b.west + b.east) / 2;
+		return [
+			{ ...b, east: mid },
+			{ ...b, west: mid },
+		];
+	}
+	const mid = (b.south + b.north) / 2;
+	return [
+		{ ...b, north: mid },
+		{ ...b, south: mid },
 	];
-	await atomic(out, (tmp) =>
-		opts.progress
-			? runProgress('land use', 'ogr2ogr', '-progress', ...args, tmp, pbf)
-			: runQuiet('ogr2ogr', ...args, tmp, pbf),
+}
+
+// One part's areas, with their kinds, as a FlatGeobuf `out` (with a layer and its field even if it has none):
+// osmium's GeoJSON lines, each given its kind here and handed on as CSV, WKT and kind, to ogr2ogr. A pipe all the
+// way: GDAL's own GeoJSON reader holds a whole file in memory, about four times its size, ~35 GB for Europe's part.
+async function exportKinds(pbf: string, out: string, tmpdir: string): Promise<void> {
+	const config = path.join(tmpdir, 'export.json');
+	await fs.writeFile(config, JSON.stringify(exportConfig()));
+	await atomic(out, async (tmp) => {
+		const osmium = spawnPiped(
+			'osmium',
+			{ stdout: true },
+			'export',
+			['-c', config],
+			'--geometry-types=polygon',
+			['-f', 'geojsonseq'],
+			['-x', 'print_record_separator=false'],
+			['-o', '-'],
+			pbf,
+		);
+		const ogr = spawnPiped(
+			'ogr2ogr',
+			{ stdin: true },
+			['-f', 'FlatGeobuf'],
+			['-oo', 'GEOM_POSSIBLE_NAMES=WKT'],
+			['-oo', 'KEEP_GEOM_COLUMNS=NO'],
+			['-s_srs', 'EPSG:4326'],
+			['-t_srs', 'EPSG:3857'],
+			['-nln', 'land'],
+			['-nlt', 'MULTIPOLYGON'],
+			tmp,
+			'CSV:/vsistdin/',
+		);
+		try {
+			await Promise.all([osmium.done, ogr.done, toKindsCsv(osmium.child.stdout!, ogr.child.stdin!)]);
+		} catch (err) {
+			osmium.child.kill();
+			ogr.child.kill();
+			throw err;
+		}
+	});
+	await fs.rm(config, { force: true });
+}
+
+// GeoJSON lines of areas → CSV of WKT (always a MULTIPOLYGON) and kind; areas without a kind are left out
+export async function toKindsCsv(input: Readable, output: Writable): Promise<void> {
+	const ring = (r: number[][]) => '(' + r.map((c) => `${c[0]} ${c[1]}`).join(',') + ')';
+	const polygon = (p: number[][][]) => '(' + p.map(ring).join(',') + ')';
+	let buffer = 'WKT,kind\n';
+	const flush = async () => {
+		if (!output.write(buffer)) await new Promise((resolve) => output.once('drain', resolve));
+		buffer = '';
+	};
+	for await (const line of createInterface({ input, crlfDelay: Infinity })) {
+		if (!line) continue;
+		const f = JSON.parse(line) as {
+			properties: Record<string, unknown>;
+			geometry: { type: string; coordinates: unknown };
+		};
+		const kind = kindOf(f.properties);
+		if (!kind) continue;
+		const g = f.geometry;
+		const polygons = g.type === 'Polygon' ? [g.coordinates as number[][][]] : (g.coordinates as number[][][][]);
+		buffer += `"MULTIPOLYGON(${polygons.map(polygon).join(',')})",${kind}\n`;
+		if (buffer.length > 1 << 20) await flush();
+	}
+	await flush();
+	output.end();
+}
+
+// a VRT that reads the parts as one layer `land`, paths relative to the VRT's folder `base`
+export function unionVrt(parts: string[], base: string): string {
+	const layers = parts.map(
+		(p, i) =>
+			`    <OGRVRTLayer name="part${i}"><SrcDataSource relativeToVRT="1">${path.relative(base, p)}</SrcDataSource><SrcLayer>land</SrcLayer></OGRVRTLayer>`,
 	);
+	return [
+		'<OGRVRTDataSource>',
+		'  <OGRVRTUnionLayer name="land">',
+		...layers,
+		'    <GeometryType>wkbMultiPolygon</GeometryType>',
+		'    <LayerSRS>EPSG:3857</LayerSRS>',
+		'  </OGRVRTUnionLayer>',
+		'</OGRVRTDataSource>',
+		'',
+	].join('\n');
 }

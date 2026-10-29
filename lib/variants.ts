@@ -2,15 +2,14 @@
 // over the test regions (lib/regions.ts) and measured the same way (lib/measure.ts).
 //
 // A variant changes the source before the blocks see it, and/or the handover:
-//   burn     OSM land use, from the OSM container's z11 tiles, burned into ESA's classes as one ESA code, before
-//            the overviews are built — so it is resampled, sieved and simplified exactly like ESA's own pixels.
+//   burn     OSM's land use burned into ESA's classes before the overviews (lib/landburn.ts), instead of the
+//            pipeline's own table (config.ts OSM_BURNS); [] burns nothing, which is ESA alone.
 //            `close` first closes the gaps between the polygons (streets, mostly) by that many source pixels.
 //            `keep` lists kinds under which ESA's class stays: what OSM draws on top of the burned kinds anyway.
 //   osmFrom  the zoom from which the merge takes a kind from OSM instead (config.ts `channels`); null = never.
 
-import { channels, LANDCOVER_URL, type Channel } from '../config.ts';
+import { channels, LANDCOVER_URL, OSM_BURNS, type Burn, type Channel } from '../config.ts';
 
-export type Burn = { kinds: string[]; esa: number; close?: number; keep?: string[] };
 export type Variant = {
 	why: string;
 	container?: string; // measure this container as it is, build nothing
@@ -49,54 +48,42 @@ export const GREEN = [
 	...['golf_course', 'playground', 'miniature_golf'],
 ];
 
-// Every OSM kind that has an ESA class of its category, in versatiles-style's draw order, so where two overlap the
-// one drawn on top wins, as at z11. Left out: cemeteries and grave yards (drawn only from z13), brownfield and
-// greenfield (not drawn), and water (OSM's from z4 anyway).
-const BURN_ALL: Burn[] = [
-	{ kinds: ['commercial', 'retail', 'industrial', 'quarry', 'railway', 'residential', 'garages'], esa: 50 },
-	{ kinds: ['farmland', 'farmyard', 'greenhouse_horticulture', 'orchard', 'plant_nursery', 'vineyard'], esa: 40 },
-	{ kinds: ['landfill'], esa: 50 },
-	{ kinds: GREEN, esa: 30 },
-	{ kinds: ['bare_rock', 'scree', 'shingle'], esa: 60 },
-	{ kinds: ['forest'], esa: 10 },
-	{ kinds: ['grass', 'grassland', 'meadow', 'wet_meadow'], esa: 30 },
-	{ kinds: ['heath', 'scrub'], esa: 20 },
-	{ kinds: ['beach', 'sand'], esa: 60 },
-	{ kinds: ['bog', 'marsh', 'string_bog', 'swamp'], esa: 90 },
-];
-
 export const VARIANTS: Record<string, Variant> = {
-	published: { why: 'the published container: a check that the regional builds match it', container: LANDCOVER_URL },
-	baseline: { why: "today's pipeline, on the regional sources" },
-	'handover-z11': { why: 'residential stays ours at z10, OSM takes over at z11', osmFrom: { residential: 11 } },
-	burn: { why: "OSM's urban land use burned in as built-up", burn: burnUrban() },
-	'burn-z11': { why: 'burn, and residential stays ours at z10', burn: burnUrban(), osmFrom: { residential: 11 } },
+	// merged the way it was published (version 3): residential OSM's from z10
+	published: {
+		why: 'the published container: a check that the regional builds match it',
+		container: LANDCOVER_URL,
+		osmFrom: { residential: 10 },
+	},
+	esa: {
+		why: "ESA alone, residential OSM's from z10: the pipeline before the burn (published up to version 3)",
+		burn: [],
+		osmFrom: { residential: 10 },
+	},
+	baseline: { why: "today's pipeline: every OSM land kind burned in (OSM_BURNS), residential OSM's from z11" },
+	'handover-z11': { why: 'ESA alone, residential ours at z10, OSM takes over at z11', burn: [] },
+	burn: { why: "OSM's urban land use burned in as built-up", burn: burnUrban(), osmFrom: { residential: 10 } },
+	'burn-z11': { why: 'burn, and residential stays ours at z10', burn: burnUrban() },
 	'burn-z11-keep': {
 		why: "burn-z11, but ESA's class stays where OSM draws woods, parks or fields on top of the town",
 		burn: burnUrban(undefined, ABOVE_URBAN),
-		osmFrom: { residential: 11 },
 	},
 	'burn-green-z11': {
 		why: "burn-z11, and OSM's parks, allotments, gardens and leisure grounds as grassland",
 		burn: [...burnUrban(), { kinds: GREEN, esa: 30, keep: ['forest'] }],
-		osmFrom: { residential: 11 },
-	},
-	'burn-all-z11': {
-		why: 'every OSM land kind with an ESA class of its category, in draw order, and residential ours at z10',
-		burn: BURN_ALL,
-		osmFrom: { residential: 11 },
 	},
 	'burn-z11-close1': {
 		why: 'burn-z11, with gaps up to 2 source px (76 m) between urban polygons closed',
 		burn: burnUrban(1),
-		osmFrom: { residential: 11 },
 	},
 	'burn-z11-close2': {
 		why: 'burn-z11, with gaps up to 4 source px (153 m) between urban polygons closed',
 		burn: burnUrban(2),
-		osmFrom: { residential: 11 },
 	},
 };
+
+// the variant's burns: its own, or the pipeline's
+export const burnsOf = (v: Variant): Burn[] => v.burn ?? OSM_BURNS;
 
 // the channel table with the variant's handover
 export function channelsFor(v: Variant): Channel[] {

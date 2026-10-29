@@ -43,7 +43,7 @@ test('OSM drops exactly the kinds the landcover supplies, up to their cutoff', (
 
 test('the landcover drops exactly the kinds OSM supplies, from where OSM has them', () => {
 	assert.equal(landcoverKeepExpr('water_polygons'), "!(zoom >= 4 && kind in ['water'])");
-	assert.equal(landcoverKeepExpr('land'), "!(zoom >= 10 && kind in ['residential'])");
+	assert.equal(landcoverKeepExpr('land'), "!(zoom >= 11 && kind in ['residential'])");
 	for (const c of emitted.filter((c) => c.osmFrom === undefined))
 		assert.ok(!landcoverFilter().includes(`'${c.kind}'`), `the landcover's ${c.kind} should stay`);
 });

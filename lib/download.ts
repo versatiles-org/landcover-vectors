@@ -14,6 +14,10 @@
 // them onto the source's grid, which the blocks read. Each is only built when it is missing or stamped for
 // other inputs (the raster for another FULL_PX, the sea share for other polygons), so adding or refreshing
 // the mask costs the polygons and their rasterization, not a re-warp.
+//
+// Last, OSM's land use (lib/osmland.ts): the newest planet, cut to its land use and imported once, and burned into
+// the source as the classes the blocks read (lib/landburn.ts). They follow the source, the import and the burn
+// table, so a refreshed land use (delete the osm-landuse-* files) costs the import and the burn, not a re-warp.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -21,8 +25,10 @@ import path from 'node:path';
 import { runProgress, atomic, listSourceKeys, BUCKET } from './worldcover.ts';
 import { writeStamp, readStamp, stampMismatch, sourceValues, fingerprint, type Values } from './fingerprint.ts';
 import { downloadOcean, buildSeaShare, seaShareValues, SEA_SHARE_STAMP } from './ocean.ts';
+import { downloadLanduse, importLand, landuseImport } from './osmland.ts';
+import { buildClasses, CLASSES_CO, CLASSES_OVERVIEWS, CLASSES_STAMP } from './landburn.ts';
 import { timed } from './timing.ts';
-import { dir, file, MERC, FULL_PX } from '../config.ts';
+import { dir, file, MERC, FULL_PX, OSM_BURNS } from '../config.ts';
 
 const exists = (p: string): Promise<boolean> =>
 	fs.stat(p).then(
@@ -49,6 +55,44 @@ export async function download(): Promise<void> {
 	if ((await exists(file.seaShare)) && shareStamp && !stampMismatch(shareStamp, share))
 		console.error('Sea share present: %s', file.seaShare);
 	else await timed('seashare', () => downloadSeaShare(share));
+
+	const landuse = await timed('landuse', downloadLanduse);
+	const land = landuseImport(landuse.date);
+	if (await exists(land)) console.error('OSM land use imported: %s', land);
+	else
+		await timed('import', async () => {
+			console.error('Importing OSM land use → %s …', land);
+			await importLand(landuse.file, land, path.join(dir.tmp, 'osm-import'), { progress: true });
+		});
+
+	// the classes follow the source, the land use and the burn table
+	const classes = await classesValues(land);
+	const classesStamp = await readStamp(dir.source, CLASSES_STAMP);
+	if ((await exists(file.classes)) && classesStamp && !stampMismatch(classesStamp, classes))
+		console.error('Classes present: %s', file.classes);
+	else await timed('classes', () => downloadClasses(land, classes));
+}
+
+// what the classes were built from: a rebuilt source or a refreshed import rebuilds them
+export async function classesValues(land: string): Promise<Values> {
+	const at = async (f: string) => {
+		const s = await fs.stat(f);
+		return { bytes: s.size, modified: s.mtime.toISOString() };
+	};
+	return {
+		fullPx: FULL_PX,
+		source: await at(file.source),
+		land: { file: path.basename(land), ...(await at(land)) },
+		burns: OSM_BURNS,
+	};
+}
+
+async function downloadClasses(land: string, values: Values): Promise<void> {
+	console.error("Burning OSM's land use into the source → %s …", file.classes);
+	const tilesDir = path.join(dir.tmp, `classes-${fingerprint(values)}`);
+	await buildClasses(file.classes, { source: file.source, land, burns: OSM_BURNS, tilesDir });
+	await writeStamp(dir.source, values, CLASSES_STAMP);
+	console.error('✓ classes ready: %s', file.classes);
 }
 
 async function downloadSeaShare(values: Values): Promise<void> {
@@ -89,33 +133,13 @@ async function downloadSource(): Promise<void> {
 			['-wo', 'NUM_THREADS=ALL_CPUS'],
 			['-wm', 1024],
 			['-of', 'GTiff'],
-			['-co', 'TILED=YES'],
-			['-co', 'BLOCKXSIZE=512'],
-			['-co', 'BLOCKYSIZE=512'],
-			// ZSTD 9: about a third smaller than DEFLATE 1 on ESA classes, at the same read and write speed
-			// (LZW is as small; ZSTD 19 saves another ~15 % but writes ~40× slower). No predictor: class
-			// codes are categories, so differencing neighbours only adds entropy.
-			['-co', 'COMPRESS=ZSTD'],
-			['-co', 'ZSTD_LEVEL=9'],
-			['-co', 'PREDICTOR=1'],
-			['-co', 'BIGTIFF=YES'],
-			['-co', 'SPARSE_OK=TRUE'],
-			['-co', 'NUM_THREADS=ALL_CPUS'],
+			CLASSES_CO,
 			'-overwrite',
 			vrt,
 			tmp,
 		);
 		console.error('Building overview pyramid (mode) …');
-		await runProgress(
-			'overviews',
-			'gdaladdo',
-			['-r', 'mode'],
-			['--config', 'COMPRESS_OVERVIEW', 'ZSTD'],
-			['--config', 'ZSTD_LEVEL_OVERVIEW', 9],
-			['--config', 'GDAL_NUM_THREADS', 'ALL_CPUS'],
-			tmp,
-			[2, 4, 8, 16, 32, 64, 128, 256, 512, 1024],
-		);
+		await runProgress('overviews', 'gdaladdo', CLASSES_OVERVIEWS, tmp, [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]);
 	});
 
 	await fs.rm(vrt, { force: true });

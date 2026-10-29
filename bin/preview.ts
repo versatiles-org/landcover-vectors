@@ -20,6 +20,7 @@ import { requireCommands, commandExists, runCapture, setGdalThreads } from '../l
 import { requireTools } from '../lib/tools.ts';
 import { startTimingLog, timed } from '../lib/timing.ts';
 import { requireSeaShare } from '../lib/ocean.ts';
+import { requireClasses } from '../lib/landburn.ts';
 import { buildCoverage } from '../lib/coverage.ts';
 import { planBlocks, countBlocks } from '../lib/plan.ts';
 import { runZooms } from '../lib/pipeline.ts';
@@ -112,7 +113,7 @@ let current = currentFor(fp);
 // ---------------------------------------------------------------- build
 async function build(): Promise<void> {
 	await requireTools(['node', 'gdal', 'gdal_calc', 'tippecanoe']);
-	if (!(await exists(file.source))) throw new Error(`missing ${file.source} — run "npm run download" first`);
+	await requireClasses();
 	await requireSeaShare();
 
 	const dirs = previewPaths(current.previewDir, spec);
@@ -142,7 +143,7 @@ async function build(): Promise<void> {
 	setGdalThreads(1); // one block per core, one GDAL thread each — as in the build
 	const zooms = await timed('preview', () =>
 		runZooms(plan, {
-			src: file.source,
+			src: file.classes,
 			tmpdir: dirs.tmp,
 			resultsdir: dirs.results,
 			tilesdir: dirs.tiles,

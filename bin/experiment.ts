@@ -32,7 +32,7 @@ import { downloadOcean, seaShareValues } from '../lib/ocean.ts';
 import { findLanduse } from '../lib/osmland.ts';
 import { mergePipeline } from '../lib/handover.ts';
 import { REGIONS, extentLonLat } from '../lib/regions.ts';
-import { VARIANTS, channelsFor, type Variant } from '../lib/variants.ts';
+import { VARIANTS, channelsFor, burnsOf, type Variant } from '../lib/variants.ts';
 import { measureRegion, KIND_ZOOMS, type RegionMetrics, type KindCounts } from '../lib/measure.ts';
 import {
 	sourceKeys,
@@ -157,7 +157,7 @@ async function build(v: Variant): Promise<{ landcover: string; fp: string }> {
 		cache: cacheValues(),
 		sea: await seaShareValues(),
 		landuse: landuse.date,
-		burn: v.burn ?? [],
+		burn: burnsOf(v),
 		regions: Object.fromEntries(regions.map((r) => [r.name, r.region.window])),
 	});
 	const dir = path.join(root, 'variants', fp);
@@ -176,7 +176,7 @@ async function build(v: Variant): Promise<{ landcover: string; fp: string }> {
 	const sea: Part[] = [];
 	for (const r of regions) {
 		const tif = path.join(sourceDir, `${r.name}.tif`);
-		await burnedSource(r.dir, regionLandPath(r.dir, landuse.date), v.burn ?? [], tif, tmpdir);
+		await burnedSource(r.dir, regionLandPath(r.dir, landuse.date), burnsOf(v), tif, tmpdir);
 		classes.push({ file: tif, ...regionGrid(r.region) });
 		sea.push({ file: path.join(r.dir, 'seashare.tif'), ...regionGrid(r.region) });
 	}

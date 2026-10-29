@@ -16,7 +16,7 @@ import { file, CPU_CORES } from '../config.ts';
 
 const { values: opt } = parseArgs({ options: { landuse: { type: 'boolean', default: false } } });
 
-await requireTools(opt.landuse ? ['node', 'curl', 'osmium'] : ['node', 'gdal', 'curl']);
+await requireTools(opt.landuse ? ['node', 'curl', 'osmium'] : ['node', 'gdal', 'curl', 'osmium']);
 startTimingLog(file.timings, 'download', { cores: CPU_CORES });
 await timed('download', async () => {
 	if (opt.landuse) await downloadLanduse();

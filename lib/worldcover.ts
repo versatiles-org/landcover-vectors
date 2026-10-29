@@ -128,6 +128,26 @@ export function runQuiet(cmd: string, ...args: Arg[]): Promise<void> {
 	});
 }
 
+// Spawn a command whose stdin and/or stdout the caller writes or reads (a pipe between two commands), stderr
+// captured for the error message; `done` settles when it has exited. `kill` ends it, for when the other end failed.
+export function spawnPiped(
+	cmd: string,
+	pipe: { stdin?: boolean; stdout?: boolean },
+	...args: Arg[]
+): { child: ChildProcess; done: Promise<void> } {
+	const argv = toArgv(args);
+	const child = spawnTimed(cmd, argv, [pipe.stdin ? 'pipe' : 'ignore', pipe.stdout ? 'pipe' : 'ignore', 'pipe']);
+	let stderr = '';
+	child.stderr?.on('data', (d) => (stderr += d));
+	const done = new Promise<void>((resolve, reject) => {
+		child.on('error', reject);
+		child.on('close', (code, signal) =>
+			code === 0 ? resolve() : reject(new Error(stderr.trim() || exitMessage(cmd, code, signal))),
+		);
+	});
+	return { child, done };
+}
+
 // run a child process quietly, resolving with its captured stdout (stderr feeds error messages)
 export function runCapture(cmd: string, ...args: Arg[]): Promise<string> {
 	const argv = toArgv(args);
