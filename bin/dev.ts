@@ -3,6 +3,7 @@
 //   npm run dev                # the published landcover container
 //   npm run dev -- --local     # the local build, data/landcover-vectors.versatiles
 //   npm run dev -- --landcover <path|url>   # any other landcover container, e.g. an experiment's
+//   npm run dev -- --ip 0.0.0.0             # reachable from other machines, e.g. on a server
 //
 // Serves three sources from one in-process server (@versatiles/versatiles-rs, nothing downloaded): OSM's
 // Shortbread container, the landcover container, and their merge, filtered exactly like `npm run merge`
@@ -26,6 +27,7 @@ const { values: opt } = parseArgs({
 	options: {
 		local: { type: 'boolean', default: false },
 		landcover: { type: 'string' },
+		ip: { type: 'string', default: '127.0.0.1' },
 		port: { type: 'string', default: '8080' },
 		'no-open': { type: 'boolean', default: false },
 		help: { type: 'boolean', default: false },
@@ -38,6 +40,9 @@ if (opt.help) {
 			'Usage: npm run dev -- [options]',
 			`  --local      use the local build (${path.relative(process.cwd(), file.container)}) instead of`,
 			`               the published container (${LANDCOVER_URL})`,
+			'  --landcover <path|url>',
+			"               use this landcover container instead, e.g. an experiment's build",
+			'  --ip <ip>    address to bind to (default 127.0.0.1, this machine only; 0.0.0.0 for every interface)',
 			'  --port <n>   port to serve on (default 8080)',
 			'  --no-open    do not open a browser',
 		].join('\n'),
@@ -78,13 +83,15 @@ await fs.writeFile(
 );
 
 // no-cache: --local and remote serve different tiles under the same URLs
-const server = new TileServer({ ip: '127.0.0.1', port: Number(opt.port), cacheControl: 'no-cache' });
+const server = new TileServer({ ip: opt.ip, port: Number(opt.port), cacheControl: 'no-cache' });
 for (const [name, source] of Object.entries(sources)) await server.addTileSource(name, source);
 await server.addStaticSource(path.join(root, 'dev', 'map'), '/');
 await server.addStaticSource(genDir, '/gen');
 await server.start();
 
-const url = `http://localhost:${server.port}/`;
+// bound to every interface: this machine still reaches it as localhost
+const host = ['0.0.0.0', '::'].includes(opt.ip) ? 'localhost' : opt.ip.includes(':') ? `[${opt.ip}]` : opt.ip;
+const url = `http://${host}:${server.port}/`;
 console.error('→ %s  (landcover: %s %s)', url, where, landcover);
 if (!opt['no-open']) {
 	const opener = (await commandExists('open')) ? 'open' : (await commandExists('xdg-open')) ? 'xdg-open' : null;

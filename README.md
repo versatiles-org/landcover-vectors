@@ -456,6 +456,7 @@ against) and the slowest single commands with their block or sea-share tile. `--
 npm run dev                                # the published landcover container
 npm run dev -- --local                     # the local build, data/landcover-vectors.versatiles
 npm run dev -- --landcover <path|url>      # any other, e.g. an experiment's build
+npm run dev -- --ip 0.0.0.0                # on a server: reachable from other machines (default: this one only)
 ```
 
 Serves OSM's Shortbread container, the landcover container and their merge — filtered exactly like
