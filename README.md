@@ -370,8 +370,9 @@ a level, so a small VRT points at the window's rectangle in it, with no warp and
 1. **Classify** — one `gdal_calc.py` call maps each pixel's ESA code to its class index. ESA's no-data,
    every inactive class and OSM's sea fold into the no-data class. Each pixel keeps its own class: there is no smoothing
    before the sieve, because a blur cost accuracy (see [doc/TUNING.md](doc/TUNING.md)).
-2. **Sieve** — `gdal raster sieve` merges patches smaller than `SIEVE_RENDERED` = 5 rendered px²
-   (`SIEVE_THRESHOLD` = round(5·4²) = 80 px) into their largest neighbour, in two passes (`SIEVE_STAGES`):
+2. **Sieve** — `gdal raster sieve` merges patches smaller than `SIEVE_RENDERED` = 5 rendered px² at z9–10, and less below
+   (`SIEVE_RAMP`, from 1 px² at z0 to 3 px² at z8). At 5 px²
+   (`SIEVE_THRESHOLD` = round(5·4²) = 80 px) they merge into their largest neighbour, in two passes (`SIEVE_STAGES`):
    first at a quarter of that, 20 px, then at 80 px. A single pass leaves much of a fragmented mosaic untouched,
    because most neighbours of a small patch are small too (see [doc/TUNING.md](doc/TUNING.md)). A round majority
    filter of `SMOOTH_RENDERED` = 0.5 rendered px radius then rounds the shapes, and a last sieve at 80 px takes what it
@@ -529,7 +530,7 @@ offered. `?style=versatiles` in the URL opens it directly.
 
 | stage  | knob                                                         | what it changes                                                                                      | override                   |
 | ------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | -------------------------- |
-| raster | `SIEVE_RENDERED` (5 rendered px²)                            | the smallest patch kept, sieved in two passes; the main lever on feature count; 0 turns it off       | `LANDCOVER_SIEVE_RENDERED` |
+| raster | `SIEVE_RENDERED` (5 rendered px²), `SIEVE_RAMP` below z9     | the smallest patch kept, sieved in two passes; the main lever on feature count; 0 turns it off       | `LANDCOVER_SIEVE_RENDERED` |
 | vector | `DETAIL_PX` (1.5)                                            | the simplify tolerance — how precisely outlines follow the result                                    | `LANDCOVER_DETAIL_PX`      |
 | raster | `TILE_PX` (1024 → 38 m/px at z10, against ESA's native 10 m) | the resolution the source is classified at; 4× source raster and CPU per doubling, and a re-download | — (edit, then re-download) |
 

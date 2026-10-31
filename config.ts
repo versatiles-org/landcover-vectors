@@ -97,6 +97,15 @@ export const OVERSAMPLE = TILE_PX / 256; // raw pixels per rendered pixel (4)
 // source (66.6 → 60.6 %); a coarser simplify tolerance costs as much accuracy for a third of the bytes.
 export const SIEVE_RENDERED = numberFromEnv('LANDCOVER_SIEVE_RENDERED', 5, { atLeast: 0 });
 
+// Below z9 a smaller sieve: bytes cost little there, and a sieve in rendered px removes ever larger areas. It rises from
+// 1 px² at z0 to 3 px² at z8, for 1.6 % more bytes over the planet (doc/TUNING.md#per-zoom-a-lower-sieve-a-finer-raster).
+export const SIEVE_RAMP = [1, 1.1, 1.3, 1.5, 1.7, 2, 2.3, 2.6, 3];
+
+// the sieve at zoom z, in rendered px²; LANDCOVER_SIEVE_RENDERED sets every zoom for a sweep
+export function sieveRendered(z: number): number {
+	return process.env.LANDCOVER_SIEVE_RENDERED ? SIEVE_RENDERED : (SIEVE_RAMP[z] ?? SIEVE_RENDERED);
+}
+
 // full-world raster size at the deepest zoom (TILE_PX × 2^MAXLEVEL). The single EPSG:3857
 // source GeoTIFF is built at this resolution and carries an overview pyramid down to z0, so a
 // block at any zoom reads the matching pyramid level.

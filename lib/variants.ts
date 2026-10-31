@@ -69,9 +69,6 @@ export const GREEN = [
 	...['golf_course', 'playground', 'miniature_golf'],
 ];
 
-const sieveUpTo = (z: number, sieve: number): Record<number, BlockParams> =>
-	Object.fromEntries(Array.from({ length: z + 1 }, (_, i) => [i, { sieve }]));
-
 export const VARIANTS: Record<string, Variant> = {
 	// merged the way it was published (version 3): residential OSM's from z10
 	published: {
@@ -104,18 +101,16 @@ export const VARIANTS: Record<string, Variant> = {
 		why: 'burn-z11, with gaps up to 4 source px (153 m) between urban polygons closed',
 		burn: burnUrban(2),
 	},
+	// the sieve of 5 px² at every zoom, the rest as configured
+	'flat-sieve': { why: 'a sieve of 5 px² at every zoom, no ramp', sieve: 5 },
 	previous: {
-		why: 'the pipeline before the outline changes: no filter, no rounding, one feature per polygon, detail 1',
+		why: 'the pipeline before the outline changes: no filter, no rounding, one feature per polygon, detail 1, sieve 5',
+		sieve: 5,
 		detail: 1,
 		smooth: 0,
 		outline: null,
 		tippecanoe: [],
 	},
-	// a lower sieve where it costs few bytes: every zoom up to z, the others as configured
-	'sieve-3-to-z8': { why: 'a sieve of 3 px² up to z8', zooms: sieveUpTo(8, 3) },
-	'sieve-2.5-to-z8': { why: 'a sieve of 2.5 px² up to z8', zooms: sieveUpTo(8, 2.5) },
-	'sieve-2-to-z8': { why: 'a sieve of 2 px² up to z8', zooms: sieveUpTo(8, 2) },
-	'sieve-3-to-z9': { why: 'a sieve of 3 px² up to z9', zooms: sieveUpTo(9, 3) },
 	// z8 read at a finer level of the pyramid, instead of its majority of majorities
 	'z8-2048': { why: 'z8 from the z9 level of the pyramid, 2048 px per tile', zooms: { 8: { tilePx: 2048 } } },
 	'z8-4096': { why: 'z8 from the z10 level of the pyramid, 4096 px per tile', zooms: { 8: { tilePx: 4096 } } },

@@ -21,6 +21,7 @@ import {
 	TILE_PX,
 	BLOCK,
 	SIEVE_THRESHOLD,
+	sieveRendered,
 	SIEVE_STAGES,
 	MARGIN_PX,
 	TIPPECANOE_ARGS,
@@ -47,6 +48,7 @@ export function cacheValues(): Values {
 		block: BLOCK,
 		sieveThreshold: SIEVE_THRESHOLD,
 		sieveStages: SIEVE_STAGES, // the sieve's passes, in raw pixels
+		sieve: Array.from({ length: MAXLEVEL + 1 }, (_, z) => sieveRendered(z)),
 		marginPx: MARGIN_PX,
 		tippecanoe: [...TIPPECANOE_ARGS, ...TIPPECANOE_COMPACT], // each block tiles itself, and its tiles are cached (lib/assemble.ts)
 		smooth: SMOOTH_RENDERED,

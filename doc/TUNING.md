@@ -180,7 +180,14 @@ so it does not favour the raster the pipeline already reads. Blocks of `z8-4096`
 | `z8-4096`       | +19.7      | 86.9           | 31.9       | 51.0       | 7.6       |
 
 The finer raster costs bytes and gains no agreement, though forest along rivers stays connected in the Hudson Bay render.
-The lower sieve gains agreement, at more turning.
+The lower sieve gains agreement, at more turning. At z0 it matters most: land agreement against the source's fine level
+rises from 81.8 % at 5 px² to 83.4 % at 3, 84.9 % at 1 and 85.4 % at 0.5, and Arctic islands come back, with the tile
+growing from 6.8 to 10.6 KB at 1 px². The pipeline therefore adopted `SIEVE_RAMP`, from 1 px² at z0 to 3 px² at z8. Over the planet it
+adds 72 MB, 1.6 % of the build, nearly all of it at z7 and z8. The largest tile rises to 72.2 KB, at z7 and z8.
+
+At z0, unlike z8, a finer raster gains too: at 1 px², 84.9 % at 1024 px, 86.9 % at 2048 and 87.7 % at 4096, for 3, 5 and
+25 s. It also shrinks what the pyramid inflates: south of about −55°, land covers 0.49 % in the fine source, 2.2 % at
+1024 px and 0.24 % at 4096. Forest stays overdrawn at every setting (31 % in the source, 37–39 % at z0).
 
 ## Sweeps and `inspect`
 

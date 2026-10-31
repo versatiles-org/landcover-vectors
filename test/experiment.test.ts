@@ -107,7 +107,7 @@ describe('variants', () => {
 
 	test('previous turns every outline setting of config.ts off', () => {
 		assert.deepEqual(paramsFor(VARIANTS.previous, 10), {
-			sieve: undefined,
+			sieve: 5,
 			detail: 1,
 			smooth: 0,
 			outline: null,

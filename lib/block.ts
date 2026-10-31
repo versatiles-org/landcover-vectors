@@ -16,7 +16,7 @@ import { roundCoverageProcess } from './roundcoverage.ts';
 import {
 	channels,
 	blockWindow,
-	SIEVE_RENDERED,
+	sieveRendered,
 	SIEVE_THRESHOLD,
 	SMOOTH_RENDERED,
 	OUTLINE,
@@ -40,7 +40,7 @@ export type BlockCtx = {
 
 // What an experiment (lib/variants.ts) may set differently from config.ts, in rendered px. Unset: config.ts.
 export type BlockParams = {
-	sieve?: number; // smallest patch kept, px² (SIEVE_RENDERED); not above config.ts's, whose margin it would outgrow
+	sieve?: number; // smallest patch kept, px² (sieveRendered); not above config.ts's, whose margin it would outgrow
 	detail?: number; // the simplify's detail (DETAIL_PX)
 	smooth?: number; // the round majority filter after the sieve (3b), its radius (SMOOTH_RENDERED); 0: none
 	outline?: { cap: number; passes: number } | null; // the rounding before the simplify (5b, OUTLINE); null: none
@@ -263,7 +263,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		);
 
 		// 3. sieve specks, in passes of growing size (SIEVE_STAGES)
-		const threshold = Math.round((params.sieve ?? SIEVE_RENDERED) * oversample * oversample);
+		const threshold = Math.round((params.sieve ?? sieveRendered(z)) * oversample * oversample);
 		if (threshold / oversample ** 2 > SIEVE_THRESHOLD / OVERSAMPLE ** 2)
 			throw new Error(`sieve ${params.sieve}: it would outgrow the margin`);
 		const stages = sieveStages(threshold);

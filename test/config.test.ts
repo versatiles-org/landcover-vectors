@@ -19,6 +19,7 @@ import {
 	SIEVE_RENDERED,
 	SIEVE_THRESHOLD,
 	DETAIL_PX,
+	sieveRendered,
 	blockWindow,
 	blocksPerAxis,
 	simplifyForLevel,
@@ -173,6 +174,13 @@ describe('the resolution knobs', () => {
 		// the raw-pixel values are derived from it, so they scale along
 		assert.equal(SIEVE_THRESHOLD, Math.round(SIEVE_RENDERED * OVERSAMPLE * OVERSAMPLE));
 		assert.equal(MARGIN_PX, Math.ceil(3 * Math.sqrt(SIEVE_THRESHOLD)));
+	});
+
+	test('the sieve rises to z8, then stays at SIEVE_RENDERED', () => {
+		assert.deepEqual(
+			Array.from({ length: MAXLEVEL + 1 }, (_, z) => sieveRendered(z)),
+			[1, 1.1, 1.3, 1.5, 1.7, 2, 2.3, 2.6, 3, 5, 5],
+		);
 	});
 
 	test('LANDCOVER_SIEVE_RENDERED overrides the raster stage', () => {
