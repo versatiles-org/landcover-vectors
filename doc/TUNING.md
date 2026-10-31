@@ -152,6 +152,7 @@ is the outlines' turning per length, sharp the share of sharp corners, axis the 
 
 The regions read about 3 points low against a planet build, so `--planet` decides. `spend-sieve-4` over the planet,
 against the build: z8 +1.1 %, z9 +0.3 %, z10 −0.8 %, and the largest tile fell from 70.3 to 66.2 KB at z8.
+`spend-detail-1.5-smooth-0.5` over the planet: z8 −6.8 %, z9 −6.1 %, z10 −4.1 %, which is 4.7 % less over z8–10.
 
 ## Sweeps and `inspect`
 
