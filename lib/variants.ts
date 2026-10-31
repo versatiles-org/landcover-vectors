@@ -131,6 +131,8 @@ export const VARIANTS: Record<string, Variant> = {
 				['base', {}],
 				['detail-1.5', { detail: 1.5 }],
 				['detail-2', { detail: 2 }],
+				['sieve-2', { sieve: 2 }],
+				['sieve-2.5', { sieve: 2.5 }],
 				['sieve-3', { sieve: 3 }],
 				['sieve-4', { sieve: 4 }],
 				['sieve-3-detail-1.5', { sieve: 3, detail: 1.5 }],
