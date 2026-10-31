@@ -5,7 +5,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { fastPath, type WindowContent } from '../lib/block.ts';
+import { fastPath, diskKernel, type WindowContent } from '../lib/block.ts';
 import { channels } from '../config.ts';
 
 const active = channels.filter((c) => c.layer !== null);
@@ -56,4 +56,11 @@ describe('fastPath', () => {
 		const withoutForest = active.filter((c) => !c.esa.includes(10));
 		assert.deepEqual(fastPath(window({}), withoutForest), { branch: 'empty' });
 	});
+});
+
+test('diskKernel is a round 0/1 kernel, odd-sized for gdal raster neighbors', () => {
+	const rows = (r: number) => (JSON.parse(diskKernel(r)) as number[][]).map((row) => row.join(''));
+	assert.deepEqual(rows(1), ['111', '111', '111']);
+	assert.deepEqual(rows(2), ['01110', '11111', '11111', '11111', '01110']);
+	assert.equal(rows(6).length, 13);
 });

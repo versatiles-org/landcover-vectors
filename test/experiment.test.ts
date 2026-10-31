@@ -19,6 +19,12 @@ import {
 	kindsOf,
 	kindRaster,
 	kindBreakdown,
+	addRing,
+	shapeSums,
+	shapeOf,
+	truthGrid,
+	kindGrid,
+	agreement,
 	KINDS,
 	CATEGORIES,
 } from '../lib/measure.ts';
@@ -99,6 +105,18 @@ describe('variants', () => {
 		assert.equal(burnsOf(VARIANTS['burn-z11'])[0].esa, 50);
 	});
 
+	test('the smoothing variants smooth, and nothing else does', () => {
+		assert.deepEqual(
+			Object.entries(VARIANTS).flatMap(([n, v]) => (v.smooth ? [[n, v.smooth]] : [])),
+			[
+				['smooth-0.5', 0.5],
+				['smooth-1', 1],
+				['smooth-1.5', 1.5],
+			],
+		);
+		assert.equal(VARIANTS['smooth-1'].burn, undefined, "burns the pipeline's table, like baseline");
+	});
+
 	test('null hands a kind to the landcover at every zoom', () => {
 		const chans = channelsFor({ why: '', osmFrom: { water: null } });
 		assert.equal(chans.find((c) => c.kind === 'water')!.osmFrom, undefined);
@@ -149,6 +167,110 @@ describe('the measurement', () => {
 		assert.equal(m.overreach, 50); // one of z10's two urban pixels is not urban at z11
 		assert.equal(m.forestKept, 100);
 		assert.deepEqual(m.unmapped, { urban: 100 });
+	});
+});
+
+describe('shape', () => {
+	const E = 4096; // tile units: 16 per rendered px
+	const everywhere = () => true;
+	const of = (...rs: [number, number][][]) => {
+		const s = shapeSums();
+		for (const r of rs) addRing(s, r, E, everywhere);
+		return shapeOf(s)!;
+	};
+	// a ring around (x0,y0)–(x1,y1) whose bottom-left to top-right side is `side`
+	const ring = (side: [number, number][]): [number, number][] => [...side, [3000, 1000], [3000, 3000]];
+
+	test('a staircase turns at every step, along the axes', () => {
+		const steps: [number, number][] = [];
+		for (let i = 0; i < 8; i++) steps.push([1000 + 250 * i, 3000 - 250 * i], [1250 + 250 * i, 3000 - 250 * i]);
+		const s = of(ring(steps));
+		assert.ok(s.sharpTurns > 90, `sharp turns ${s.sharpTurns}`);
+		assert.equal(s.axisAligned, 100);
+	});
+
+	test('a circle turns a little at every vertex, and runs along the axes only by chance', () => {
+		const circle: [number, number][] = Array.from({ length: 64 }, (_, i) => {
+			const a = (2 * Math.PI * i) / 64;
+			return [2048 + 1000 * Math.cos(a), 2048 + 1000 * Math.sin(a)];
+		});
+		const s = of(circle);
+		assert.equal(s.vertices, 64);
+		assert.equal(s.sharpTurns, 0);
+		assert.ok(Math.abs(s.turning - 360 / ((2 * Math.PI * 1000) / 16)) < 0.1, `turning ${s.turning}°/px`);
+		// random directions: 6° of every 90; these 64 put 2 of every 16 segments within 3° of an axis
+		assert.ok(s.axisAligned <= 12.5, `axis-aligned ${s.axisAligned} %`);
+	});
+
+	test('tile edges and the buffer do not count, nor the turns next to them', () => {
+		// a square from the left tile edge into the buffer on the right: only its top and bottom count, inside
+		const s = shapeSums();
+		addRing(
+			s,
+			[
+				[0, 1000],
+				[5000, 1000],
+				[5000, 2000],
+				[0, 2000],
+			],
+			E,
+			everywhere,
+		);
+		assert.equal(s.segments, 0, 'top and bottom reach into the buffer');
+		addRing(
+			s,
+			[
+				[0, 1000],
+				[2000, 1000],
+				[2000, 2000],
+				[0, 2000],
+			],
+			E,
+			everywhere,
+		);
+		assert.equal(s.segments, 3);
+		assert.equal(s.vertices, 2, 'only the two corners away from the edge');
+		assert.equal(shapeOf(s)!.segmentPx, 104.17); // (2000 + 1000 + 2000) units / 16 per px / 3 segments
+	});
+
+	test('only what lies in the window counts', () => {
+		const s = shapeSums();
+		// a square from x 1000 to 3000 and a window left of x 2000: only the left side's middle lies in it
+		addRing(
+			s,
+			[
+				[1000, 1000],
+				[3000, 1000],
+				[3000, 3000],
+				[1000, 3000],
+			],
+			E,
+			(x) => x < 2000,
+		);
+		assert.equal(s.segments, 1);
+		assert.equal(s.vertices, 0, 'a turn needs both its segments');
+	});
+});
+
+describe('agreement with the source', () => {
+	const code = (kind: string) => channels.filter((c) => c.layer && c.kind).findIndex((c) => c.kind === kind) + 1;
+
+	test('truthGrid draws what a block at that zoom draws: sea and kinds past their cutoff are none', () => {
+		const forest = channels.find((c) => c.kind === 'forest')!.esa[0];
+		const classes = new Uint8Array([forest, forest, 0]);
+		const share = new Uint8Array([0, 80, 0]);
+		assert.deepEqual([...truthGrid(classes, share, 10)], [code('forest'), 0, 0]);
+		assert.deepEqual([...truthGrid(classes, share, 11)], [0, 0, 0]);
+	});
+
+	test('kindGrid codes the tiles alike, and agreement compares the majorities of each rendered pixel', () => {
+		const n = 8; // two z11 pixels a side at 4 grid px each
+		const forest = new Uint8Array(n * n).fill(1);
+		const shown = kindGrid(new Map([['land/forest', forest]]), n);
+		assert.equal(shown[0], code('forest'));
+		const truth = new Uint8Array(n * n).fill(code('forest'));
+		for (let i = 0; i < n * n; i++) if (i % n >= 4 && i < 4 * n) truth[i] = 0; // top-right pixel: none
+		assert.equal(agreement(truth, shown, n, 11), 75);
 	});
 });
 

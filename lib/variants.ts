@@ -7,6 +7,8 @@
 //            `close` first closes the gaps between the polygons (streets, mostly) by that many source pixels.
 //            `keep` lists kinds under which ESA's class stays: what OSM draws on top of the burned kinds anyway.
 //   osmFrom  the zoom from which the merge takes a kind from OSM instead (config.ts `channels`); null = never.
+//   smooth   a round majority filter after the sieve (lib/block.ts), its radius in rendered px: rounds the
+//            outlines before they are traced, against the staircase the simplify leaves.
 
 import { channels, LANDCOVER_URL, OSM_BURNS, type Burn, type Channel } from '../config.ts';
 
@@ -15,6 +17,7 @@ export type Variant = {
 	container?: string; // measure this container as it is, build nothing
 	burn?: Burn[];
 	osmFrom?: Record<string, number | null>;
+	smooth?: number;
 };
 
 // OSM's urban land use (Shortbread `land` kinds that versatiles-style draws as residential, commercial, industrial
@@ -79,6 +82,15 @@ export const VARIANTS: Record<string, Variant> = {
 	'burn-z11-close2': {
 		why: 'burn-z11, with gaps up to 4 source px (153 m) between urban polygons closed',
 		burn: burnUrban(2),
+	},
+	'smooth-0.5': {
+		why: 'baseline, with a round majority filter of 0.5 rendered px radius after the sieve',
+		smooth: 0.5,
+	},
+	'smooth-1': { why: 'baseline, with a round majority filter of 1 rendered px radius after the sieve', smooth: 1 },
+	'smooth-1.5': {
+		why: 'baseline, with a round majority filter of 1.5 rendered px radius after the sieve',
+		smooth: 1.5,
 	},
 };
 

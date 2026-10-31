@@ -17,6 +17,8 @@ import {
 	blockWindow,
 	SIEVE_STAGES,
 	SEA_SHARE_MIN,
+	MARGIN_PX,
+	OVERSAMPLE,
 	TILE_PX,
 	simplifyForLevel,
 	type Channel,
@@ -28,6 +30,7 @@ export type BlockCtx = {
 	tmpdir: string;
 	resultsdir: string;
 	logFile?: string; // optional TSV log: one row per block (how it was processed, timing, sizes, histogram)
+	smooth?: number; // a round majority filter after the sieve (3b), its radius in rendered px; unset: none
 };
 
 // Each tile's class codes are shifted by one of four multiples of this, by the parity of its column and row, so
@@ -60,6 +63,19 @@ export const LOG_HEADER = [
 
 // gdal_calc expression: 1 where band A is one of the given ESA codes, else 0
 const isAny = (esa: number[]) => `(${esa.map((c) => `(A==${c})`).join('|')})`;
+
+// a disk of `radius` px as a square 0/1 kernel for gdal raster neighbors: the pixels whose centre lies within
+// radius + ½ px of the middle one's (2 px: the 5×5 square without its corners)
+export function diskKernel(radius: number): string {
+	const r = Math.ceil(radius);
+	const rows: number[][] = [];
+	for (let dy = -r; dy <= r; dy++) {
+		const row: number[] = [];
+		for (let dx = -r; dx <= r; dx++) row.push(dx * dx + dy * dy <= (radius + 0.5) ** 2 ? 1 : 0);
+		rows.push(row);
+	}
+	return JSON.stringify(rows);
+}
 
 // what a window holds, from its histograms: ESA's classes, and OSM's sea on top of them
 export type WindowContent = {
@@ -245,6 +261,42 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 				sieved = out;
 			}
 		});
+
+		// 3b. for the experiments (lib/variants.ts): round the outlines with a majority filter over a disk — each
+		// pixel takes the class most of the disk around it has — then sieve once more at the full size, for what the
+		// filter cut off. Polygonize then traces rounder shapes, with fewer staircase steps for the simplify to keep.
+		if (ctx.smooth) {
+			const radius = ctx.smooth * OVERSAMPLE; // raw px
+			if (radius > MARGIN_PX / 2) throw new Error(`smooth ${ctx.smooth}: the filter would reach past the margin`);
+			await timed('smooth', async () => {
+				const smoothed = tmp('smoothed.tif');
+				await runQuiet(
+					'gdal',
+					['raster', 'neighbors'],
+					['--method', 'mode'],
+					['--kernel', diskKernel(radius)],
+					['--ot', 'UInt8'],
+					['--nodata', 'none'],
+					['--co', 'COMPRESS=DEFLATE'],
+					['--co', 'TILED=YES'],
+					'--overwrite',
+					['-i', sieved],
+					['-o', smoothed],
+				);
+				const out = tmp('smoothed-sieved.tif');
+				await runQuiet(
+					'gdal',
+					['raster', 'sieve'],
+					['--size-threshold', SIEVE_STAGES.at(-1) ?? 0],
+					['--co', 'COMPRESS=DEFLATE'],
+					['--co', 'TILED=YES'],
+					'--overwrite',
+					['-i', smoothed],
+					['-o', out],
+				);
+				sieved = out;
+			});
+		}
 
 		// 4. cut at the tile edges: a VRT over the sieved window that shifts the codes of every tile by TILE_CODE
 		// times 0–3, by the parity of its column and row, so no polygon crosses a tile edge. tippecanoe then never

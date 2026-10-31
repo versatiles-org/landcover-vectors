@@ -33,7 +33,7 @@ import { findLanduse } from '../lib/osmland.ts';
 import { mergePipeline } from '../lib/handover.ts';
 import { REGIONS, extentLonLat } from '../lib/regions.ts';
 import { VARIANTS, channelsFor, burnsOf, type Variant } from '../lib/variants.ts';
-import { measureRegion, KIND_ZOOMS, type RegionMetrics, type KindCounts } from '../lib/measure.ts';
+import { measureRegion, KIND_ZOOMS, SHARP_TURN, type RegionMetrics, type KindCounts } from '../lib/measure.ts';
 import {
 	sourceKeys,
 	regionKeys,
@@ -121,14 +121,24 @@ async function runVariant(name: string, v: Variant): Promise<Result> {
 	for (const [r, region] of Object.entries(REGIONS)) {
 		const cache = path.join(root, 'regions', r, 'osm-reference.bin.gz');
 		await fs.mkdir(path.dirname(cache), { recursive: true });
-		regions[r] = await measureRegion(region.window, { osm, merged, landcover: lc }, cache);
+		// a built variant is compared with its own source; a published container has none here
+		const truth = fp
+			? {
+					classes: path.join(root, 'variants', fp, 'source', `${r}.tif`),
+					seaShare: path.join(root, 'regions', r, 'seashare.tif'),
+					scratch: path.join(root, 'tmp', 'measure'),
+				}
+			: undefined;
+		regions[r] = await measureRegion(region.window, { osm, merged, landcover: lc }, cache, truth);
 		const m = regions[r];
 		console.error(
-			'  %s handover %s %%, holes %s %%, towns z10 %s %%',
+			'  %s handover %s %%, holes %s %%, towns z10 %s %%, sharp turns z10 %s %%, agreement z10 %s %%',
 			r.padEnd(18),
 			m.handover,
 			m.holes,
 			m.towns.z10,
+			m.shape.z10?.sharpTurns ?? '–',
+			m.agreement.z10 ?? '–',
 		);
 	}
 	return { variant: name, why: v.why, fingerprint: fp, measured: new Date().toISOString(), regions };
@@ -158,6 +168,7 @@ async function build(v: Variant): Promise<{ landcover: string; fp: string }> {
 		sea: await seaShareValues(),
 		landuse: landuse.date,
 		burn: burnsOf(v),
+		smooth: v.smooth, // left out when unset, so the variants without one keep their builds
 		regions: Object.fromEntries(regions.map((r) => [r.name, r.region.window])),
 	});
 	const dir = path.join(root, 'variants', fp);
@@ -210,6 +221,7 @@ async function build(v: Variant): Promise<{ landcover: string; fp: string }> {
 		resultsdir,
 		tilesdir,
 		logFile: path.join(dir, 'blocks.log'),
+		smooth: v.smooth,
 		concurrency: Number(opt.concurrency ?? BLOCK_CONCURRENCY),
 		bar,
 		label: (z) => `zoom ${z}`,
@@ -246,6 +258,29 @@ async function report(): Promise<void> {
 		['forest kept', "OSM's z11 forest shown as forest at z10 (%) — must not drop", (m) => m.forestKept],
 		['overreach', "z10's urban that z11 does not call urban (%)", (m) => m.overreach],
 		['tiles z10', "the landcover's z10 tiles over the window (KB)", (m) => m.tiles.z10?.kb ?? null],
+		[
+			'agreement z10',
+			"the landcover's z10 tiles against the variant's source, per tile pixel (%) — higher is better",
+			(m) => m.agreement?.z10 ?? null,
+		],
+		['agreement z8', '… and its z8 tiles (%)', (m) => m.agreement?.z8 ?? null],
+		[
+			'sharp turns z10',
+			`vertices of the landcover's z10 outlines that turn by more than ${SHARP_TURN}° (%) — lower is smoother`,
+			(m) => m.shape?.z10?.sharpTurns ?? null,
+		],
+		['sharp turns z8', '… and of its z8 outlines (%)', (m) => m.shape?.z8?.sharpTurns ?? null],
+		[
+			'turning z10',
+			"degrees the landcover's z10 outlines turn per rendered px — lower is smoother",
+			(m) => m.shape?.z10?.turning ?? null,
+		],
+		[
+			'axis-aligned z10',
+			"of the landcover's z10 outline length, the share within 3° of horizontal or vertical (%) — a smooth curve: ~7",
+			(m) => m.shape?.z10?.axisAligned ?? null,
+		],
+		['vertices z10', "vertices of the landcover's z10 outlines in the window", (m) => m.shape?.z10?.vertices ?? null],
 	];
 	const lines: string[] = [];
 	for (const [title, what, get] of metrics) {

@@ -5,12 +5,16 @@
 
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { gzipSync, gunzipSync } from 'node:zlib';
 
 import { osm as osmStyle } from '@versatiles/style';
 
 import { decodeTile, rings } from './mvt.ts';
+import { majority, pixelsOfPGM } from './inspect.ts';
+import { runQuiet } from './worldcover.ts';
 import { WINDOW_ZOOM, type Window } from './regions.ts';
+import { channels, MERC, SEA_SHARE_MIN } from '../config.ts';
 
 export type TileReader = { getTile(z: number, x: number, y: number): Promise<Uint8Array | null | undefined> };
 
@@ -189,13 +193,17 @@ export type RegionMetrics = {
 	forestKept: number | null; // OSM's z11 forest shown as forest at z10
 	unmapped: Record<string, number | null>; // where OSM paints nothing at z11: what z10 shows
 	tiles: Record<string, { kb: number; features: number }>; // the landcover's own tiles over the window
+	shape: Record<string, Shape | null>; // how smooth the landcover's outlines are, per zoom
+	agreement: Record<string, number | null>; // the landcover against its source, per zoom (%); null: no source
 	kinds: Record<string, KindCounts>; // per OSM kind, see kindBreakdown
 };
 
 const pct = (num: number, den: number): number | null => (den ? Math.round((1000 * num) / den) / 10 : null);
 
 // the comparison, from painted grids: z11 is OSM's, the others the merge's
-export function compare(painted: Record<number, Uint8Array>): Omit<RegionMetrics, 'tiles' | 'kinds'> {
+export function compare(
+	painted: Record<number, Uint8Array>,
+): Omit<RegionMetrics, 'tiles' | 'shape' | 'agreement' | 'kinds'> {
 	const osm = painted[11];
 	const n = osm.length;
 	const [URBAN, FOREST] = [code('urban'), code('forest')];
@@ -238,6 +246,163 @@ export function compare(painted: Record<number, Uint8Array>): Omit<RegionMetrics
 			CATEGORIES.map((c, i) => [c, pct(unmapped[i], unmappedTotal)] as const).filter(([, v]) => v),
 		),
 	};
+}
+
+// ---------------------------------------------------------------- shape
+
+// How smooth the landcover's outlines are, in rendered px of their tiles. Polygonize traces pixel edges, and a
+// simplify that only drops vertices keeps staircase corners: a jagged outline turns sharply and often, and runs
+// along the axes. Tile edges, where every polygon is cut (lib/block.ts step 4), do not count.
+export type Shape = {
+	vertices: number; // between two counted segments
+	segmentPx: number; // mean segment length
+	sharpTurns: number; // vertices turning by more than SHARP_TURN° (%)
+	turning: number; // degrees turned per px of outline
+	axisAligned: number; // outline length within AXIS_ANGLE° of horizontal or vertical (%): a smooth curve has ~7
+};
+export const SHARP_TURN = 60;
+const AXIS_ANGLE = 3;
+
+export type ShapeSums = {
+	vertices: number;
+	segments: number;
+	length: number;
+	sharp: number;
+	turned: number;
+	axis: number;
+};
+export const shapeSums = (): ShapeSums => ({ vertices: 0, segments: 0, length: 0, sharp: 0, turned: 0, axis: 0 });
+
+// one ring's segments and turns into `s`: its points in the units of a tile `extent` wide, and `inside` whether a
+// point (in those units) is in the measured window
+export function addRing(
+	s: ShapeSums,
+	ring: [number, number][],
+	extent: number,
+	inside: (x: number, y: number) => boolean,
+): void {
+	const m = ring.length;
+	if (m < 3) return;
+	const px = 256 / extent;
+	const out = (v: number) => v < 0 || v > extent; // the tile's buffer
+	// per segment its direction, or null where it does not count: no length, on the tile edge, in the buffer,
+	// outside the window
+	const dir: (number | null)[] = [];
+	for (let i = 0; i < m; i++) {
+		const [[ax, ay], [bx, by]] = [ring[i], ring[(i + 1) % m]];
+		const len = Math.hypot(bx - ax, by - ay) * px;
+		const edge = (ax === bx && (ax === 0 || ax === extent)) || (ay === by && (ay === 0 || ay === extent));
+		if (!len || edge || [ax, ay, bx, by].some(out) || !inside((ax + bx) / 2, (ay + by) / 2)) {
+			dir.push(null);
+			continue;
+		}
+		const a = Math.atan2(by - ay, bx - ax);
+		dir.push(a);
+		s.segments++;
+		s.length += len;
+		const deg = ((((a * 180) / Math.PI) % 90) + 90) % 90;
+		if (deg < AXIS_ANGLE || deg > 90 - AXIS_ANGLE) s.axis += len;
+	}
+	for (let i = 0; i < m; i++) {
+		const [a, b] = [dir[(i + m - 1) % m], dir[i]];
+		if (a === null || b === null) continue;
+		const turn = (Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a))) * 180) / Math.PI;
+		s.vertices++;
+		s.turned += turn;
+		if (turn > SHARP_TURN) s.sharp++;
+	}
+}
+
+export function shapeOf(s: ShapeSums): Shape | null {
+	if (!s.segments) return null;
+	return {
+		vertices: s.vertices,
+		segmentPx: Math.round((100 * s.length) / s.segments) / 100,
+		sharpTurns: pct(s.sharp, s.vertices) ?? 0,
+		turning: Math.round((10 * s.turned) / s.length) / 10,
+		axisAligned: pct(s.axis, s.length)!,
+	};
+}
+
+// the outlines of every land and water polygon of `source` at zoom z, within the window
+export async function measureShape(source: TileReader, z: number, win: Window): Promise<Shape | null> {
+	const f = 2 ** (z - WINDOW_ZOOM);
+	const [wx0, wy0, wx1, wy1] = [win.x0 * f, win.y0 * f, (win.x0 + win.side) * f, (win.y0 + win.side) * f];
+	const s = shapeSums();
+	for (let tx = Math.floor(wx0); tx < Math.ceil(wx1); tx++)
+		for (let ty = Math.floor(wy0); ty < Math.ceil(wy1); ty++) {
+			const buf = await source.getTile(z, tx, ty);
+			if (!buf) continue;
+			for (const layer of decodeTile(buf)) {
+				if (!LAYERS.includes(layer.name)) continue;
+				const e = layer.extent;
+				const inside = (x: number, y: number) => {
+					const [gx, gy] = [tx + x / e, ty + y / e];
+					return gx >= wx0 && gx < wx1 && gy >= wy0 && gy < wy1;
+				};
+				for (const feature of layer.features)
+					if (feature.type === 3) for (const r of rings(feature.geometry)) addRing(s, r, e, inside);
+			}
+		}
+	return shapeOf(s);
+}
+
+// ---------------------------------------------------------------- agreement with the source
+
+// the landcover's kinds, as codes of a grid: 1.. in channel order, 0 none
+const KIND_CODE = new Map<string, number>(
+	channels.filter((c) => c.layer && c.kind).map((c, i) => [`${c.layer}/${c.kind}`, i + 1] as const),
+);
+
+// What a block at zoom z reads as each kind, per grid pixel: the classes of the channels drawn at z, sea-masked
+// (sea share at SEA_SHARE_MIN or more is none, as in lib/block.ts), the rest none.
+export function truthGrid(classes: Uint8Array, share: Uint8Array, z: number): Uint8Array {
+	const codeOf = new Uint8Array(256);
+	for (const c of channels)
+		if (c.layer && c.kind && c.maxZoom >= z)
+			for (const esa of c.esa) codeOf[esa] = KIND_CODE.get(`${c.layer}/${c.kind}`)!;
+	return classes.map((v, i) => (share[i] >= SEA_SHARE_MIN ? 0 : codeOf[v]));
+}
+
+// the rasterised landcover as the same codes
+export function kindGrid(masks: Masks, n: number): Uint8Array {
+	const out = new Uint8Array(n * n);
+	for (const [key, mask] of masks) {
+		const code = KIND_CODE.get(key);
+		if (code) for (let i = 0; i < mask.length; i++) if (mask[i]) out[i] = code;
+	}
+	return out;
+}
+
+// The share of the zoom's rendered pixels (2^(12−z) grid px a side) where the tiles show what the source has, both
+// taken as the pixel's majority: the scale the sieve and the simplify work at (as `npm run inspect`'s @256). At z8
+// the block read the source's mode overview instead, a majority of majorities: close, not the same.
+export function agreement(truth: Uint8Array, shown: Uint8Array, n: number, z: number): number {
+	const factor = 2 ** (WINDOW_ZOOM - z);
+	const [a, b] = [majority(truth, n, factor), majority(shown, n, factor)];
+	let same = 0;
+	for (let i = 0; i < a.length; i++) if (a[i] === b[i]) same++;
+	return pct(same, a.length)!;
+}
+
+// a window's pixels of a raster on the build's grid (lib/regionsource.ts), which is the measurement's
+export async function readWindow(tif: string, win: Window, scratch: string): Promise<Uint8Array> {
+	const n = win.side * PX;
+	const span = (2 * MERC) / 2 ** WINDOW_ZOOM;
+	const [ulx, uly] = [-MERC + win.x0 * span, MERC - win.y0 * span];
+	await fs.mkdir(scratch, { recursive: true });
+	const pgm = path.join(scratch, `${path.basename(tif, '.tif')}-window.pgm`);
+	await runQuiet(
+		'gdal_translate',
+		'-q',
+		['-of', 'PNM'],
+		['-projwin', ulx, uly, ulx + win.side * span, uly - win.side * span],
+		tif,
+		pgm,
+	);
+	const px = pixelsOfPGM(new Uint8Array(await fs.readFile(pgm)), n);
+	await fs.rm(pgm, { force: true });
+	return px.slice();
 }
 
 // ---------------------------------------------------------------- per kind
@@ -325,10 +490,15 @@ async function osmReference(osm: TileReader, win: Window, cache?: string) {
 	return { kinds, fills };
 }
 
+// the region's source, which the landcover is compared with: the classes the variant's blocks read, and the sea
+// share (both on the build's grid), and a folder for scratch files
+export type Truth = { classes: string; seaShare: string; scratch: string };
+
 export async function measureRegion(
 	win: Window,
 	src: { osm: TileReader; merged: TileReader; landcover: TileReader },
 	cache?: string,
+	truth?: Truth,
 ): Promise<RegionMetrics> {
 	const n = win.side * PX;
 	// above z10 the merge is OSM's alone: the landcover has no tiles there
@@ -336,10 +506,22 @@ export async function measureRegion(
 	const fills: Record<number, Uint8Array> = { ...reference.fills };
 	for (const z of [8, 9, 10]) fills[z] = paintFills((await rasterise(src.merged, z, win)).masks, z, n);
 	const painted = Object.fromEntries(Object.entries(fills).map(([z, f]) => [z, f.map((v) => FILL_CATEGORY[v])]));
-	const tiles: RegionMetrics['tiles'] = {};
-	for (const z of [8, 10]) {
+	const source = truth && {
+		classes: await readWindow(truth.classes, win, truth.scratch),
+		share: await readWindow(truth.seaShare, win, truth.scratch),
+	};
+	const [tiles, shape, agree]: [RegionMetrics['tiles'], RegionMetrics['shape'], RegionMetrics['agreement']] = [
+		{},
+		{},
+		{},
+	];
+	for (const z of [8, 9, 10]) {
 		const r = await rasterise(src.landcover, z, win);
-		tiles[`z${z}`] = { kb: Math.round(r.bytes / 102.4) / 10, features: r.features };
+		if (z !== 9) tiles[`z${z}`] = { kb: Math.round(r.bytes / 102.4) / 10, features: r.features };
+		shape[`z${z}`] = await measureShape(src.landcover, z, win);
+		agree[`z${z}`] = source
+			? agreement(truthGrid(source.classes, source.share, z), kindGrid(r.masks, n), n, z)
+			: null;
 	}
-	return { ...compare(painted), tiles, kinds: kindBreakdown(reference.kinds, fills) };
+	return { ...compare(painted), tiles, shape, agreement: agree, kinds: kindBreakdown(reference.kinds, fills) };
 }

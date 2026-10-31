@@ -21,6 +21,7 @@ export type PipelineCtx = {
 	resultsdir: string; // cached per-block tilesets
 	tilesdir: string; // cached per-zoom tilesets
 	logFile?: string; // per-block TSV log
+	smooth?: number; // a round majority filter after the sieve (lib/block.ts), for the experiments
 	concurrency: number;
 	bar?: Progress;
 	label?: (z: number) => string; // progress label per zoom
@@ -77,6 +78,7 @@ async function runZoom(
 							tmpdir: ctx.tmpdir,
 							resultsdir: ctx.resultsdir,
 							logFile: ctx.logFile,
+							smooth: ctx.smooth,
 						});
 					const { tileset, cached } = await timed('block', block, `z${z}_${bx}_${by}`);
 					collected[i] = tileset;
