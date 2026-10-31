@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { pMap } from './worldcover.ts';
-import { processBlock } from './block.ts';
+import { processBlock, type BlockParams } from './block.ts';
 import { joinTilesets } from './assemble.ts';
 import { timed } from './timing.ts';
 import type { ZoomBlocks } from './plan.ts';
@@ -21,7 +21,7 @@ export type PipelineCtx = {
 	resultsdir: string; // cached per-block tilesets
 	tilesdir: string; // cached per-zoom tilesets
 	logFile?: string; // per-block TSV log
-	smooth?: number; // a round majority filter after the sieve (lib/block.ts), for the experiments
+	params?: (z: number) => BlockParams; // an experiment's settings per zoom (lib/variants.ts); unset: config.ts
 	concurrency: number;
 	bar?: Progress;
 	label?: (z: number) => string; // progress label per zoom
@@ -78,7 +78,7 @@ async function runZoom(
 							tmpdir: ctx.tmpdir,
 							resultsdir: ctx.resultsdir,
 							logFile: ctx.logFile,
-							smooth: ctx.smooth,
+							params: ctx.params?.(z),
 						});
 					const { tileset, cached } = await timed('block', block, `z${z}_${bx}_${by}`);
 					collected[i] = tileset;

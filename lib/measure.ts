@@ -517,7 +517,7 @@ export async function measureRegion(
 	];
 	for (const z of [8, 9, 10]) {
 		const r = await rasterise(src.landcover, z, win);
-		if (z !== 9) tiles[`z${z}`] = { kb: Math.round(r.bytes / 102.4) / 10, features: r.features };
+		tiles[`z${z}`] = { kb: Math.round(r.bytes / 102.4) / 10, features: r.features };
 		shape[`z${z}`] = await measureShape(src.landcover, z, win);
 		agree[`z${z}`] = source
 			? agreement(truthGrid(source.classes, source.share, z), kindGrid(r.masks, n), n, z)

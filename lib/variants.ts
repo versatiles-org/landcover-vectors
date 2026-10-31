@@ -9,16 +9,36 @@
 //   osmFrom  the zoom from which the merge takes a kind from OSM instead (config.ts `channels`); null = never.
 //   smooth   a round majority filter after the sieve (lib/block.ts), its radius in rendered px: rounds the
 //            outlines before they are traced, against the staircase the simplify leaves.
+//   outline  round the traced outlines before the simplify, on the borders the polygons share (lib/outline.ts).
+//   sieve, detail, tippecanoe   the rest of BlockParams (lib/block.ts).
+//   zooms    any of these for one zoom, over the variant's own.
 
 import { channels, LANDCOVER_URL, OSM_BURNS, type Burn, type Channel } from '../config.ts';
+import type { BlockParams } from './block.ts';
 
-export type Variant = {
+export type Variant = BlockParams & {
 	why: string;
 	container?: string; // measure this container as it is, build nothing
 	burn?: Burn[];
 	osmFrom?: Record<string, number | null>;
-	smooth?: number;
+	zooms?: Record<number, BlockParams>;
 };
+
+// what the blocks of zoom z do differently from config.ts
+export function paramsFor(v: Variant, z: number): BlockParams {
+	const { sieve, detail, smooth, outline, tippecanoe } = v;
+	return { sieve, detail, smooth, outline, tippecanoe, ...v.zooms?.[z] };
+}
+
+// the same for the build's fingerprint: left out when unset, so a variant without any keeps its build
+export const paramValues = ({ sieve, detail, smooth, outline, tippecanoe, zooms }: Variant) => ({
+	sieve,
+	detail,
+	smooth,
+	outline,
+	tippecanoe,
+	zooms,
+});
 
 // OSM's urban land use (Shortbread `land` kinds that versatiles-style draws as residential, commercial, industrial
 // or waste), except quarry, which is no town
@@ -92,6 +112,18 @@ export const VARIANTS: Record<string, Variant> = {
 		why: 'baseline, with a round majority filter of 1.5 rendered px radius after the sieve',
 		smooth: 1.5,
 	},
+	coalesce: {
+		why: 'baseline, with the same kind of a tile in one feature: the same shapes, fewer feature headers',
+		tippecanoe: ['--coalesce', '--reorder'],
+	},
+	'outline-0': {
+		why: 'baseline, with every border noded for the simplify and no corner cut: the control of the outline variants',
+		outline: { cap: 1, passes: 0 },
+	},
+	'outline-1': { why: 'baseline, its corners cut before the simplify, by up to 1 px', outline: { cap: 1, passes: 1 } },
+	'outline-2': { why: 'baseline, its corners cut before the simplify, by up to 2 px', outline: { cap: 2, passes: 1 } },
+	'outline-1x2': { why: 'outline-1, two passes', outline: { cap: 1, passes: 2 } },
+	'outline-2x2': { why: 'outline-2, two passes', outline: { cap: 2, passes: 2 } },
 };
 
 // the variant's burns: its own, or the pipeline's

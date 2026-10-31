@@ -22,7 +22,14 @@ export type Layer = { name: 'land' | 'water_polygons'; file: string };
 
 // Tile block polygons at zoom z → `out`, an mbtiles holding only the tiles of `range`. tippecanoe also writes
 // tiles just outside the block, wherever the margin reaches into them; those belong to the neighbours.
-export async function tileBlock(z: number, range: TileRange, all: Layer[], out: string, tmpdir: string) {
+export async function tileBlock(
+	z: number,
+	range: TileRange,
+	all: Layer[],
+	out: string,
+	tmpdir: string,
+	extraArgs: string[] = [], // an experiment's variant (lib/block.ts)
+) {
 	// tippecanoe refuses a run without any geometry, so empty layers are left out: a kind the histogram saw can
 	// still be gone, under OSM's sea or sieved away (z8_21_16 held nothing but no-data in the end)
 	const layers: Layer[] = [];
@@ -38,6 +45,7 @@ export async function tileBlock(z: number, range: TileRange, all: Layer[], out: 
 			['-Z', z],
 			['-z', z],
 			TIPPECANOE_ARGS.flat(),
+			extraArgs,
 			layers.map((l) => ['-L', `${l.name}:${l.file}`]).flat(),
 		);
 		const db = new DatabaseSync(tmp);

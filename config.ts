@@ -111,12 +111,13 @@ export const SIEVE_THRESHOLD = Math.round(SIEVE_RENDERED * OVERSAMPLE * OVERSAMP
 // worst z6 tile: 132.9 → 82.5 KB, with better agreement at every zoom (z8: 64.5 → 66.6 %). A second pass at the
 // full size instead shrinks the tiles more but is less accurate; doubling sizes 4→8→16→28 matches this one at
 // twice the passes. See doc/TUNING.md.
-export const SIEVE_STAGES =
-	SIEVE_THRESHOLD >= 8
-		? [Math.round(SIEVE_THRESHOLD / 4), SIEVE_THRESHOLD]
-		: SIEVE_THRESHOLD > 0
-			? [SIEVE_THRESHOLD]
-			: [];
+export const SIEVE_STAGES = sieveStages(SIEVE_THRESHOLD);
+
+// the passes for a threshold in raw pixels (an experiment's variant may set its own, lib/block.ts)
+export function sieveStages(threshold: number): number[] {
+	if (threshold >= 8) return [Math.round(threshold / 4), threshold];
+	return threshold > 0 ? [threshold] : [];
+}
 
 // processing margin (px) around a block so the sieve at the inner edge matches neighbours
 export const MARGIN_PX = Math.ceil(3 * Math.sqrt(SIEVE_THRESHOLD)); // 27
@@ -173,8 +174,8 @@ function numberFromEnv(name: string, fallback: number, bound: { above?: number; 
 }
 
 // coverage-simplification tolerance (metres, EPSG:3857): 1-px accuracy at a (256 · DETAIL_PX)-px tile
-export function simplifyForLevel(z: number): number {
-	return WORLD / (256 * DETAIL_PX * Math.pow(2, z));
+export function simplifyForLevel(z: number, detail = DETAIL_PX): number {
+	return WORLD / (256 * detail * Math.pow(2, z));
 }
 
 // number of BLOCK×BLOCK blocks per axis at zoom z

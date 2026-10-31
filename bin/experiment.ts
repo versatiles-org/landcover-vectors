@@ -32,7 +32,7 @@ import { downloadOcean, seaShareValues } from '../lib/ocean.ts';
 import { findLanduse } from '../lib/osmland.ts';
 import { mergePipeline } from '../lib/handover.ts';
 import { REGIONS, extentLonLat } from '../lib/regions.ts';
-import { VARIANTS, channelsFor, burnsOf, type Variant } from '../lib/variants.ts';
+import { VARIANTS, channelsFor, burnsOf, paramsFor, paramValues, type Variant } from '../lib/variants.ts';
 import { measureRegion, KIND_ZOOMS, SHARP_TURN, type RegionMetrics, type KindCounts } from '../lib/measure.ts';
 import {
 	sourceKeys,
@@ -168,7 +168,7 @@ async function build(v: Variant): Promise<{ landcover: string; fp: string }> {
 		sea: await seaShareValues(),
 		landuse: landuse.date,
 		burn: burnsOf(v),
-		smooth: v.smooth, // left out when unset, so the variants without one keep their builds
+		...paramValues(v), // left out when unset, so the variants without any keep their builds
 		regions: Object.fromEntries(regions.map((r) => [r.name, r.region.window])),
 	});
 	const dir = path.join(root, 'variants', fp);
@@ -221,7 +221,7 @@ async function build(v: Variant): Promise<{ landcover: string; fp: string }> {
 		resultsdir,
 		tilesdir,
 		logFile: path.join(dir, 'blocks.log'),
-		smooth: v.smooth,
+		params: (z) => paramsFor(v, z),
 		concurrency: Number(opt.concurrency ?? BLOCK_CONCURRENCY),
 		bar,
 		label: (z) => `zoom ${z}`,

@@ -12,10 +12,13 @@ import { seaShareWindow } from './ocean.ts';
 import { tileBlock, tileCount, type Layer } from './assemble.ts';
 import { timed } from './timing.ts';
 import { windowVrt } from './window.ts';
+import { roundCoverage } from './roundcoverage.ts';
 import {
 	channels,
 	blockWindow,
 	SIEVE_STAGES,
+	SIEVE_THRESHOLD,
+	sieveStages,
 	SEA_SHARE_MIN,
 	MARGIN_PX,
 	OVERSAMPLE,
@@ -30,7 +33,16 @@ export type BlockCtx = {
 	tmpdir: string;
 	resultsdir: string;
 	logFile?: string; // optional TSV log: one row per block (how it was processed, timing, sizes, histogram)
-	smooth?: number; // a round majority filter after the sieve (3b), its radius in rendered px; unset: none
+	params?: BlockParams;
+};
+
+// What an experiment (lib/variants.ts) may set differently from config.ts, in rendered px. Unset: config.ts.
+export type BlockParams = {
+	sieve?: number; // smallest patch kept, px² (SIEVE_RENDERED); not above config.ts's, whose margin it would outgrow
+	detail?: number; // the simplify's detail (DETAIL_PX)
+	smooth?: number; // a round majority filter after the sieve (3b), its radius; unset: none
+	outline?: { cap: number; passes: number }; // round the outlines before the simplify (5b, lib/outline.ts)
+	tippecanoe?: string[]; // arguments on top of TIPPECANOE_ARGS
 };
 
 // Each tile's class codes are shifted by one of four multiples of this, by the parity of its column and row, so
@@ -191,7 +203,9 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		const route = fastPath({ present, counted, pixels, sea }, active);
 
 		// tile the polygons of `layers` into the block's tileset (lib/assemble.ts)
-		const tile = (layers: Layer[]) => timed('tile', () => tileBlock(z, win.tiles, layers, tileset, ctx.tmpdir));
+		const params = ctx.params ?? {};
+		const tile = (layers: Layer[]) =>
+			timed('tile', () => tileBlock(z, win.tiles, layers, tileset, ctx.tmpdir, params.tippecanoe));
 
 		if (route.branch === 'empty') {
 			await tile([]); // all sea, or nothing but no-data
@@ -244,9 +258,13 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		);
 
 		// 3. sieve specks, in passes of growing size (SIEVE_STAGES)
+		const threshold =
+			params.sieve === undefined ? SIEVE_THRESHOLD : Math.round(params.sieve * OVERSAMPLE * OVERSAMPLE);
+		if (threshold > SIEVE_THRESHOLD) throw new Error(`sieve ${params.sieve}: it would outgrow the margin`);
+		const stages = params.sieve === undefined ? SIEVE_STAGES : sieveStages(threshold);
 		let sieved = index;
 		await timed('sieve', async () => {
-			for (const [stage, size] of SIEVE_STAGES.entries()) {
+			for (const [stage, size] of stages.entries()) {
 				const out = tmp(`sieved-${stage}.tif`);
 				await runQuiet(
 					'gdal',
@@ -265,9 +283,9 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		// 3b. for the experiments (lib/variants.ts): round the outlines with a majority filter over a disk — each
 		// pixel takes the class most of the disk around it has — then sieve once more at the full size, for what the
 		// filter cut off. Polygonize then traces rounder shapes, with fewer staircase steps for the simplify to keep.
-		if (ctx.smooth) {
-			const radius = ctx.smooth * OVERSAMPLE; // raw px
-			if (radius > MARGIN_PX / 2) throw new Error(`smooth ${ctx.smooth}: the filter would reach past the margin`);
+		if (params.smooth) {
+			const radius = params.smooth * OVERSAMPLE; // raw px
+			if (radius > MARGIN_PX / 2) throw new Error(`smooth ${params.smooth}: the filter would reach past the margin`);
 			await timed('smooth', async () => {
 				const smoothed = tmp('smoothed.tif');
 				await runQuiet(
@@ -287,7 +305,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 				await runQuiet(
 					'gdal',
 					['raster', 'sieve'],
-					['--size-threshold', SIEVE_STAGES.at(-1) ?? 0],
+					['--size-threshold', stages.at(-1) ?? 0],
 					['--co', 'COMPRESS=DEFLATE'],
 					['--co', 'TILED=YES'],
 					'--overwrite',
@@ -343,7 +361,7 @@ ${sources.join('\n')}
 
 		// 5. polygonize (field `code` = channel index + the tile's shift) → a gap-free coverage of the whole
 		// window, INCLUDING the no-data class (code 1). It must stay 100% filled for the next step.
-		const poly = tmp('poly.fgb');
+		let poly = tmp('poly.fgb');
 		await fs.rm(poly, { force: true });
 		await timed('polygonize', () =>
 			runQuiet(
@@ -358,6 +376,17 @@ ${sources.join('\n')}
 				'--overwrite',
 			),
 		);
+
+		// 5b. for the experiments (lib/variants.ts): round the outlines, on the borders the polygons share, so the
+		// coverage stays one and the simplify finds fewer right angles to keep (lib/outline.ts)
+		if (params.outline) {
+			const { cap, passes } = params.outline;
+			const rounded = tmp('rounded.fgb');
+			await timed('outline', () =>
+				roundCoverage(poly, rounded, w, px, { cap: cap * OVERSAMPLE, passes }, tmp('rounded.geojsonl')),
+			);
+			poly = rounded;
+		}
 
 		// 6. coverage-simplify. simplify-coverage only simplifies the *interior* edges shared between
 		// adjacent polygons; --preserve-boundary keeps the *exterior* boundary fixed. So the input
@@ -376,7 +405,7 @@ ${sources.join('\n')}
 				['--output-layer', 'data'],
 				['-i', poly],
 				['-o', simplified],
-				simplifyForLevel(z),
+				simplifyForLevel(z, params.detail),
 			),
 		);
 
