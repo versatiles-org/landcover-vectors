@@ -318,3 +318,14 @@ test('mvt rings: move-to starts a ring, close-path ends it', () => {
 		],
 	]);
 });
+
+describe('the size index', () => {
+	test("weights each zoom's change by its share of the planet, and needs every zoom", async () => {
+		const { sizeIndex, SIZE_SHARE } = await import('../lib/measure.ts');
+		assert.equal(sizeIndex(() => 110, () => 100), 10); // prettier-ignore
+		const onlyZ10 = sizeIndex((z) => (z === 10 ? 200 : 100), () => 100); // prettier-ignore
+		const weight = SIZE_SHARE[8] + SIZE_SHARE[9] + SIZE_SHARE[10];
+		assert.equal(onlyZ10, Math.round((1000 * SIZE_SHARE[10]) / weight) / 10);
+		assert.equal(sizeIndex((z) => (z === 9 ? 0 : 100), () => 100), null, 'an older result has no z9'); // prettier-ignore
+	});
+});

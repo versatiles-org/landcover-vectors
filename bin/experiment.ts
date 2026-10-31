@@ -5,6 +5,8 @@
 //   npm run experiment -- burn burn-z11     # just these
 //   npm run experiment -- --report          # the tables of everything measured so far
 //   npm run experiment -- --list            # the variants and the regions
+//   npm run experiment -- --render a b      # the regions' z10 and z9 as these variants draw them, side by side
+//   npm run experiment -- --planet 8-9 a    # build these zooms of a variant over the whole planet; its size per zoom
 //
 // Each region gets its own small source (lib/regionsource.ts), cached in data/experiment/regions/: ESA from the
 // bucket, OSM's sea from the download's water polygons (fetched here if missing), and OSM's land use imported from
@@ -33,7 +35,19 @@ import { findLanduse } from '../lib/osmland.ts';
 import { mergePipeline } from '../lib/handover.ts';
 import { REGIONS, extentLonLat } from '../lib/regions.ts';
 import { VARIANTS, channelsFor, burnsOf, paramsFor, paramValues, type Variant } from '../lib/variants.ts';
-import { measureRegion, KIND_ZOOMS, SHARP_TURN, type RegionMetrics, type KindCounts } from '../lib/measure.ts';
+import {
+	measureRegion,
+	renderWindow,
+	sizeIndex,
+	zoomBytes,
+	KIND_ZOOMS,
+	SHARP_TURN,
+	type RegionMetrics,
+	type KindCounts,
+} from '../lib/measure.ts';
+import { encodePNG } from '../lib/png.ts';
+import { grid } from '../lib/inspect.ts';
+import { buildCoverage } from '../lib/coverage.ts';
 import {
 	sourceKeys,
 	regionKeys,
@@ -52,6 +66,8 @@ const { values: opt, positionals } = parseArgs({
 	options: {
 		report: { type: 'boolean', default: false },
 		list: { type: 'boolean', default: false },
+		render: { type: 'boolean', default: false },
+		planet: { type: 'string' },
 		concurrency: { type: 'string' },
 		help: { type: 'boolean', default: false },
 	},
@@ -64,6 +80,8 @@ if (opt.help) {
 			'  (no variant)       build and measure every variant',
 			'  --report           print the tables of every measured variant, build nothing',
 			'  --list             list the variants and the test regions',
+			"  --render           draw the named variants' regions side by side, as PNGs in results/render",
+			'  --planet <z0-z1>   build the named variant over the whole planet and compare its size per zoom with the build',
 			'  --concurrency <n>  blocks at once (default: one per core, or LANDCOVER_CONCURRENCY)',
 		].join('\n'),
 	);
@@ -85,6 +103,15 @@ if (opt.list) {
 	for (const [name, v] of Object.entries(VARIANTS)) console.log(`  ${name.padEnd(18)} ${v.why}`);
 	console.log('Regions:');
 	for (const [name, r] of Object.entries(REGIONS)) console.log(`  ${name.padEnd(18)} ${r.why}`);
+	process.exit(0);
+}
+
+if (opt.render) {
+	await render(positionals);
+	process.exit(0);
+}
+if (opt.planet) {
+	await planet(opt.planet, positionals);
 	process.exit(0);
 }
 
@@ -233,6 +260,70 @@ async function build(v: Variant): Promise<{ landcover: string; fp: string }> {
 	return { landcover, fp };
 }
 
+// ---------------------------------------------------------------- render
+
+// the built variants, each region's window as it draws it, at z10 and z9
+async function render(names: string[]): Promise<void> {
+	if (!names.length) throw new Error('--render needs the variants to draw');
+	const sources = await Promise.all(
+		names.map(async (name) => {
+			const r = JSON.parse(await fs.readFile(path.join(resultsDir, `${name}.json`), 'utf8')) as Result;
+			if (!r.fingerprint) throw new Error(`variant ${name} has no build of its own`);
+			return TileSource.fromPath(path.join(root, 'variants', r.fingerprint, 'landcover.mbtiles'));
+		}),
+	);
+	const out = path.join(resultsDir, 'render');
+	await fs.mkdir(out, { recursive: true });
+	for (const [r, region] of Object.entries(REGIONS))
+		for (const z of [10, 9]) {
+			const panels = await Promise.all(sources.map((s) => renderWindow(s, z, region.window)));
+			const png = path.join(out, `${r}-z${z}.png`);
+			await fs.writeFile(png, encodePNG(grid(panels, panels.length)));
+			console.error('%s (left to right: %s)', png, names.join(', '));
+		}
+}
+
+// ---------------------------------------------------------------- the whole planet
+
+// A variant's zooms over the whole planet, from the download's own source, for what the regions cannot say: its bytes.
+async function planet(range: string, names: string[]): Promise<void> {
+	if (names.length !== 1) throw new Error('--planet needs one variant');
+	const v = VARIANTS[names[0]];
+	if (!v || v.burn || v.container)
+		throw new Error(`--planet: ${names[0]} must be a variant of the build's own source`);
+	const m = /^(\d+)-(\d+)$/.exec(range);
+	if (!m) throw new Error(`--planet "${range}": expected <from>-<to>, say 8-9`);
+	await requireTools(['gdal', 'gdal_calc', 'tippecanoe']);
+	const dir = path.join(root, 'planet', fingerprint({ cache: cacheValues(), ...paramValues(v) }));
+	const [tmpdir, resultsdir, tilesdir] = ['tmp', '1_results', '2_tiles'].map((d) => path.join(dir, d));
+	await fs.rm(tmpdir, { recursive: true, force: true });
+	for (const d of [tmpdir, resultsdir, tilesdir]) await fs.mkdir(d, { recursive: true });
+	const plan = planBlocks(await buildCoverage(), { minZoom: Number(m[1]), maxZoom: Number(m[2]) });
+	const bar = progress(countBlocks(plan), 'blocks');
+	setGdalThreads(1);
+	const zooms = await runZooms(plan, {
+		src: file.classes,
+		tmpdir,
+		resultsdir,
+		tilesdir,
+		params: (z) => paramsFor(v, z),
+		concurrency: Number(opt.concurrency ?? BLOCK_CONCURRENCY),
+		bar,
+		label: (z) => `zoom ${z}`,
+	});
+	bar.done();
+	await fs.rm(tmpdir, { recursive: true, force: true });
+	const built = zoomBytes(file.tiles);
+	console.log(`\n${names[0]} (${dir}) against ${file.tiles}\n`);
+	console.log('| zoom | build MB | variant MB | change |\n|---|---:|---:|---:|');
+	for (const tileset of zooms)
+		for (const [z, bytes] of zoomBytes(tileset)) {
+			const was = built.get(z) ?? 0;
+			const pct = was ? Math.round((1000 * (bytes - was)) / was) / 10 : null;
+			console.log(`| ${z} | ${(was / 1e6).toFixed(1)} | ${(bytes / 1e6).toFixed(1)} | ${pct ?? '–'} % |`);
+		}
+}
+
 // ---------------------------------------------------------------- report
 
 // one table per metric: a row per region, a column per variant (in lib/variants.ts order)
@@ -258,6 +349,7 @@ async function report(): Promise<void> {
 		['forest kept', "OSM's z11 forest shown as forest at z10 (%) — must not drop", (m) => m.forestKept],
 		['overreach', "z10's urban that z11 does not call urban (%)", (m) => m.overreach],
 		['tiles z10', "the landcover's z10 tiles over the window (KB)", (m) => m.tiles.z10?.kb ?? null],
+		['tiles z9', '… its z9 tiles (KB)', (m) => m.tiles.z9?.kb ?? null],
 		[
 			'agreement z10',
 			"the landcover's z10 tiles against the variant's source, per tile pixel (%) — higher is better",
@@ -282,7 +374,7 @@ async function report(): Promise<void> {
 		],
 		['vertices z10', "vertices of the landcover's z10 outlines in the window", (m) => m.shape?.z10?.vertices ?? null],
 	];
-	const lines: string[] = [];
+	const lines: string[] = summaryTable(variants.map((v) => results.get(v)!));
 	for (const [title, what, get] of metrics) {
 		lines.push(`### ${title}`, '', what, '');
 		lines.push(`| region | ${variants.join(' | ')} |`, `|---|${variants.map(() => '---:').join('|')}|`);
@@ -300,6 +392,45 @@ async function report(): Promise<void> {
 	const text = lines.join('\n');
 	await fs.writeFile(path.join(resultsDir, 'report.md'), text);
 	console.log('\n' + text);
+}
+
+// One row per variant, over all regions, against baseline: what the size goal and the shape goal need at a glance.
+// Bytes are the sum over the regions per zoom, weighted by the zoom's share of the planet (SIZE_SHARE), turning leads
+// the shape, as a share of vertices also rises when gentle vertices go.
+function summaryTable(results: Result[]): string[] {
+	const base = results.find((r) => r.variant === 'baseline');
+	if (!base) return [];
+	const rows = results.map((r) => {
+		const shared = Object.keys(r.regions).filter((k) => base.regions[k]);
+		const mean = (f: (m: RegionMetrics) => number | null | undefined) => {
+			const v = shared.map((k) => f(r.regions[k])).filter((x): x is number => typeof x === 'number');
+			return v.length ? Math.round((10 * v.reduce((a, b) => a + b, 0)) / v.length) / 10 : '–';
+		};
+		const kb = (x: Result, z: number) => shared.reduce((n, k) => n + (x.regions[k]?.tiles?.[`z${z}`]?.kb ?? 0), 0);
+		const size = sizeIndex((z) => kb(r, z), (z) => kb(base, z)); // prettier-ignore
+		return [
+			r.variant,
+			size === null ? '–' : `${size > 0 ? '+' : ''}${size}`,
+			mean((m) => m.shape?.z10?.turning),
+			mean((m) => m.shape?.z10?.sharpTurns),
+			mean((m) => m.shape?.z10?.axisAligned),
+			mean((m) => m.shape?.z8?.turning),
+			mean((m) => m.agreement?.z10),
+			mean((m) => m.agreement?.z8),
+			mean((m) => m.forestKept),
+			mean((m) => m.holes),
+		];
+	});
+	return [
+		'### summary',
+		'',
+		"Means over the regions. Size: the change in bytes against baseline, each zoom's change weighted by its share of the planet.",
+		'',
+		'| variant | size % | turning z10 | sharp z10 % | axis z10 % | turning z8 | agreement z10 % | agreement z8 % | forest % | holes % |',
+		'|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|',
+		...rows.map((r) => `| ${r.join(' | ')} |`),
+		'',
+	];
 }
 
 // Per OSM kind, summed over the regions: how each zoom paints where OSM has the kind (at z14). The first table is

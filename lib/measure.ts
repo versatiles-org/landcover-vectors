@@ -6,12 +6,14 @@
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { gzipSync, gunzipSync } from 'node:zlib';
 
 import { osm as osmStyle } from '@versatiles/style';
 
 import { decodeTile, rings } from './mvt.ts';
 import { majority, pixelsOfPGM } from './inspect.ts';
+import type { RGBImage } from './png.ts';
 import { runQuiet } from './worldcover.ts';
 import { WINDOW_ZOOM, type Window } from './regions.ts';
 import { channels, MERC, SEA_SHARE_MIN } from '../config.ts';
@@ -403,6 +405,60 @@ export async function readWindow(tif: string, win: Window, scratch: string): Pro
 	const px = pixelsOfPGM(new Uint8Array(await fs.readFile(pgm)), n);
 	await fs.rm(pgm, { force: true });
 	return px.slice();
+}
+
+// ---------------------------------------------------------------- size
+
+// each zoom's share of the planet's bytes (%), from the full build of 2026-10-29: what a region's change is worth.
+// z7 and below hold the remaining 1.9 %, which the regions do not build.
+export const SIZE_SHARE: Record<number, number> = { 8: 5.3, 9: 20.2, 10: 72.6 };
+
+// the change in bytes (%) over the zooms measured, each weighted by its share; null if a zoom is not measured
+export function sizeIndex(kb: (z: number) => number, base: (z: number) => number): number | null {
+	let [sum, weight] = [0, 0];
+	for (const [z, share] of Object.entries(SIZE_SHARE)) {
+		if (!kb(+z) || !base(+z)) return null;
+		sum += share * (kb(+z) / base(+z) - 1);
+		weight += share;
+	}
+	return Math.round((1000 * sum) / weight) / 10;
+}
+
+// a tileset's bytes per zoom
+export function zoomBytes(tileset: string): Map<number, number> {
+	const db = new DatabaseSync(tileset, { readOnly: true });
+	try {
+		const rows = db
+			.prepare('SELECT zoom_level AS z, sum(length(tile_data)) AS n FROM tiles GROUP BY zoom_level')
+			.all();
+		return new Map((rows as { z: number; n: number }[]).map((r) => [r.z, r.n]));
+	} finally {
+		db.close();
+	}
+}
+
+// ---------------------------------------------------------------- drawing
+
+const hex = (c: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)) as never;
+const COLORS: [number, number, number][] = [
+	[255, 255, 255], // no kind
+	...channels.filter((c) => c.layer && c.kind).map((c) => hex(c.color ?? '#FF00FF')),
+];
+
+// a region's window as a tileset draws it at zoom z, in its kinds' preview colours, each outline darkened so the shape
+// shows even between similar kinds
+export async function renderWindow(source: TileReader, z: number, win: Window): Promise<RGBImage> {
+	const n = win.side * PX;
+	const codes = kindGrid((await rasterise(source, z, win)).masks, n);
+	const data = new Uint8Array(n * n * 3);
+	for (let y = 0; y < n; y++)
+		for (let x = 0; x < n; x++) {
+			const i = y * n + x;
+			const edge = (x + 1 < n && codes[i] !== codes[i + 1]) || (y + 1 < n && codes[i] !== codes[i + n]);
+			const c = COLORS[codes[i]];
+			for (let k = 0; k < 3; k++) data[3 * i + k] = edge ? c[k] * 0.45 : c[k];
+		}
+	return { width: n, height: n, data };
 }
 
 // ---------------------------------------------------------------- per kind

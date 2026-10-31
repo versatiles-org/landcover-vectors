@@ -124,6 +124,28 @@ export const VARIANTS: Record<string, Variant> = {
 	'outline-2': { why: 'baseline, its corners cut before the simplify, by up to 2 px', outline: { cap: 2, passes: 1 } },
 	'outline-1x2': { why: 'outline-1, two passes', outline: { cap: 1, passes: 2 } },
 	'outline-2x2': { why: 'outline-2, two passes', outline: { cap: 2, passes: 2 } },
+	// what the bytes coalesce and outline-1 save can buy, compared at equal bytes
+	...Object.fromEntries(
+		(
+			[
+				['base', {}],
+				['detail-1.5', { detail: 1.5 }],
+				['detail-2', { detail: 2 }],
+				['sieve-3', { sieve: 3 }],
+				['sieve-4', { sieve: 4 }],
+				['sieve-3-detail-1.5', { sieve: 3, detail: 1.5 }],
+				['sieve-2-detail-1.25', { sieve: 2, detail: 1.25 }],
+			] as [string, BlockParams][]
+		).map(([name, p]): [string, Variant] => [
+			`spend-${name}`,
+			{
+				why: `coalesce and outline-1, with ${JSON.stringify(p)}`,
+				tippecanoe: ['--coalesce', '--reorder'],
+				outline: { cap: 1, passes: 1 },
+				...p,
+			},
+		]),
+	),
 };
 
 // the variant's burns: its own, or the pipeline's
