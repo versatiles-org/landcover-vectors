@@ -472,6 +472,8 @@ side of the z10 → z11 handover it is on.
 npm run experiment                      # build and measure every variant (lib/variants.ts)
 npm run experiment -- burn-z11 baseline # just these
 npm run experiment -- --report          # the tables of everything measured so far
+npm run experiment -- --render a b      # the regions as these variants draw them, side by side, in results/render
+npm run experiment -- --planet 8-9 a    # build these zooms of a variant over the whole planet, and compare its bytes
 ```
 
 Compares variants of the pipeline — OSM land use burned into ESA's classes, other handover zooms — on ten test
@@ -488,6 +490,11 @@ Shortbread `land` and `water_polygons` kind, located with OSM's z14 tiles. The t
 `data/experiment/results/report.md`. `baseline` is the pipeline as configured, with OSM's land use burned in;
 `esa` is the pipeline before the burn, and matches the published version-3 container to within half a point at
 z10 (1–2 points at z8), which is the noise to read differences against.
+
+The report's summary gives each variant's size in gzipped bytes, weighted by each zoom's share of the planet; the
+per-region tile tables are uncompressed, as `getTile` gunzips, and overstate what a change saves. The regions read about 3 points
+low against a planet build, so a variant meant to hold the size is checked with `--planet`. Measurements of the outline
+variants: [doc/TUNING.md](doc/TUNING.md#outlines).
 
 ### Preview
 

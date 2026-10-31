@@ -120,6 +120,39 @@ tippecanoe's own size limit is no alternative: `--maximum-tile-bytes` with `--co
 a small feature into the one before it in the data, not into a neighbour, so at 100 KB 16 % of the tile's pixels,
 and at 80 KB 32 %, ended up on the wrong kind.
 
+## Outlines
+
+Outlines look too jagged for their size, so `npm run experiment` compares variants that change them (`lib/variants.ts`;
+means over the ten regions). Size is the change in gzipped bytes, weighted by each zoom's share of the planet. Turning
+is the outlines' turning per length, sharp the share of sharp corners, axis the share of length along the pixel grid.
+
+| variant                           | size % | turning z10 | sharp z10 % | axis z10 % | agreement z10 % | agreement z8 % | forest % |
+| --------------------------------- | ------ | ----------- | ----------- | ---------- | --------------- | -------------- | -------- |
+| baseline                          | 0      | 29.9        | 62.9        | 16.6       | 91.3            | 86.8           | 76.4     |
+| `coalesce`                        | −11.3  | 29.9        | 62.9        | 16.6       | 91.3            | 86.8           | 76.4     |
+| `outline-0`: noding only          | −7.4   | 27.1        | 63.5        | 13.6       | 91.2            | 86.8           | 76.4     |
+| `outline-1`: corners cut          | −1.2   | 26.3        | 61.1        | 6.3        | 91.1            | 86.8           | 76.3     |
+| `spend-base`: coalesce, outline-1 | −10.9  | 26.3        | 61.1        | 6.3        | 91.1            | 86.8           | 76.3     |
+| `spend-sieve-4`                   | −3.4   | 27.2        | 62.2        | 6.3        | 91.5            | 87.4           | 77.0     |
+| `spend-sieve-2.5`                 | +15.4  | 29.5        | 64.7        | 6.3        | 92.2            | 88.6           | 78.1     |
+| `spend-detail-1.5`                | +17.7  | 34.7        | 55.9        | 5.9        | 92.2            | 87.8           | 78.1     |
+| `spend-smooth-0.5`                | −25.8  | 24.0        | 55.4        | 6.9        | 90.4            | 86.2           | 74.2     |
+| `spend-sieve-2-smooth-0.5`        | +1.0   | 28.9        | 61.9        | 7.1        | 91.6            | 88.0           | 76.1     |
+| **`spend-detail-1.5-smooth-0.5`** | −8.2   | 28.1        | 43.5        | 6.7        | 91.3            | 87.0           | 75.5     |
+
+- `--coalesce --reorder` saves bytes for free: the same shapes in fewer features, with at most 0.17 % of pixels changed.
+- Polygonize leaves T-junctions without a node, so its output is no valid coverage (14,712 invalid rows in
+  `check-coverage` on Hudson Bay). Noding them (`lib/outline.ts`) fixes that, and saves bytes by itself.
+- Cutting corners before the simplify removes the alignment to the pixel grid, but turning falls only 12 % and sharp
+  corners barely move. It helps; it does not cure the jaggedness.
+- Raising `detail` alone adds accuracy and wiggle. Lowering the sieve adds accuracy, but 2.5 px² draws visible specks
+  that no metric here counts.
+- The round majority filter combined with a finer simplify is what changes the shape: sharp corners fall by a third
+  and thin slivers go, at the baseline's agreement. It costs 0.9 points of forest, in thin strips.
+
+The regions read about 3 points low against a planet build, so `--planet` decides. `spend-sieve-4` over the planet,
+against the build: z8 +1.1 %, z9 +0.3 %, z10 −0.8 %, and the largest tile fell from 70.3 to 66.2 KB at z8.
+
 ## Sweeps and `inspect`
 
 ```sh

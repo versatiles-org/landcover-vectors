@@ -137,6 +137,12 @@ export const VARIANTS: Record<string, Variant> = {
 				['sieve-4', { sieve: 4 }],
 				['sieve-3-detail-1.5', { sieve: 3, detail: 1.5 }],
 				['sieve-2-detail-1.25', { sieve: 2, detail: 1.25 }],
+				['smooth-0.5', { smooth: 0.5 }],
+				['sieve-4-smooth-0.5', { sieve: 4, smooth: 0.5 }],
+				['sieve-3-smooth-0.5', { sieve: 3, smooth: 0.5 }],
+				['sieve-2.5-smooth-0.5', { sieve: 2.5, smooth: 0.5 }],
+				['sieve-2-smooth-0.5', { sieve: 2, smooth: 0.5 }],
+				['detail-1.5-smooth-0.5', { detail: 1.5, smooth: 0.5 }],
 			] as [string, BlockParams][]
 		).map(([name, p]): [string, Variant] => [
 			`spend-${name}`,

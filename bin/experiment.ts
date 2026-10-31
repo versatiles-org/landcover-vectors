@@ -348,8 +348,12 @@ async function report(): Promise<void> {
 		['towns z8', "OSM's z11 urban shown as urban at z8 (%)", (m) => m.towns.z8],
 		['forest kept', "OSM's z11 forest shown as forest at z10 (%) — must not drop", (m) => m.forestKept],
 		['overreach', "z10's urban that z11 does not call urban (%)", (m) => m.overreach],
-		['tiles z10', "the landcover's z10 tiles over the window (KB)", (m) => m.tiles.z10?.kb ?? null],
-		['tiles z9', '… its z9 tiles (KB)', (m) => m.tiles.z9?.kb ?? null],
+		[
+			'tiles z10',
+			"the landcover's z10 tiles over the window, uncompressed (KB): see the summary for real bytes",
+			(m) => m.tiles.z10?.kb ?? null,
+		],
+		['tiles z9', '… its z9 tiles, uncompressed (KB)', (m) => m.tiles.z9?.kb ?? null],
 		[
 			'agreement z10',
 			"the landcover's z10 tiles against the variant's source, per tile pixel (%) — higher is better",
@@ -395,8 +399,9 @@ async function report(): Promise<void> {
 }
 
 // One row per variant, over all regions, against baseline: what the size goal and the shape goal need at a glance.
-// Bytes are the sum over the regions per zoom, weighted by the zoom's share of the planet (SIZE_SHARE), turning leads
-// the shape, as a share of vertices also rises when gentle vertices go.
+// Bytes are the gzipped tiles of the variant's whole build per zoom, as clients download them, weighted by the zoom's
+// share of the planet (SIZE_SHARE); the regions read about 3 points low against a planet build, so --planet decides.
+// Turning leads the shape, as a share of vertices also rises when gentle vertices go.
 function summaryTable(results: Result[]): string[] {
 	const base = results.find((r) => r.variant === 'baseline');
 	if (!base) return [];
@@ -406,8 +411,12 @@ function summaryTable(results: Result[]): string[] {
 			const v = shared.map((k) => f(r.regions[k])).filter((x): x is number => typeof x === 'number');
 			return v.length ? Math.round((10 * v.reduce((a, b) => a + b, 0)) / v.length) / 10 : '–';
 		};
-		const kb = (x: Result, z: number) => shared.reduce((n, k) => n + (x.regions[k]?.tiles?.[`z${z}`]?.kb ?? 0), 0);
-		const size = sizeIndex((z) => kb(r, z), (z) => kb(base, z)); // prettier-ignore
+		const gz = (x: Result) => {
+			const f = x.fingerprint && path.join(root, 'variants', x.fingerprint, 'landcover.mbtiles');
+			return f && existsSync(f) ? zoomBytes(f) : new Map<number, number>();
+		};
+		const [mine, theirs] = [gz(r), gz(base)];
+		const size = sizeIndex((z) => mine.get(z) ?? 0, (z) => theirs.get(z) ?? 0); // prettier-ignore
 		return [
 			r.variant,
 			size === null ? '–' : `${size > 0 ? '+' : ''}${size}`,
@@ -424,7 +433,7 @@ function summaryTable(results: Result[]): string[] {
 	return [
 		'### summary',
 		'',
-		"Means over the regions. Size: the change in bytes against baseline, each zoom's change weighted by its share of the planet.",
+		"Means over the regions. Size: the change in gzipped bytes against baseline, each zoom's change weighted by its share of the planet.",
 		'',
 		'| variant | size % | turning z10 | sharp z10 % | axis z10 % | turning z8 | agreement z10 % | agreement z8 % | forest % | holes % |',
 		'|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|',

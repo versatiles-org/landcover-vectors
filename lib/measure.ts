@@ -194,7 +194,7 @@ export type RegionMetrics = {
 	overreach: number | null; // of z10's urban: what z11 does not call urban
 	forestKept: number | null; // OSM's z11 forest shown as forest at z10
 	unmapped: Record<string, number | null>; // where OSM paints nothing at z11: what z10 shows
-	tiles: Record<string, { kb: number; features: number }>; // the landcover's own tiles over the window
+	tiles: Record<string, { kb: number; features: number }>; // the landcover's own tiles over the window, uncompressed: getTile gunzips
 	shape: Record<string, Shape | null>; // how smooth the landcover's outlines are, per zoom
 	agreement: Record<string, number | null>; // the landcover against its source, per zoom (%); null: no source
 	kinds: Record<string, KindCounts>; // per OSM kind, see kindBreakdown

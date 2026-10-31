@@ -112,6 +112,12 @@ describe('variants', () => {
 				['smooth-0.5', 0.5],
 				['smooth-1', 1],
 				['smooth-1.5', 1.5],
+				['spend-smooth-0.5', 0.5],
+				['spend-sieve-4-smooth-0.5', 0.5],
+				['spend-sieve-3-smooth-0.5', 0.5],
+				['spend-sieve-2.5-smooth-0.5', 0.5],
+				['spend-sieve-2-smooth-0.5', 0.5],
+				['spend-detail-1.5-smooth-0.5', 0.5],
 			],
 		);
 		assert.equal(VARIANTS['smooth-1'].burn, undefined, "burns the pipeline's table, like baseline");
