@@ -1,14 +1,37 @@
-// The file side of lib/outline.ts: a polygonized coverage in, the same with its outlines rounded out. The block's
-// polygons are small enough to hold, and ogr2ogr's text formats keep this free of a FlatGeobuf reader.
+// The file side of lib/outline.ts: a polygonized coverage in, the same with its outlines rounded out. ogr2ogr's text
+// formats keep this free of a FlatGeobuf reader. A block's polygons are small enough to hold, but not every block's at
+// once in one heap, so each block runs this file as a process of its own (roundCoverageProcess), on a core of its own.
 
 import { spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import fs from 'node:fs/promises';
 import { createInterface } from 'node:readline';
+import { fileURLToPath } from 'node:url';
 
 import { edgeMask, parseWkt, roundRing, type OutlineParams, type Point } from './outline.ts';
 import { runQuiet } from './worldcover.ts';
 import type { Rect } from '../config.ts';
+
+// a dense block's vertices, as JS arrays
+const HEAP_MB = 8192;
+
+// roundCoverage in a process of its own
+export async function roundCoverageProcess(
+	input: string,
+	output: string,
+	w: Rect,
+	px: { width: number; height: number },
+	params: OutlineParams,
+	scratch: string,
+): Promise<void> {
+	await runQuiet(
+		process.execPath,
+		`--max-old-space-size=${HEAP_MB}`,
+		'--disable-warning=ExperimentalWarning',
+		fileURLToPath(import.meta.url),
+		JSON.stringify({ input, output, w, px, params, scratch }),
+	);
+}
 
 type Row = { code: number; rings: Point[][] };
 
@@ -76,4 +99,9 @@ export async function roundCoverage(
 		output,
 		scratch,
 	);
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+	const a = JSON.parse(process.argv[2]);
+	await roundCoverage(a.input, a.output, a.w, a.px, a.params, a.scratch);
 }

@@ -12,7 +12,7 @@ import { seaShareWindow } from './ocean.ts';
 import { tileBlock, tileCount, type Layer } from './assemble.ts';
 import { timed } from './timing.ts';
 import { windowVrt } from './window.ts';
-import { roundCoverage } from './roundcoverage.ts';
+import { roundCoverageProcess } from './roundcoverage.ts';
 import {
 	channels,
 	blockWindow,
@@ -383,7 +383,7 @@ ${sources.join('\n')}
 			const { cap, passes } = params.outline;
 			const rounded = tmp('rounded.fgb');
 			await timed('outline', () =>
-				roundCoverage(poly, rounded, w, px, { cap: cap * OVERSAMPLE, passes }, tmp('rounded.geojsonl')),
+				roundCoverageProcess(poly, rounded, w, px, { cap: cap * OVERSAMPLE, passes }, tmp('rounded.geojsonl')),
 			);
 			poly = rounded;
 		}
