@@ -213,10 +213,11 @@ export type BlockWindow = {
 // extents and pixel size for block (bx,by) at zoom z. Edge blocks are clamped to the grid
 // / world square. All exact tile-aligned 3857 metres, so neighbouring blocks share an
 // identical inner edge (no seam gaps after clip + simplify --preserve-boundary).
-export function blockWindow(z: number, bx: number, by: number): BlockWindow {
+// `tilePx` reads the zoom at another resolution of the pyramid, with the same margin in metres.
+export function blockWindow(z: number, bx: number, by: number, tilePx = TILE_PX): BlockWindow {
 	const tiles = Math.pow(2, z);
 	const tileSpan = WORLD / tiles; // metres per tile
-	const pxSize = tileSpan / TILE_PX; // metres per raster pixel
+	const pxSize = tileSpan / tilePx; // metres per raster pixel
 
 	const x0 = bx * BLOCK;
 	const y0 = by * BLOCK;
@@ -231,7 +232,7 @@ export function blockWindow(z: number, bx: number, by: number): BlockWindow {
 		miny: MERC - y1 * tileSpan,
 	};
 
-	const m = MARGIN_PX * pxSize;
+	const m = (MARGIN_PX * tileSpan) / TILE_PX;
 	const window3857: Rect = {
 		minx: Math.max(-MERC, inner3857.minx - m),
 		miny: Math.max(-MERC, inner3857.miny - m),
@@ -246,8 +247,8 @@ export function blockWindow(z: number, bx: number, by: number): BlockWindow {
 	const innerPx = {
 		x: Math.round((inner3857.minx - window3857.minx) / pxSize),
 		y: Math.round((window3857.maxy - inner3857.maxy) / pxSize),
-		width: (x1 - x0) * TILE_PX,
-		height: (y1 - y0) * TILE_PX,
+		width: (x1 - x0) * tilePx,
+		height: (y1 - y0) * tilePx,
 	};
 
 	const lonLat = (r: Rect): LonLatBox => ({

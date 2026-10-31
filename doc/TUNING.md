@@ -166,6 +166,22 @@ The container gains less: it is brotli-compressed, and 4385 MB against 4458 MB i
 repetition brotli already compresses well, so a tile sample shows raw bytes −20 %, gzip −4 % and brotli −0.2 % at z10, and
 −22 %, −7 % and −3.5 % at z7. Size in `npm run experiment` is gzip, so it overstates what a variant saves in the container.
 
+### Per zoom: a lower sieve, a finer raster
+
+Variants against the adopted pipeline at z8, means over the regions. `agreement` is against the source's finest level,
+so it does not favour the raster the pipeline already reads. Blocks of `z8-4096` took 21 min instead of 0.3 min.
+
+| variant         | z8 bytes % | agreement z8 % | turning z8 | sharp z8 % | axis z8 % |
+| --------------- | ---------- | -------------- | ---------- | ---------- | --------- |
+| baseline        | 0          | 87.0           | 30.1       | 47.4       | 6.4       |
+| `sieve-3-to-z8` | +21.8      | 88.6           | 33.3       | 52.6       | 6.7       |
+| `sieve-2-to-z8` | +42.6      | 89.3           | 36.2       | 55.8       | 6.6       |
+| `z8-2048`       | +14.8      | 87.1           | 30.9       | 49.0       | 7.1       |
+| `z8-4096`       | +19.7      | 86.9           | 31.9       | 51.0       | 7.6       |
+
+The finer raster costs bytes and gains no agreement, though forest along rivers stays connected in the Hudson Bay render.
+The lower sieve gains agreement, at more turning.
+
 ## Sweeps and `inspect`
 
 ```sh

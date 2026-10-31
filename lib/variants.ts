@@ -7,7 +7,7 @@
 //            `close` first closes the gaps between the polygons (streets, mostly) by that many source pixels.
 //            `keep` lists kinds under which ESA's class stays: what OSM draws on top of the burned kinds anyway.
 //   osmFrom  the zoom from which the merge takes a kind from OSM instead (config.ts `channels`); null = never.
-//   sieve, detail, smooth, outline, tippecanoe   BlockParams (lib/block.ts): the outlines, instead of config.ts's.
+//   sieve, detail, smooth, outline, tippecanoe, tilePx   BlockParams (lib/block.ts): the outlines, instead of config.ts's.
 //   zooms    any of these for one zoom, over the variant's own.
 
 import { channels, LANDCOVER_URL, OSM_BURNS, type Burn, type Channel } from '../config.ts';
@@ -23,17 +23,18 @@ export type Variant = BlockParams & {
 
 // what the blocks of zoom z do differently from config.ts
 export function paramsFor(v: Variant, z: number): BlockParams {
-	const { sieve, detail, smooth, outline, tippecanoe } = v;
-	return { sieve, detail, smooth, outline, tippecanoe, ...v.zooms?.[z] };
+	const { sieve, detail, smooth, outline, tippecanoe, tilePx } = v;
+	return { sieve, detail, smooth, outline, tippecanoe, tilePx, ...v.zooms?.[z] };
 }
 
 // the same for the build's fingerprint: left out when unset, so a variant without any keeps its build
-export const paramValues = ({ sieve, detail, smooth, outline, tippecanoe, zooms }: Variant) => ({
+export const paramValues = ({ sieve, detail, smooth, outline, tippecanoe, tilePx, zooms }: Variant) => ({
 	sieve,
 	detail,
 	smooth,
 	outline,
 	tippecanoe,
+	tilePx,
 	zooms,
 });
 
@@ -67,6 +68,9 @@ export const GREEN = [
 	...['park', 'village_green', 'recreation_ground', 'allotments', 'garden'],
 	...['golf_course', 'playground', 'miniature_golf'],
 ];
+
+const sieveUpTo = (z: number, sieve: number): Record<number, BlockParams> =>
+	Object.fromEntries(Array.from({ length: z + 1 }, (_, i) => [i, { sieve }]));
 
 export const VARIANTS: Record<string, Variant> = {
 	// merged the way it was published (version 3): residential OSM's from z10
@@ -107,6 +111,14 @@ export const VARIANTS: Record<string, Variant> = {
 		outline: null,
 		tippecanoe: [],
 	},
+	// a lower sieve where it costs few bytes: every zoom up to z, the others as configured
+	'sieve-3-to-z8': { why: 'a sieve of 3 px² up to z8', zooms: sieveUpTo(8, 3) },
+	'sieve-2.5-to-z8': { why: 'a sieve of 2.5 px² up to z8', zooms: sieveUpTo(8, 2.5) },
+	'sieve-2-to-z8': { why: 'a sieve of 2 px² up to z8', zooms: sieveUpTo(8, 2) },
+	'sieve-3-to-z9': { why: 'a sieve of 3 px² up to z9', zooms: sieveUpTo(9, 3) },
+	// z8 read at a finer level of the pyramid, instead of its majority of majorities
+	'z8-2048': { why: 'z8 from the z9 level of the pyramid, 2048 px per tile', zooms: { 8: { tilePx: 2048 } } },
+	'z8-4096': { why: 'z8 from the z10 level of the pyramid, 4096 px per tile', zooms: { 8: { tilePx: 4096 } } },
 };
 
 // the variant's burns: its own, or the pipeline's

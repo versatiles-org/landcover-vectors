@@ -5,7 +5,7 @@
 //   npm run experiment -- burn burn-z11     # just these
 //   npm run experiment -- --report          # the tables of everything measured so far
 //   npm run experiment -- --list            # the variants and the regions
-//   npm run experiment -- --render a b      # the regions' z10 and z9 as these variants draw them, side by side
+//   npm run experiment -- --render a b      # the regions' z10, z9 and z8 as these variants draw them, side by side
 //   npm run experiment -- --planet 8-9 a    # build these zooms of a variant over the whole planet; its size per zoom
 //
 // Each region gets its own small source (lib/regionsource.ts), cached in data/experiment/regions/: ESA from the
@@ -275,7 +275,7 @@ async function render(names: string[]): Promise<void> {
 	const out = path.join(resultsDir, 'render');
 	await fs.mkdir(out, { recursive: true });
 	for (const [r, region] of Object.entries(REGIONS))
-		for (const z of [10, 9]) {
+		for (const z of [10, 9, 8]) {
 			const panels = await Promise.all(sources.map((s) => renderWindow(s, z, region.window)));
 			const png = path.join(out, `${r}-z${z}.png`);
 			await fs.writeFile(png, encodePNG(grid(panels, panels.length)));

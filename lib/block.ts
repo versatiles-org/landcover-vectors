@@ -16,7 +16,7 @@ import { roundCoverageProcess } from './roundcoverage.ts';
 import {
 	channels,
 	blockWindow,
-	SIEVE_STAGES,
+	SIEVE_RENDERED,
 	SIEVE_THRESHOLD,
 	SMOOTH_RENDERED,
 	OUTLINE,
@@ -45,6 +45,7 @@ export type BlockParams = {
 	smooth?: number; // the round majority filter after the sieve (3b), its radius (SMOOTH_RENDERED); 0: none
 	outline?: { cap: number; passes: number } | null; // the rounding before the simplify (5b, OUTLINE); null: none
 	tippecanoe?: string[]; // arguments instead of TIPPECANOE_COMPACT
+	tilePx?: number; // the raster's px per tile (TILE_PX), a power of 2 the pyramid has at this zoom
 };
 
 // Each tile's class codes are shifted by one of four multiples of this, by the parity of its column and row, so
@@ -127,7 +128,9 @@ export function fastPath(c: WindowContent, active: Channel[]): FastPath {
 export async function processBlock(z: number, bx: number, by: number, ctx: BlockCtx): Promise<BlockResult> {
 	const t0 = performance.now();
 	const id = `z${z}_${bx}_${by}`;
-	const win = blockWindow(z, bx, by);
+	const tilePx = ctx.params?.tilePx ?? TILE_PX;
+	const oversample = tilePx / 256; // raw px per rendered px
+	const win = blockWindow(z, bx, by, tilePx);
 
 	const tileset = path.join(ctx.resultsdir, `${id}.mbtiles`);
 
@@ -260,10 +263,10 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		);
 
 		// 3. sieve specks, in passes of growing size (SIEVE_STAGES)
-		const threshold =
-			params.sieve === undefined ? SIEVE_THRESHOLD : Math.round(params.sieve * OVERSAMPLE * OVERSAMPLE);
-		if (threshold > SIEVE_THRESHOLD) throw new Error(`sieve ${params.sieve}: it would outgrow the margin`);
-		const stages = params.sieve === undefined ? SIEVE_STAGES : sieveStages(threshold);
+		const threshold = Math.round((params.sieve ?? SIEVE_RENDERED) * oversample * oversample);
+		if (threshold / oversample ** 2 > SIEVE_THRESHOLD / OVERSAMPLE ** 2)
+			throw new Error(`sieve ${params.sieve}: it would outgrow the margin`);
+		const stages = sieveStages(threshold);
 		let sieved = index;
 		await timed('sieve', async () => {
 			for (const [stage, size] of stages.entries()) {
@@ -287,8 +290,9 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		// rounder shapes, with fewer staircase steps for the simplify to keep.
 		const smooth = params.smooth ?? SMOOTH_RENDERED;
 		if (smooth) {
-			const radius = smooth * OVERSAMPLE; // raw px
-			if (radius > MARGIN_PX / 2) throw new Error(`smooth ${smooth}: the filter would reach past the margin`);
+			const radius = smooth * oversample; // raw px
+			if (radius > ((MARGIN_PX / OVERSAMPLE) * oversample) / 2)
+				throw new Error(`smooth ${smooth}: the filter would reach past the margin`);
 			await timed('smooth', async () => {
 				const smoothed = tmp('smoothed.tif');
 				await runQuiet(
@@ -332,9 +336,9 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 		const span = (from: number, size: number) => {
 			// the window's pixel ranges, one per tile, as [tile index relative to the block, start, size]
 			const out: [number, number, number][] = [];
-			for (let t = -Math.ceil(from / TILE_PX); from + t * TILE_PX < size; t++) {
-				const a = Math.max(0, from + t * TILE_PX);
-				out.push([t, a, Math.min(size, from + (t + 1) * TILE_PX) - a]);
+			for (let t = -Math.ceil(from / tilePx); from + t * tilePx < size; t++) {
+				const a = Math.max(0, from + t * tilePx);
+				out.push([t, a, Math.min(size, from + (t + 1) * tilePx) - a]);
 			}
 			return out;
 		};
@@ -389,7 +393,7 @@ ${sources.join('\n')}
 			const { cap, passes } = outline;
 			const rounded = tmp('rounded.fgb');
 			await timed('outline', () =>
-				roundCoverageProcess(poly, rounded, w, px, { cap: cap * OVERSAMPLE, passes }, tmp('rounded.geojsonl')),
+				roundCoverageProcess(poly, rounded, w, px, { cap: cap * oversample, passes }, tmp('rounded.geojsonl')),
 			);
 			poly = rounded;
 		}

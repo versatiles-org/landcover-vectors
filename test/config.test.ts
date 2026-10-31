@@ -42,6 +42,19 @@ describe('blocksPerAxis', () => {
 });
 
 describe('blockWindow', () => {
+	test('another tilePx keeps the block and its margin in metres, on whole pixels', () => {
+		const [a, b] = [blockWindow(8, 3, 2), blockWindow(8, 3, 2, 4096)];
+		assert.deepEqual(b.inner3857, a.inner3857);
+		assert.deepEqual(b.window3857, a.window3857);
+		assert.deepEqual(b.windowPx, { width: 4 * a.windowPx.width, height: 4 * a.windowPx.height });
+		assert.deepEqual(b.innerPx, {
+			x: 4 * a.innerPx.x,
+			y: 4 * a.innerPx.y,
+			width: 4 * BLOCK * TILE_PX,
+			height: 4 * BLOCK * TILE_PX,
+		});
+	});
+
 	test('neighbours share an identical inner edge — no gaps, no overlap', () => {
 		for (const z of [4, 5, 7, 10]) {
 			const n = blocksPerAxis(z);

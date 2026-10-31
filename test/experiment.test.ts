@@ -112,6 +112,7 @@ describe('variants', () => {
 			smooth: 0,
 			outline: null,
 			tippecanoe: [],
+			tilePx: undefined,
 		});
 		assert.equal(VARIANTS.previous.burn, undefined, "burns the pipeline's table, like baseline");
 	});
