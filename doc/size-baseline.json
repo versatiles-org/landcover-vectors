@@ -993,7 +993,7 @@
 			]
 		},
 		"before-outlines": {
-			"fingerprint": "8af9bdfa",
+			"fingerprint": "21c5bd16",
 			"input": "data/landcover.mbtiles",
 			"written": "2026-10-31T17:13:43.371Z",
 			"note": "the z0-10 build of 2026-10-29, before the outline changes (doc/TUNING.md#outlines)",

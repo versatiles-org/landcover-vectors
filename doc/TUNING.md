@@ -158,6 +158,14 @@ The regions read about 3 points low against a planet build, so `--planet` decide
 against the build: z8 +1.1 %, z9 +0.3 %, z10 −0.8 %, and the largest tile fell from 70.3 to 66.2 KB at z8.
 `spend-detail-1.5-smooth-0.5` over the planet: z8 −6.8 %, z9 −6.1 %, z10 −4.1 %, which is 4.7 % less over z8–10.
 
+The full z0–10 build with it (8538 blocks, 101 core-hours, 3.4 h on 32 cores) has 4525 MB of gzipped tiles against 4748 MB
+before (−4.7 %), and its largest tile is 62.6 KB against 71.3 KB. Its tiles at z8–10 are byte for byte those of the
+variant's planet build. 85 of the 313,000 tiles drop out, none above 158 bytes.
+
+The container gains less: it is brotli-compressed, and 4385 MB against 4458 MB is −1.6 %. One feature per kind removes
+repetition brotli already compresses well, so a tile sample shows raw bytes −20 %, gzip −4 % and brotli −0.2 % at z10, and
+−22 %, −7 % and −3.5 % at z7. Size in `npm run experiment` is gzip, so it overstates what a variant saves in the container.
+
 ## Sweeps and `inspect`
 
 ```sh
