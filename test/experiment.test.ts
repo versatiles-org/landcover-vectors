@@ -10,7 +10,7 @@ import path from 'node:path';
 
 import { REGIONS, windowAt, extentTiles, extentLonLat, WINDOW_ZOOM } from '../lib/regions.ts';
 import { regionGrid, regionKeys, pyramidVrt } from '../lib/regionsource.ts';
-import { VARIANTS, channelsFor, burnsOf } from '../lib/variants.ts';
+import { VARIANTS, paramsFor, channelsFor, burnsOf } from '../lib/variants.ts';
 import {
 	compare,
 	paint,
@@ -105,22 +105,15 @@ describe('variants', () => {
 		assert.equal(burnsOf(VARIANTS['burn-z11'])[0].esa, 50);
 	});
 
-	test('the smoothing variants smooth, and nothing else does', () => {
-		assert.deepEqual(
-			Object.entries(VARIANTS).flatMap(([n, v]) => (v.smooth ? [[n, v.smooth]] : [])),
-			[
-				['smooth-0.5', 0.5],
-				['smooth-1', 1],
-				['smooth-1.5', 1.5],
-				['spend-smooth-0.5', 0.5],
-				['spend-sieve-4-smooth-0.5', 0.5],
-				['spend-sieve-3-smooth-0.5', 0.5],
-				['spend-sieve-2.5-smooth-0.5', 0.5],
-				['spend-sieve-2-smooth-0.5', 0.5],
-				['spend-detail-1.5-smooth-0.5', 0.5],
-			],
-		);
-		assert.equal(VARIANTS['smooth-1'].burn, undefined, "burns the pipeline's table, like baseline");
+	test('previous turns every outline setting of config.ts off', () => {
+		assert.deepEqual(paramsFor(VARIANTS.previous, 10), {
+			sieve: undefined,
+			detail: 1,
+			smooth: 0,
+			outline: null,
+			tippecanoe: [],
+		});
+		assert.equal(VARIANTS.previous.burn, undefined, "burns the pipeline's table, like baseline");
 	});
 
 	test('null hands a kind to the landcover at every zoom', () => {

@@ -122,8 +122,12 @@ and at 80 KB 32 %, ended up on the wrong kind.
 
 ## Outlines
 
-Outlines look too jagged for their size, so `npm run experiment` compares variants that change them (`lib/variants.ts`;
-means over the ten regions). Size is the change in gzipped bytes, weighted by each zoom's share of the planet. Turning
+The pipeline adopted the variant in bold below: `config.ts` now sets `SMOOTH_RENDERED`, `OUTLINE`, `TIPPECANOE_COMPACT`
+and `DETAIL_PX` 1.5, and the `previous` variant of `lib/variants.ts` turns them off. The others were variants of
+`lib/variants.ts` up to commit 1f28f21, measured against the pipeline before (baseline here).
+
+Outlines looked too jagged for their size, so `npm run experiment` compared variants that change them (means over the
+ten regions). Size is the change in gzipped bytes, weighted by each zoom's share of the planet. Turning
 is the outlines' turning per length, sharp the share of sharp corners, axis the share of length along the pixel grid.
 
 | variant                           | size % | turning z10 | sharp z10 % | axis z10 % | agreement z10 % | agreement z8 % | forest % |

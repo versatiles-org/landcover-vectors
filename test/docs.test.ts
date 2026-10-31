@@ -43,7 +43,7 @@ describe('config.ts comments state the computed value', () => {
 	});
 
 	test('MARGIN_PX', () => {
-		const documented = grab(config, /Math\.sqrt\(SIEVE_THRESHOLD\)\); \/\/ (\d+)/, 'margin comment');
+		const documented = grab(config, /export const MARGIN_PX = .*; \/\/ (\d+)/, 'margin comment');
 		assert.equal(Number(documented), MARGIN_PX);
 	});
 
@@ -93,7 +93,7 @@ describe('README numbers match config.ts', () => {
 		assert.equal(simplifyForLevel(0), (2 * MERC) / (denom * DETAIL_PX));
 		assert.equal(denom, tilePx, 'the formula and the "1 px at N px tile" claim disagree');
 		// ... but the value it quotes as current must match
-		assert.equal(Number(grab(readme, /`DETAIL_PX` = (\d+) today/, 'README DETAIL_PX')), DETAIL_PX);
+		assert.equal(Number(grab(readme, /`DETAIL_PX` = ([\d.]+) today/, 'README DETAIL_PX')), DETAIL_PX);
 	});
 
 	test('the resolution table quotes the real source resolution', () => {

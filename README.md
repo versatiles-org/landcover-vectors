@@ -373,14 +373,17 @@ a level, so a small VRT points at the window's rectangle in it, with no warp and
 2. **Sieve** — `gdal raster sieve` merges patches smaller than `SIEVE_RENDERED` = 5 rendered px²
    (`SIEVE_THRESHOLD` = round(5·4²) = 80 px) into their largest neighbour, in two passes (`SIEVE_STAGES`):
    first at a quarter of that, 20 px, then at 80 px. A single pass leaves much of a fragmented mosaic untouched,
-   because most neighbours of a small patch are small too (see [doc/TUNING.md](doc/TUNING.md)).
+   because most neighbours of a small patch are small too (see [doc/TUNING.md](doc/TUNING.md)). A round majority
+   filter of `SMOOTH_RENDERED` = 0.5 rendered px radius then rounds the shapes, and a last sieve at 80 px takes what it
+   cut off.
 3. **Cut at the tile edges** — a VRT over the sieved window shifts each tile's class codes by 0, 16, 32 or 48,
    by the parity of its column and row, so neighbouring tiles never share a code and no polygon crosses a tile
    edge. tippecanoe can then leave every polygon as it is in its own tile: cutting a huge polygon (thousands of
    holes) down to a tile, it can lose the outer ring and keep only the holes.
-4. **Polygonize** — `gdal raster polygonize`, giving a gap-free coverage of the window, **no-data included**.
+4. **Polygonize** — `gdal raster polygonize`, giving a gap-free coverage of the window, **no-data included**. Its
+   borders are then noded and their corners cut (`OUTLINE`, `lib/outline.ts`), identically on both sides of each border.
 5. **Simplify** — `gdal vector simplify-coverage --preserve-boundary`, tolerance
-   `(2·MERC)/(256·DETAIL_PX·2^z)` ≈ 1 px at a 256·`DETAIL_PX` px tile (`DETAIL_PX` = 1 today).
+   `(2·MERC)/(256·DETAIL_PX·2^z)` ≈ 1 px at a 256·`DETAIL_PX` px tile (`DETAIL_PX` = 1.5 today).
    ⚠️ It simplifies only edges _shared_ between polygons, which is why no-data must still be there: without it,
    every coastline would be an outer edge and keep its pixel staircase.
 6. **Tag & split** — drop no-data, tag each polygon's Shortbread `kind` (margin included) and split into `land`
@@ -389,7 +392,7 @@ a level, so a small VRT points at the window's rectangle in it, with no warp and
 7. **Tile** — one `tippecanoe -Z z -z z` over the block → `data/1_results/z{z}_{x}_{y}.mbtiles`, keeping only
    the block's own tiles (tippecanoe also writes the ones the margin reaches into). `--coalesce-smallest-as-needed`
    keeps the coverage complete: when a low-zoom tile would exceed the size limit, the smallest polygons merge into
-   their neighbours instead of being dropped.
+   their neighbours instead of being dropped. `--coalesce --reorder` writes each kind of a tile as one feature.
 
 ![One block: its 8 × 8 tiles, coloured by their class code shift, inside the margin read from the neighbouring tiles](doc/block.svg)
 
@@ -527,7 +530,7 @@ offered. `?style=versatiles` in the URL opens it directly.
 | stage  | knob                                                         | what it changes                                                                                      | override                   |
 | ------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | -------------------------- |
 | raster | `SIEVE_RENDERED` (5 rendered px²)                            | the smallest patch kept, sieved in two passes; the main lever on feature count; 0 turns it off       | `LANDCOVER_SIEVE_RENDERED` |
-| vector | `DETAIL_PX` (1)                                              | the simplify tolerance — how precisely outlines follow the result                                    | `LANDCOVER_DETAIL_PX`      |
+| vector | `DETAIL_PX` (1.5)                                            | the simplify tolerance — how precisely outlines follow the result                                    | `LANDCOVER_DETAIL_PX`      |
 | raster | `TILE_PX` (1024 → 38 m/px at z10, against ESA's native 10 m) | the resolution the source is classified at; 4× source raster and CPU per doubling, and a re-download | — (edit, then re-download) |
 
 The overrides are for sweeps; each value builds into its own cache, because all knobs are part of the config

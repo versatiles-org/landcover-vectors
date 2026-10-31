@@ -7,10 +7,7 @@
 //            `close` first closes the gaps between the polygons (streets, mostly) by that many source pixels.
 //            `keep` lists kinds under which ESA's class stays: what OSM draws on top of the burned kinds anyway.
 //   osmFrom  the zoom from which the merge takes a kind from OSM instead (config.ts `channels`); null = never.
-//   smooth   a round majority filter after the sieve (lib/block.ts), its radius in rendered px: rounds the
-//            outlines before they are traced, against the staircase the simplify leaves.
-//   outline  round the traced outlines before the simplify, on the borders the polygons share (lib/outline.ts).
-//   sieve, detail, tippecanoe   the rest of BlockParams (lib/block.ts).
+//   sieve, detail, smooth, outline, tippecanoe   BlockParams (lib/block.ts): the outlines, instead of config.ts's.
 //   zooms    any of these for one zoom, over the variant's own.
 
 import { channels, LANDCOVER_URL, OSM_BURNS, type Burn, type Channel } from '../config.ts';
@@ -103,57 +100,13 @@ export const VARIANTS: Record<string, Variant> = {
 		why: 'burn-z11, with gaps up to 4 source px (153 m) between urban polygons closed',
 		burn: burnUrban(2),
 	},
-	'smooth-0.5': {
-		why: 'baseline, with a round majority filter of 0.5 rendered px radius after the sieve',
-		smooth: 0.5,
+	previous: {
+		why: 'the pipeline before the outline changes: no filter, no rounding, one feature per polygon, detail 1',
+		detail: 1,
+		smooth: 0,
+		outline: null,
+		tippecanoe: [],
 	},
-	'smooth-1': { why: 'baseline, with a round majority filter of 1 rendered px radius after the sieve', smooth: 1 },
-	'smooth-1.5': {
-		why: 'baseline, with a round majority filter of 1.5 rendered px radius after the sieve',
-		smooth: 1.5,
-	},
-	coalesce: {
-		why: 'baseline, with the same kind of a tile in one feature: the same shapes, fewer feature headers',
-		tippecanoe: ['--coalesce', '--reorder'],
-	},
-	'outline-0': {
-		why: 'baseline, with every border noded for the simplify and no corner cut: the control of the outline variants',
-		outline: { cap: 1, passes: 0 },
-	},
-	'outline-1': { why: 'baseline, its corners cut before the simplify, by up to 1 px', outline: { cap: 1, passes: 1 } },
-	'outline-2': { why: 'baseline, its corners cut before the simplify, by up to 2 px', outline: { cap: 2, passes: 1 } },
-	'outline-1x2': { why: 'outline-1, two passes', outline: { cap: 1, passes: 2 } },
-	'outline-2x2': { why: 'outline-2, two passes', outline: { cap: 2, passes: 2 } },
-	// what the bytes coalesce and outline-1 save can buy, compared at equal bytes
-	...Object.fromEntries(
-		(
-			[
-				['base', {}],
-				['detail-1.5', { detail: 1.5 }],
-				['detail-2', { detail: 2 }],
-				['sieve-2', { sieve: 2 }],
-				['sieve-2.5', { sieve: 2.5 }],
-				['sieve-3', { sieve: 3 }],
-				['sieve-4', { sieve: 4 }],
-				['sieve-3-detail-1.5', { sieve: 3, detail: 1.5 }],
-				['sieve-2-detail-1.25', { sieve: 2, detail: 1.25 }],
-				['smooth-0.5', { smooth: 0.5 }],
-				['sieve-4-smooth-0.5', { sieve: 4, smooth: 0.5 }],
-				['sieve-3-smooth-0.5', { sieve: 3, smooth: 0.5 }],
-				['sieve-2.5-smooth-0.5', { sieve: 2.5, smooth: 0.5 }],
-				['sieve-2-smooth-0.5', { sieve: 2, smooth: 0.5 }],
-				['detail-1.5-smooth-0.5', { detail: 1.5, smooth: 0.5 }],
-			] as [string, BlockParams][]
-		).map(([name, p]): [string, Variant] => [
-			`spend-${name}`,
-			{
-				why: `coalesce and outline-1, with ${JSON.stringify(p)}`,
-				tippecanoe: ['--coalesce', '--reorder'],
-				outline: { cap: 1, passes: 1 },
-				...p,
-			},
-		]),
-	),
 };
 
 // the variant's burns: its own, or the pipeline's

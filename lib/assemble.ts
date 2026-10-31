@@ -13,7 +13,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { promisify } from 'node:util';
 
 import { run, runQuiet, runCapture, atomic } from './worldcover.ts';
-import { file, meta, SCHEMA, TIPPECANOE_ARGS } from '../config.ts';
+import { file, meta, SCHEMA, TIPPECANOE_ARGS, TIPPECANOE_COMPACT } from '../config.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -28,7 +28,7 @@ export async function tileBlock(
 	all: Layer[],
 	out: string,
 	tmpdir: string,
-	extraArgs: string[] = [], // an experiment's variant (lib/block.ts)
+	compact: string[] = TIPPECANOE_COMPACT, // an experiment's variant may do without (lib/block.ts)
 ) {
 	// tippecanoe refuses a run without any geometry, so empty layers are left out: a kind the histogram saw can
 	// still be gone, under OSM's sea or sieved away (z8_21_16 held nothing but no-data in the end)
@@ -45,7 +45,7 @@ export async function tileBlock(
 			['-Z', z],
 			['-z', z],
 			TIPPECANOE_ARGS.flat(),
-			extraArgs,
+			compact,
 			layers.map((l) => ['-L', `${l.name}:${l.file}`]).flat(),
 		);
 		const db = new DatabaseSync(tmp);

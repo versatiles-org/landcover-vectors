@@ -24,6 +24,9 @@ import {
 	SIEVE_STAGES,
 	MARGIN_PX,
 	TIPPECANOE_ARGS,
+	TIPPECANOE_COMPACT,
+	SMOOTH_RENDERED,
+	OUTLINE,
 	FULL_PX,
 	OCEAN_URL,
 	OSM_BURNS,
@@ -45,7 +48,9 @@ export function cacheValues(): Values {
 		sieveThreshold: SIEVE_THRESHOLD,
 		sieveStages: SIEVE_STAGES, // the sieve's passes, in raw pixels
 		marginPx: MARGIN_PX,
-		tippecanoe: TIPPECANOE_ARGS, // each block tiles itself, and its tiles are cached (lib/assemble.ts)
+		tippecanoe: [...TIPPECANOE_ARGS, ...TIPPECANOE_COMPACT], // each block tiles itself, and its tiles are cached (lib/assemble.ts)
+		smooth: SMOOTH_RENDERED,
+		outline: OUTLINE,
 		// what matters is the tolerance per zoom, not how it is written: sample the function
 		simplify: Array.from({ length: MAXLEVEL + 1 }, (_, z) => simplifyForLevel(z)),
 		channels: channels.map((c) => ({ esa: c.esa, layer: c.layer, kind: c.kind, maxZoom: c.maxZoom })),

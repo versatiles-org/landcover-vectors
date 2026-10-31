@@ -18,6 +18,8 @@ import {
 	blockWindow,
 	SIEVE_STAGES,
 	SIEVE_THRESHOLD,
+	SMOOTH_RENDERED,
+	OUTLINE,
 	sieveStages,
 	SEA_SHARE_MIN,
 	MARGIN_PX,
@@ -40,9 +42,9 @@ export type BlockCtx = {
 export type BlockParams = {
 	sieve?: number; // smallest patch kept, px² (SIEVE_RENDERED); not above config.ts's, whose margin it would outgrow
 	detail?: number; // the simplify's detail (DETAIL_PX)
-	smooth?: number; // a round majority filter after the sieve (3b), its radius; unset: none
-	outline?: { cap: number; passes: number }; // round the outlines before the simplify (5b, lib/outline.ts)
-	tippecanoe?: string[]; // arguments on top of TIPPECANOE_ARGS
+	smooth?: number; // the round majority filter after the sieve (3b), its radius (SMOOTH_RENDERED); 0: none
+	outline?: { cap: number; passes: number } | null; // the rounding before the simplify (5b, OUTLINE); null: none
+	tippecanoe?: string[]; // arguments instead of TIPPECANOE_COMPACT
 };
 
 // Each tile's class codes are shifted by one of four multiples of this, by the parity of its column and row, so
@@ -280,12 +282,13 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			}
 		});
 
-		// 3b. for the experiments (lib/variants.ts): round the outlines with a majority filter over a disk — each
-		// pixel takes the class most of the disk around it has — then sieve once more at the full size, for what the
-		// filter cut off. Polygonize then traces rounder shapes, with fewer staircase steps for the simplify to keep.
-		if (params.smooth) {
-			const radius = params.smooth * OVERSAMPLE; // raw px
-			if (radius > MARGIN_PX / 2) throw new Error(`smooth ${params.smooth}: the filter would reach past the margin`);
+		// 3b. round the outlines with a majority filter over a disk — each pixel takes the class most of the disk
+		// around it has — then sieve once more at the full size, for what the filter cut off. Polygonize then traces
+		// rounder shapes, with fewer staircase steps for the simplify to keep.
+		const smooth = params.smooth ?? SMOOTH_RENDERED;
+		if (smooth) {
+			const radius = smooth * OVERSAMPLE; // raw px
+			if (radius > MARGIN_PX / 2) throw new Error(`smooth ${smooth}: the filter would reach past the margin`);
 			await timed('smooth', async () => {
 				const smoothed = tmp('smoothed.tif');
 				await runQuiet(
@@ -301,11 +304,13 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 					['-i', sieved],
 					['-o', smoothed],
 				);
+				sieved = smoothed;
+				if (stages.length === 0) return; // the sieve is off
 				const out = tmp('smoothed-sieved.tif');
 				await runQuiet(
 					'gdal',
 					['raster', 'sieve'],
-					['--size-threshold', stages.at(-1) ?? 0],
+					['--size-threshold', stages[stages.length - 1]],
 					['--co', 'COMPRESS=DEFLATE'],
 					['--co', 'TILED=YES'],
 					'--overwrite',
@@ -377,10 +382,11 @@ ${sources.join('\n')}
 			),
 		);
 
-		// 5b. for the experiments (lib/variants.ts): round the outlines, on the borders the polygons share, so the
-		// coverage stays one and the simplify finds fewer right angles to keep (lib/outline.ts)
-		if (params.outline) {
-			const { cap, passes } = params.outline;
+		// 5b. round the outlines, on the borders the polygons share, so the coverage stays one and the simplify finds
+		// fewer right angles to keep (lib/outline.ts). This also nodes the T-junctions polygonize leaves.
+		const outline = params.outline === undefined ? OUTLINE : params.outline;
+		if (outline) {
+			const { cap, passes } = outline;
 			const rounded = tmp('rounded.fgb');
 			await timed('outline', () =>
 				roundCoverageProcess(poly, rounded, w, px, { cap: cap * OVERSAMPLE, passes }, tmp('rounded.geojsonl')),

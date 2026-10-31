@@ -119,8 +119,15 @@ export function sieveStages(threshold: number): number[] {
 	return threshold > 0 ? [threshold] : [];
 }
 
-// processing margin (px) around a block so the sieve at the inner edge matches neighbours
-export const MARGIN_PX = Math.ceil(3 * Math.sqrt(SIEVE_THRESHOLD)); // 27
+// Outlines, in rendered px, on top of the sieve and the detail (doc/TUNING.md#outlines): a round majority filter of
+// this radius after the sieve, which rounds the shapes and takes thin slivers off (lib/block.ts) ...
+export const SMOOTH_RENDERED = 0.5;
+// ... and the traced borders noded and their corners cut before the simplify, by up to `cap` (lib/outline.ts)
+export const OUTLINE = { cap: 1, passes: 1 };
+
+// processing margin (px) around a block so the sieve and the round filter (twice its radius, for what it reads
+// itself) at the inner edge match neighbours
+export const MARGIN_PX = Math.max(Math.ceil(3 * Math.sqrt(SIEVE_THRESHOLD)), 2 * SMOOTH_RENDERED * OVERSAMPLE); // 27
 
 // tippecanoe's tile buffer, in rendered pixels: each block tiles itself, so the buffer of a tile on the block's
 // edge is filled from the block's own margin, and must not reach past it
@@ -135,20 +142,24 @@ export const TIPPECANOE_ARGS = [
 	'--coalesce-smallest-as-needed', // keep coverage complete instead of dropping features
 ];
 
+// One feature per kind of a tile, instead of one per polygon: the same shapes, without their feature headers. 11 % of
+// the bytes in the test regions, with at most 0.17 % of a region's pixels changed (doc/TUNING.md#outlines).
+export const TIPPECANOE_COMPACT = ['--coalesce', '--reorder'];
+
 // Vector detail: the simplify tolerance is one pixel of a (256 · DETAIL_PX)-px tile, so DETAIL_PX = 2
 // keeps twice as much boundary detail per tile — and costs roughly twice the bytes. This, not TILE_PX, is
 // what decides how much detail survives into the tiles: raising the raster resolution alone changes
 // almost nothing, because the tolerance dominates. Measure a change with
 // `npm run stats -- --probe <area>` (or `npm run sweep`) before adopting it; the budget is tippecanoe's
-// 500 000 bytes per tile. At the 5 px² sieve, 2 instead of 1 costs 50 % more bytes for 3 points of agreement, and
-// 0.7 saves 15 % for 2 points (worst Hudson Bay z8 tile, doc/TUNING.md).
+// 500 000 bytes per tile. At the 5 px² sieve and without the round filter, 2 instead of 1 costs 50 % more bytes for
+// 3 points of agreement, and 0.7 saves 15 % for 2 points (worst Hudson Bay z8 tile, doc/TUNING.md).
 //
 // Beyond DETAIL_PX ≈ 16 the MVT grid quantises the extra precision away: tippecanoe's default
 // `--detail 12` gives 4096 units per tile, i.e. 16 units per rendered pixel.
 //
 // LANDCOVER_DETAIL_PX overrides it for a sweep. That is safe rather than sloppy: the tolerance is part of
 // the cache fingerprint, so an override builds into its own directory and is stamped there.
-export const DETAIL_PX = numberFromEnv('LANDCOVER_DETAIL_PX', 1, { above: 0 });
+export const DETAIL_PX = numberFromEnv('LANDCOVER_DETAIL_PX', 1.5, { above: 0 });
 
 // A numeric setting a sweep may override through the environment (LANDCOVER_DETAIL_PX,
 // LANDCOVER_SIEVE_RENDERED, and LANDCOVER_CONCURRENCY, which is no output setting). An unparsable or out-of-range value is an error,

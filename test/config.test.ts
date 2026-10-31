@@ -182,8 +182,8 @@ describe('the resolution knobs', () => {
 		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '4' }).values, [64, 24, [16, 64]]);
 		// a threshold too small to split runs once
 		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '0.25' }).values, [4, 6, [4]]);
-		// 0 switches the sieve off, and with it the margin
-		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '0' }).values, [0, 0, []]);
+		// 0 switches the sieve off, which leaves the margin the round filter needs
+		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '0' }).values, [0, 4, []]);
 		// empty means unset
 		assert.deepEqual(read({ LANDCOVER_SIEVE_RENDERED: '' }).values, [80, 27, [20, 80]]);
 
@@ -222,7 +222,7 @@ describe('the resolution knobs', () => {
 	});
 
 	test('DETAIL_PX scales the tolerance inversely', () => {
-		assert.equal(DETAIL_PX, 1, 'the committed default; a sweep overrides it per run');
+		assert.equal(DETAIL_PX, 1.5, 'the committed default; a sweep overrides it per run');
 		for (let z = 0; z <= MAXLEVEL; z++) {
 			assert.equal(simplifyForLevel(z), (2 * MERC) / (256 * DETAIL_PX * Math.pow(2, z)), `z${z}`);
 		}
@@ -244,7 +244,7 @@ describe('the resolution knobs', () => {
 		assert.equal(two.status, 0, two.stderr);
 		const [detail, tolerance] = JSON.parse(two.stdout) as number[];
 		assert.equal(detail, 2);
-		assert.equal(tolerance, simplifyForLevel(10) / 2, 'twice the detail is half the tolerance');
+		assert.equal(tolerance, (simplifyForLevel(10) * DETAIL_PX) / 2, 'twice the detail is half the tolerance');
 
 		for (const bad of ['0', '-3', 'nonsense']) {
 			const r = read(bad);
