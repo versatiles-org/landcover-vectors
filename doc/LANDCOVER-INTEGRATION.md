@@ -182,11 +182,13 @@ The reference implementation is `landcoverLayers` and `stackedStyle` in `lib/sty
 
 ### versatiles-documentation (open)
 
+[versatiles-documentation#97](https://github.com/versatiles-org/versatiles-documentation/issues/97), now: the
+extended TileJSON spec gets `versatiles/landcover@1.0` and the missing `shortbread@1.1`, the characters of the
+pattern, and how a client treats values it doesn't know, as versatiles 5.6.0 does.
+
 [versatiles-documentation#96](https://github.com/versatiles-org/versatiles-documentation/issues/96), in three parts:
 
-- **Now:** the extended TileJSON spec (`versatiles/landcover@1.0`, the missing `shortbread@1.1`, and keeping
-  unknown values, as versatiles 5.6.0 does), and `guides/generate_tiles_from_osm.md`, which still documents the
-  removed `--landcover`.
+- **Now:** `guides/generate_tiles_from_osm.md`, which still documents the removed `--landcover`.
 - **After version 4 and the versatiles-style release:** the land cover page, `basics/tilesets.md` and the
   compendium's summaries, which describe the merge and `osm-landcover`.
 - **After tiles.versatiles.org serves plain OSM:** the notes on the hosted `osm` tileset.
@@ -199,7 +201,7 @@ versatiles-svg-renderer, versatiles-studio, playground and versatiles-org.github
 
 ## Suggested order
 
-1. ~~Settle the schema's name, and release versatiles-rs#300 or #301~~ (5.6.0); add the value to the TileJSON spec.
+1. ~~Settle the schema's name, and release versatiles-rs#300 or #301~~ (5.6.0); add the value to the TileJSON spec (versatiles-documentation#97).
 2. ~~Remove the land cover merge from versatiles-planetiler (versatiles-docker#60).~~
 3. Rebuild version 4 with the `landcover` layer and the schema, then upload and publish it with the corrected
    attribution (download.versatiles.org#43).
