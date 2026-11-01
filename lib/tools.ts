@@ -8,20 +8,13 @@ import path from 'node:path';
 
 import { gdalEnv, commandExists } from './worldcover.ts';
 
-export type ToolName =
-	'node' | 'gdal' | 'gdal_calc' | 'tippecanoe' | 'tippecanoe-decode' | 'versatiles' | 'curl' | 'osmium';
+export type ToolName = 'node' | 'gdal' | 'gdal_calc' | 'tippecanoe' | 'tippecanoe-decode' | 'curl' | 'osmium';
 
 // version: what was found; problem: why it cannot be used; warning: usable, but not as tested
 export type CheckResult = { version?: string; problem?: string; warning?: string };
 type Tool = { neededBy: string; hint: string; check: () => Promise<CheckResult> };
 
 const PIXI = 'run "pixi install" (see pixi.toml)';
-
-// the oldest versatiles the build's final step (lib/assemble.ts pack) is known to work with
-export const MIN_VERSATILES = '5.0.0';
-const VERSATILES_HINT =
-	'brew install versatiles-org/versatiles/versatiles (or brew upgrade versatiles), or see ' +
-	'https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install';
 
 // run a command and return what it printed on stdout and stderr (tippecanoe reports its version on stderr);
 // null if it is not on PATH or fails
@@ -120,11 +113,6 @@ export const TOOLS: Record<ToolName, Tool> = {
 		hint: 'comes with tippecanoe',
 		// it has no --version and exits non-zero without a file: being there is all there is to check
 		check: async () => ((await commandExists('tippecanoe-decode')) ? {} : { problem: 'not on PATH' }),
-	},
-	versatiles: {
-		neededBy: 'build',
-		hint: VERSATILES_HINT,
-		check: versioned('versatiles', { min: MIN_VERSATILES }),
 	},
 	curl: {
 		neededBy: 'download',

@@ -4,7 +4,7 @@
 // which is also the block's cache entry. The tiles on a block's edge get their buffer from the block's own margin
 // (lib/block.ts), so no tile needs a neighbour's polygons, and the blocks of a zoom never have to meet in one big
 // file of polygons. Blocks never share a tile, so joining them is a plain copy of rows: into one mbtiles per zoom
-// once its blocks are done (lib/pipeline.ts), and the zooms into one at the end, which `versatiles convert` packs.
+// once its blocks are done (lib/pipeline.ts), and the zooms into one at the end, which versatiles packs.
 
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -12,7 +12,10 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { promisify } from 'node:util';
 
-import { run, runQuiet, runCapture, atomic } from './worldcover.ts';
+import { TileSource } from '@versatiles/versatiles-rs';
+
+import { runQuiet, runCapture, atomic } from './worldcover.ts';
+import { progress, type Progress } from './progress.ts';
 import { file, meta, LAYER, SCHEMA, TIPPECANOE_ARGS, TIPPECANOE_COMPACT } from '../config.ts';
 
 const execFileAsync = promisify(execFile);
@@ -230,12 +233,29 @@ export async function gitCommit(cwd = path.resolve(import.meta.dirname, '..')): 
 }
 
 // join the per-zoom tilesets and pack them into a brotli versatiles container (the build's final step), with
-// data/tmp/container-meta.json (containerMeta) as its whole metadata.
+// data/tmp/container-meta.json (containerMeta) as its whole metadata. versatiles runs in this process, at the
+// version package-lock.json pins, so the build never depends on whichever `versatiles` is on the PATH.
 export async function pack(zooms: string[], provenance: Provenance, tmpdir: string): Promise<void> {
 	if (!(await joinTilesets(zooms, file.tiles))) throw new Error('nothing to pack — no zoom produced any tiles');
 	await fs.rm(file.container, { force: true });
 	const tilejson = path.join(tmpdir, 'container-meta.json');
 	await fs.writeFile(tilejson, JSON.stringify(containerMeta(readJoined(file.tiles), provenance), null, '\t') + '\n');
-	const pipeline = `[,vpl](from_container filename="${file.tiles}" | meta_update tilejson_file="${tilejson}")`;
-	await run('versatiles', 'convert', ['-c', 'brotli'], pipeline, file.container);
+	const source = await TileSource.fromVpl(
+		`from_container filename="${file.tiles}" | meta_update tilejson_file="${tilejson}"`,
+	);
+	let bar: Progress | undefined;
+	let done = 0;
+	await source.convertTo(
+		file.container,
+		{ compress: 'brotli' },
+		({ position, total }) => {
+			bar ??= progress(total, 'pack');
+			bar.tick(position - done);
+			done = position;
+		},
+		({ type, message }) => {
+			if (type !== 'step') console.error('! versatiles %s: %s', type, message);
+		},
+	);
+	bar?.done();
 }

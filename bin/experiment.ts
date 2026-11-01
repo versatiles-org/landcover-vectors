@@ -119,7 +119,7 @@ if (!opt.report) {
 	const unknown = names.filter((n) => !VARIANTS[n]);
 	if (unknown.length) throw new Error(`unknown variant(s) ${unknown.join(', ')} — see --list`);
 	if (names.some((n) => !VARIANTS[n].container)) {
-		await requireTools(['gdal', 'gdal_calc', 'tippecanoe', 'versatiles', 'osmium', 'curl']);
+		await requireTools(['gdal', 'gdal_calc', 'tippecanoe', 'osmium', 'curl']);
 		if (!(await findLanduse()))
 			throw new Error('no OSM land use — run "npm run download -- --landuse" first (the planet, ~95 GB, once)');
 		if (!existsSync(file.ocean)) await downloadOcean();

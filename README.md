@@ -133,9 +133,9 @@ pixi run doctor    # checks every tool the pipeline runs, and says how to fix wh
 ```
 
 `pixi run build` (or `download`, `preview`, `stats`, …) then runs the npm script in that environment;
-CI tests against the same lockfile. Only versatiles is not on conda-forge yet:
-`brew install versatiles-org/versatiles/versatiles`, or see its
-[install instructions](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install).
+CI tests against the same lockfile. versatiles comes with the npm dependencies
+([`@versatiles/versatiles-rs`](https://www.npmjs.com/package/@versatiles/versatiles-rs), pinned in
+`package-lock.json`) and runs inside the build, so the `versatiles` command is not needed.
 
 Without pixi, install these yourself; `npm run doctor` checks them all, and every command checks its own before
 it starts:
@@ -144,7 +144,6 @@ it starts:
 - [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdaladdo`, `gdalwarp`, `gdalinfo`, `gdal_translate`, `gdal_calc.py`, `gdal_rasterize`, `ogr2ogr`, `ogrinfo` and the `gdal raster` / `gdal vector` subcommands `sieve`, `polygonize` and `simplify-coverage` on `PATH`
 - Python 3 with `numpy` (used by `gdal_calc.py` for the class index; both ship with the GDAL install)
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`) — `tippecanoe-decode`, which ships with it, is used by `npm run inspect` and `npm run stats -- --attribute`
-- [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install) ≥ 5.0.0, which packs the container
 - `curl`, for the ocean mask and OSM's land use
 - [`osmium`](https://osmcode.org/osmium-tool/) (e.g. `brew install osmium-tool`), which cuts OSM's land use out of the planet for `npm run download` and `npm run experiment`
 - for `npm run preview`: a browser, and internet access for MapLibre GL from a CDN, the OSM container and versatiles-style's fonts and icons (the land cover tiles themselves are served locally)
@@ -374,8 +373,8 @@ requires the histogram to count every pixel of the window as well.
 ### Pack
 
 `lib/assemble.ts` copies the per-zoom tiles into `data/landcover.mbtiles` (zooms, like blocks, never share a
-tile, so this is a plain copy, nothing is decoded), and `versatiles convert -c brotli` packs
-it into `data/landcover-vectors.versatiles`, the name it is published under. Its whole metadata is one TileJSON,
+tile, so this is a plain copy, nothing is decoded), and versatiles (`@versatiles/versatiles-rs`, in the build's own
+process) packs it with brotli into `data/landcover-vectors.versatiles`, the name it is published under. Its whole metadata is one TileJSON,
 `data/tmp/container-meta.json`, which `meta_update tilejson_file=…` puts in place of the mbtiles' own:
 `tile_schema: other` (see [what's in the tiles](#whats-in-the-tiles)); name, description, attribution,
 revision (`version`), center and the layer descriptions from `meta` in `config.ts`; bounds, zooms and layers of
@@ -465,7 +464,7 @@ npm run preview -- --tiles data/landcover.mbtiles  # just look at an existing ti
 ```
 
 A parameter change is worth a few minutes on one area, not a full build. The preview runs the area's blocks
-through **the same** `lib/pipeline.ts` as the build and serves the result with `versatiles serve`. Each parameter
+through **the same** `lib/pipeline.ts` as the build and serves the result with versatiles' tile server, in the preview's own process. Each parameter
 set builds into its own `data/preview/<config fingerprint>/`, so switching back and forth reuses the caches.
 
 The viewer (`dev/viewer/`, MapLibre GL) mounts the **real OSM Shortbread container** from

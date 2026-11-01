@@ -1,6 +1,7 @@
-# Everything the pipeline runs, from conda-forge, pinned for macOS and Linux in pixi.lock:
+# Everything the pipeline runs, from conda-forge, pinned for macOS and Linux in pixi.lock (versatiles comes with
+# the npm dependencies, pinned in package-lock.json):
 #   pixi install        # GDAL, tippecanoe, curl, osmium, Node.js
-#   pixi run doctor     # checks every tool, versatiles included (not on conda-forge yet, see the README)
+#   pixi run doctor     # checks every tool
 #   pixi run build      # or download, preview, stats, test, check …
 # CI builds its test environment from the same lockfile (.github/workflows/ci.yml).
 

@@ -12,11 +12,13 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
-import { requireCommands, commandExists, setGdalThreads } from '../lib/worldcover.ts';
+import { TileServer, TileSource } from '@versatiles/versatiles-rs';
+
+import { commandExists, setGdalThreads } from '../lib/worldcover.ts';
 import { requireTools } from '../lib/tools.ts';
 import { startTimingLog, timed } from '../lib/timing.ts';
 import { requireSeaShare } from '../lib/ocean.ts';
@@ -232,36 +234,34 @@ const exists = (p: string): Promise<boolean> =>
 	);
 
 // ---------------------------------------------------------------- serve
-function serve(): ChildProcess {
-	const mounts = [`[landcover]${current.tileset}`];
-	if (useOsm) mounts.push(`[osm]${OSM_URL}`);
-	const args = [
-		'serve',
-		['-p', String(opt.port)],
-		['--cache-control', 'no-cache'], // a preview is rebuilt under the same URLs
-		['-s', viewerDir],
-		['-s', `[/gen]${current.genDir}`],
-		...mounts,
-	].flat();
-	console.error('$ versatiles %s', args.join(' '));
-	const child = spawn('versatiles', args, { stdio: ['ignore', 'inherit', 'inherit'] });
-	child.on('exit', (code) => {
-		if (!restarting) process.exit(code ?? 0);
-	});
-	return child;
+// in this process, like bin/dev.ts: the landcover tileset, OSM if mounted, the viewer and its generated files.
+// Bound to every interface, as `versatiles serve` was.
+async function serve(): Promise<TileServer> {
+	const server = new TileServer({ ip: '0.0.0.0', port: Number(opt.port), cacheControl: 'no-cache' }); // a preview is rebuilt under the same URLs
+	await server.addTileSource('landcover', await TileSource.fromPath(current.tileset));
+	if (useOsm) await server.addTileSource('osm', await TileSource.fromPath(OSM_URL));
+	await server.addStaticSource(viewerDir, '/');
+	await server.addStaticSource(current.genDir, '/gen');
+	await server.start();
+	return server;
 }
-
-let restarting = false;
 
 // ---------------------------------------------------------------- run
 if (!opt.tiles) await build();
 if (opt['build-only']) process.exit(0);
 if (!(await exists(current.tileset))) throw new Error(`no tileset at ${current.tileset}`);
 
-await requireCommands(['versatiles']);
 await writeBlockGrid();
 await writeState();
-let server = serve();
+let server = await serve();
+
+// the native server holds no handle on Node's event loop, so without this Node would exit right here
+const keepAlive = setInterval(() => {}, 2 ** 30);
+for (const signal of ['SIGINT', 'SIGTERM'] as const)
+	process.on(signal, () => {
+		clearInterval(keepAlive);
+		void server.stop().then(() => process.exit(0));
+	});
 
 const url = `http://localhost:${opt.port}/`;
 console.error('\n→ %s  (area %s, z%d-%d, config %s)', url, spec ?? 'world', minZoom, maxZoom, fp);
@@ -299,13 +299,10 @@ if (opt.watch && !opt.tiles) {
 				.catch(() => null);
 			if (built) current = currentFor(built.fingerprint);
 			// the fingerprint moved, so the tileset is a different file: restart the server on it
-			restarting = true;
-			server.kill();
-			await new Promise((r) => setTimeout(r, 300));
-			restarting = false;
+			await server.stop();
 			await writeBlockGrid();
 			await writeState();
-			server = serve();
+			server = await serve();
 			console.error('✓ rebuilt as %s — the viewer reloads itself', current.fingerprint);
 		} else {
 			console.error('✗ rebuild failed (exit %d) — the previous preview stays up', code);

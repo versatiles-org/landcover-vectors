@@ -158,9 +158,7 @@
 			const realRadio = document.querySelector('input[name=style][value=versatiles]');
 			if (!realStyle) {
 				realRadio.disabled = true;
-				realRadio.parentElement.title = state.osm
-					? 'needs versatiles ≥ 4.15.0 to serve the filtered merge'
-					: 'needs the OSM container (started with --no-osm)';
+				realRadio.parentElement.title = 'needs the OSM container (started with --no-osm)';
 			}
 			document.querySelector(`input[name=style][value=${mode}]`).checked = true;
 

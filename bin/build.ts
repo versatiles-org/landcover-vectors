@@ -26,7 +26,7 @@ import { datadir, dir, file, MAXLEVEL, BLOCK_CONCURRENCY, CPU_CORES } from '../c
 // fail fast (before the long build) if any external tool is missing or too old
 const started = Date.now();
 
-await requireTools(['node', 'gdal', 'gdal_calc', 'tippecanoe', 'versatiles']);
+await requireTools(['node', 'gdal', 'gdal_calc', 'tippecanoe']);
 // the commit stamped into the container, read now: the checkout may move on during an hours-long build
 const commit = await gitCommit();
 
