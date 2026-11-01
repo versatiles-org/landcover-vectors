@@ -109,13 +109,25 @@ no source. The stacked style needs:
 
 ### versatiles-rs (required for a schema)
 
-`TileSchema` in `versatiles_core/src/types/tile_schema.rs` is a closed list, and `meta_update` refuses any other
-value. A land cover schema needs a variant there and a release, and then `SCHEMA` in this repository's `config.ts`.
+`TileSchema` in `versatiles_core/src/types/tile_schema.rs` is a closed list: `meta_update` refuses any other value,
+and reading drops it. Either issue unblocks `SCHEMA` in this repository's `config.ts`, once released:
+
+- [versatiles-rs#300](https://github.com/versatiles-org/versatiles-rs/issues/300): accept and keep well-formed
+  `tile_schema` values versatiles doesn't know.
+- [versatiles-rs#301](https://github.com/versatiles-org/versatiles-rs/issues/301): add `versatiles/landcover@1.0`.
 
 ### versatiles-documentation (required)
 
-- `compendium/specification_extended_tilejson.md`: the new `tile_schema` value.
-- `compendium/specification_shortbread_landcover.md` describes only the merge. It needs the stacked style instead.
+- [versatiles-documentation#96](https://github.com/versatiles-org/versatiles-documentation/issues/96): the land cover
+  page, `basics/tilesets.md` and `guides/generate_tiles_from_osm.md` describe the merge and `osm-landcover`, and need
+  the separate source instead.
+- `compendium/specification_extended_tilejson.md`: the new `tile_schema` value, following versatiles-rs#300 and #301.
+
+### versatiles-docker (required before publishing)
+
+[versatiles-docker#60](https://github.com/versatiles-org/versatiles-docker/issues/60): `versatiles-planetiler
+--landcover` merges the public `landcover-vectors.versatiles` into Shortbread's layers, and drops OSM's own land
+kinds up to z10. With version 4 published, it would silently lose those kinds. The merge has to go before then.
 
 ### tiles.versatiles.org (required)
 
@@ -151,16 +163,18 @@ versatiles-svg-renderer, versatiles-studio, playground and versatiles-org.github
    Protomaps and Planetiler name a tileset's schema in `name`, `id` or `version`. Where one tileset combines
    several, Mapbox and OGC's tileset metadata describe it per layer (Mapbox's `vector_layers[].source`), not as a
    list at the top. The extended TileJSON spec's pattern is `<family>[/<subtype>][@<version>]`, and its DEM values
-   name the data first and the variant second (`dem/mapbox`). Candidates: `landcover/versatiles@1.0`,
-   `versatiles/landcover@1.0`.
+   name the data first and the variant second (`dem/mapbox`). Proposed in versatiles-rs#301:
+   `versatiles/landcover@1.0`, which keeps VersaTiles' own schemas together.
 2. **Replace version 3 in place, or publish with a date?** Replacing is what has been done so far. With
    `osm-landcover` retired, nothing depends on version 3 staying available.
 
 ## Suggested order
 
-1. Settle the schema's name, and add it to versatiles-rs and the TileJSON spec.
-2. Rebuild version 4 with the `landcover` layer, then upload and publish it with the corrected attribution.
-3. Push `main` of this repository.
-4. Serve `landcover-vectors` on tiles.versatiles.org.
-5. Release versatiles-style with stacking, and update the documentation.
-6. Roll out the new styles, switch `/tiles/osm/` to plain OSM, and delete `osm-landcover` from R2.
+1. Settle the schema's name, and release versatiles-rs#300 or #301; add the value to the TileJSON spec.
+2. Remove the land cover merge from versatiles-planetiler (versatiles-docker#60).
+3. Rebuild version 4 with the `landcover` layer and the schema, then upload and publish it with the corrected
+   attribution.
+4. Push `main` of this repository.
+5. Serve `landcover-vectors` on tiles.versatiles.org.
+6. Release versatiles-style with stacking, and update the documentation (versatiles-documentation#96).
+7. Roll out the new styles, switch `/tiles/osm/` to plain OSM, and delete `osm-landcover` from R2.
