@@ -21,7 +21,7 @@ export function versatilesStyle(tiles: string, landcover = true): StyleSpecifica
 // Its colours are versatiles-style's for the same kinds. `fade` thins it out at the zooms where its outlines grow coarse.
 export function stackedStyle(osmTiles: string, landcoverTiles: string, fade = false): StyleSpecification {
 	const style = versatilesStyle(osmTiles, false);
-	const opacity = fade ? ['interpolate', ['linear'], ['zoom'], 12, 1, 15, 0.3] : 1;
+	const opacity = fade ? ['interpolate', ['linear'], ['zoom'], 12, 1, 14, 0.25] : 1;
 	const under = versatilesStyle(osmTiles, true).layers.flatMap((l) =>
 		l.type === 'fill' && (l['source-layer'] === 'land' || l['source-layer'] === 'water_polygons')
 			? [
