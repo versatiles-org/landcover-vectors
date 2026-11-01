@@ -380,7 +380,9 @@ process) packs it with brotli into `data/landcover-vectors.versatiles`, the name
 revision (`version`), center and the layer descriptions from `meta` in `config.ts`; bounds, zooms and layers of
 the joined tileset; and, like the `planetiler:*` keys of `osm.versatiles`, the build it came from:
 `landcover:fingerprint` (the config), `landcover:githash` (the commit, `-dirty` with uncommitted changes) and
-`landcover:buildtime`. The build ends with a per-zoom tally of how its blocks were processed, from
+`landcover:buildtime`. Before the container takes its final name, pack reads its metadata back and stops if
+any of it differs from what was written, if its tile type is not vector tiles, or if its one layer lacks a
+description or doesn't span every zoom. The build ends with a per-zoom tally of how its blocks were processed, from
 `data/blocks.log`.
 
 ## Development

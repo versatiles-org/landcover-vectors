@@ -9,7 +9,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-import { tileBlock, tileCount, joinTilesets, containerMeta, gitCommit, readJoined } from '../lib/assemble.ts';
+import {
+	tileBlock,
+	tileCount,
+	joinTilesets,
+	containerMeta,
+	containerProblems,
+	gitCommit,
+	readContainerMeta,
+	readJoined,
+	writeContainer,
+} from '../lib/assemble.ts';
 import { skipWithout } from './tools.ts';
 import { blockWindow, meta as tilesetMeta, SCHEMA } from '../config.ts';
 
@@ -141,6 +151,71 @@ describe('joinTilesets', { skip }, () => {
 	test('two blocks claiming one tile is an error, not a silent overwrite', async () => {
 		const a = await block(5, 1, 2);
 		await assert.rejects(joinTilesets([a, a], path.join(tmp, 'dup.mbtiles')), /UNIQUE/);
+	});
+
+	test('a packed container reads back with exactly the metadata it was given', async () => {
+		const joinedFile = path.join(tmp, 'packed.mbtiles');
+		await joinTilesets([await block(5, 1, 2)], joinedFile);
+		const expected = containerMeta(readJoined(joinedFile), {
+			fingerprint: 'ce387963',
+			commit: 'abc123',
+			buildtime: new Date('2026-10-25T22:35:25.493Z'),
+		});
+		const tilejson = path.join(tmp, 'packed-meta.json');
+		await fs.writeFile(tilejson, JSON.stringify(expected));
+		const container = path.join(tmp, 'packed.versatiles');
+		await writeContainer(joinedFile, tilejson, container);
+		const actual = await readContainerMeta(container);
+		assert.deepEqual(containerProblems(actual, expected), []);
+		// the keys versatiles' own tileJson() leaves out are there too
+		assert.equal(actual.attribution, tilesetMeta.attribution);
+		assert.equal(actual['landcover:githash'], 'abc123');
+	});
+});
+
+describe('containerProblems', () => {
+	const expected = containerMeta(
+		{
+			bounds: [-180, -85.051129, 180, 85.051129],
+			minzoom: 0,
+			maxzoom: 10,
+			vector_layers: [{ id: 'landcover', minzoom: 0, maxzoom: 10, fields: { kind: 'String' }, description: 'd' }],
+		},
+		{ fingerprint: 'ce387963', commit: 'abc123', buildtime: new Date('2026-10-25T22:35:25.493Z') },
+	);
+	const right: Record<string, unknown> = {
+		...expected,
+		tile_type: 'vector',
+		tile_format: 'application/vnd.mapbox-vector-tile',
+	};
+	const layer = (expected.vector_layers as object[])[0];
+
+	test('finds nothing wrong with the metadata as written', () => {
+		assert.deepEqual(containerProblems(right, expected), []);
+	});
+
+	test('names a key that was dropped or changed', () => {
+		const { attribution: _, ...dropped } = right;
+		assert.deepEqual(containerProblems({ ...dropped, tile_schema: 'other' }, expected), [
+			`attribution is missing, not ${JSON.stringify(tilesetMeta.attribution)}`,
+			`tile_schema is "other", not "${SCHEMA}"`,
+		]);
+	});
+
+	test('names a tile type or format that is not vector tiles', () => {
+		assert.deepEqual(containerProblems({ ...right, tile_format: 'image/png' }, expected), [
+			'tile_format is "image/png", not "application/vnd.mapbox-vector-tile"',
+		]);
+	});
+
+	test('wants one layer, described and present at every zoom of the container', () => {
+		const as = (layers: object[]) =>
+			containerProblems({ ...right, vector_layers: layers }, { ...expected, vector_layers: layers });
+		assert.deepEqual(as([layer, { ...layer, id: 'land' }]), [
+			'the layers are ["landcover","land"], not ["landcover"]',
+		]);
+		assert.deepEqual(as([{ ...layer, description: '' }]), ['layer landcover has no description']);
+		assert.deepEqual(as([{ ...layer, maxzoom: 9 }]), ['layer landcover spans z0–9, the container z0–10']);
 	});
 });
 

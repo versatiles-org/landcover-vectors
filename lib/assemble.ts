@@ -10,7 +10,8 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { promisify } from 'node:util';
+import { isDeepStrictEqual, promisify } from 'node:util';
+import zlib from 'node:zlib';
 
 import { TileSource } from '@versatiles/versatiles-rs';
 
@@ -232,21 +233,70 @@ export async function gitCommit(cwd = path.resolve(import.meta.dirname, '..')): 
 	}
 }
 
-// join the per-zoom tilesets and pack them into a brotli versatiles container (the build's final step), with
-// data/tmp/container-meta.json (containerMeta) as its whole metadata. versatiles runs in this process, at the
-// version package-lock.json pins, so the build never depends on whichever `versatiles` is on the PATH.
-export async function pack(zooms: string[], provenance: Provenance, tmpdir: string): Promise<void> {
-	if (!(await joinTilesets(zooms, file.tiles))) throw new Error('nothing to pack — no zoom produced any tiles');
-	await fs.rm(file.container, { force: true });
-	const tilejson = path.join(tmpdir, 'container-meta.json');
-	await fs.writeFile(tilejson, JSON.stringify(containerMeta(readJoined(file.tiles), provenance), null, '\t') + '\n');
+// The metadata of a versatiles container, read straight from the file (versatiles-spec v02): the header points at
+// one JSON document, compressed like the tiles. versatiles' own `tileJson()` returns only the fields it has types
+// for, without `name`, `description`, `attribution` or the `landcover:*` keys.
+export async function readContainerMeta(container: string): Promise<Record<string, unknown>> {
+	const fh = await fs.open(container);
+	try {
+		const header = Buffer.alloc(66);
+		await fh.read(header, 0, 66, 0);
+		if (header.toString('latin1', 0, 14) !== 'versatiles_v02')
+			throw new Error(`${container}: not a versatiles v02 container`);
+		const length = Number(header.readBigUInt64BE(42));
+		const chunk = Buffer.alloc(length);
+		await fh.read(chunk, 0, length, Number(header.readBigUInt64BE(34)));
+		const decompress = [(b: Buffer) => b, zlib.gunzipSync, zlib.brotliDecompressSync][header[15]];
+		if (!decompress)
+			throw new Error(`${container}: metadata compressed with method ${header[15]}, which this reader doesn't know`);
+		return JSON.parse(decompress(chunk).toString('utf8'));
+	} finally {
+		await fh.close();
+	}
+}
+
+// What is wrong with a packed container's metadata, compared with the TileJSON pack handed to versatiles: every key
+// as written, the tile type and format versatiles fills in, and the one layer, described and present at every zoom
+// the container has. Empty when it is right.
+export function containerProblems(actual: Record<string, unknown>, expected: Record<string, unknown>): string[] {
+	const problems: string[] = [];
+	const show = (v: unknown) => (v === undefined ? 'missing' : JSON.stringify(v));
+	for (const [key, value] of Object.entries({
+		...expected,
+		tile_type: 'vector',
+		tile_format: 'application/vnd.mapbox-vector-tile',
+	})) {
+		if (!isDeepStrictEqual(actual[key], value)) problems.push(`${key} is ${show(actual[key])}, not ${show(value)}`);
+	}
+	const layers = (actual.vector_layers ?? []) as {
+		id?: string;
+		description?: string;
+		minzoom?: number;
+		maxzoom?: number;
+	}[];
+	if (layers.length !== 1 || layers[0].id !== LAYER) {
+		problems.push(`the layers are ${show(layers.map((l) => l.id))}, not ["${LAYER}"]`);
+	} else {
+		const [layer] = layers;
+		if (!layer.description) problems.push(`layer ${LAYER} has no description`);
+		if (layer.minzoom !== actual.minzoom || layer.maxzoom !== actual.maxzoom) {
+			problems.push(
+				`layer ${LAYER} spans z${layer.minzoom}–${layer.maxzoom}, the container z${actual.minzoom}–${actual.maxzoom}`,
+			);
+		}
+	}
+	return problems;
+}
+
+// convert the joined tileset into a brotli versatiles container, with `tilejson` as its whole metadata
+export async function writeContainer(tiles: string, tilejson: string, out: string): Promise<void> {
 	const source = await TileSource.fromVpl(
-		`from_container filename="${file.tiles}" | meta_update tilejson_file="${tilejson}"`,
+		`from_container filename="${tiles}" | meta_update tilejson_file="${tilejson}"`,
 	);
 	let bar: Progress | undefined;
 	let done = 0;
 	await source.convertTo(
-		file.container,
+		out,
 		{ compress: 'brotli' },
 		({ position, total }) => {
 			bar ??= progress(total, 'pack');
@@ -258,4 +308,24 @@ export async function pack(zooms: string[], provenance: Provenance, tmpdir: stri
 		},
 	);
 	bar?.done();
+}
+
+// join the per-zoom tilesets and pack them into a brotli versatiles container (the build's final step), with
+// data/tmp/container-meta.json (containerMeta) as its whole metadata. versatiles runs in this process, at the
+// version package-lock.json pins, so the build never depends on whichever `versatiles` is on the PATH.
+// The container is read back before it takes its final name: one whose metadata isn't what was written never
+// lies in data/ looking finished.
+export async function pack(zooms: string[], provenance: Provenance, tmpdir: string): Promise<void> {
+	if (!(await joinTilesets(zooms, file.tiles))) throw new Error('nothing to pack — no zoom produced any tiles');
+	await fs.rm(file.container, { force: true });
+	const tilejson = path.join(tmpdir, 'container-meta.json');
+	const expected = containerMeta(readJoined(file.tiles), provenance);
+	await fs.writeFile(tilejson, JSON.stringify(expected, null, '\t') + '\n');
+	await atomic(file.container, async (tmp) => {
+		await writeContainer(file.tiles, tilejson, tmp);
+		const problems = containerProblems(await readContainerMeta(tmp), expected);
+		if (problems.length > 0) {
+			throw new Error(`the packed container's metadata is wrong:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
+		}
+	});
 }
