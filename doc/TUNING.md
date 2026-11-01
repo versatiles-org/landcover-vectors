@@ -193,6 +193,22 @@ At z0, unlike z8, a finer raster gains too: at 1 px², 84.9 % at 1024 px, 86.9 %
 25 s. It also shrinks what the pyramid inflates: south of about −55°, land covers 0.49 % in the fine source, 2.2 % at
 1024 px and 0.24 % at 4096. Forest stays overdrawn at every setting (31 % in the source, 37–39 % at z0).
 
+Over the planet (variants `low-2048`, `low-4096`), agreement with the source's fine level over up to 40 tiles per zoom:
+
+| zoom | 1024 px | 2048 px | 4096 px | bytes 2048 | bytes 4096 |
+| ---- | ------- | ------- | ------- | ---------- | ---------- |
+| 0    | 84.9    | 86.9    | 87.7    | +11.0 %    | +11.7 %    |
+| 1    | 88.2    | 89.7    | 90.2    | +11.5 %    | +12.9 %    |
+| 2    | 90.8    | 91.4    | 91.5    | +12.3 %    | +13.5 %    |
+| 3    | 91.9    | 92.4    | 92.3    | +12.2 %    | +15.5 %    |
+| 4    | 92.2    | 92.5    | 92.4    | +12.7 %    | +16.5 %    |
+| 5    | 90.1    | 90.5    | 90.4    | +14.2 %    | +18.6 %    |
+| 6    | 90.2    | 90.6    | –       | +14.7 %    | –          |
+| 7    | 91.0    | 91.3    | –       | +15.2 %    | –          |
+
+Turning rises by about 1 degree per px at 2048 and 2 at 4096. z0–7 took 38 min at 2048 and z0–5 alone 76 min at 4096,
+on 30 cores. A finer raster pays at z0–2 and hardly from z3 on.
+
 ## Sweeps and `inspect`
 
 ```sh

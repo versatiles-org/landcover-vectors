@@ -69,6 +69,9 @@ export const GREEN = [
 	...['golf_course', 'playground', 'miniature_golf'],
 ];
 
+const lowZooms = (tilePx: number): Record<number, BlockParams> =>
+	Object.fromEntries([0, 1, 2, 3, 4, 5, 6, 7].map((z) => [z, { tilePx }]));
+
 export const VARIANTS: Record<string, Variant> = {
 	// merged the way it was published (version 3): residential OSM's from z10
 	published: {
@@ -114,6 +117,9 @@ export const VARIANTS: Record<string, Variant> = {
 	// z8 read at a finer level of the pyramid, instead of its majority of majorities
 	'z8-2048': { why: 'z8 from the z9 level of the pyramid, 2048 px per tile', zooms: { 8: { tilePx: 2048 } } },
 	'z8-4096': { why: 'z8 from the z10 level of the pyramid, 4096 px per tile', zooms: { 8: { tilePx: 4096 } } },
+	// the zooms below z8 read at a finer level of the pyramid
+	'low-2048': { why: 'z0–7 at 2048 px per tile', zooms: lowZooms(2048) },
+	'low-4096': { why: 'z0–7 at 4096 px per tile', zooms: lowZooms(4096) },
 };
 
 // the variant's burns: its own, or the pipeline's
