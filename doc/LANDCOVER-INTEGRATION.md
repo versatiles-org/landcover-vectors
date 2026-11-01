@@ -5,7 +5,7 @@ tiles. This document describes the data, how a style uses it, and what other rep
 
 Status on 2026-11-01: the code writes a single `landcover` layer, and the merged `osm-landcover` is retired. The
 container built from commit `ac26416` still has Shortbread's `land` and `water_polygons` layers, so version 4 needs a
-full rebuild before it is uploaded. No other repository has changed yet. `main` is not pushed.
+full rebuild before it is uploaded. No other repository has changed yet; the issues below track what they need.
 
 ## Decisions
 
@@ -95,7 +95,8 @@ Findings come from reading each repository's current state. Nothing below has be
 
 ### versatiles-style (required)
 
-`features.landcover` currently means "the tiles are a merge": it removes the fade-ins of the stock layers, and adds
+[versatiles-style#145](https://github.com/versatiles-org/versatiles-style/issues/145) proposes `urls.landcover` with
+`features.landcover: true` for the separate source, as a major release. `features.landcover` currently means "the tiles are a merge": it removes the fade-ins of the stock layers, and adds
 no source. The stacked style needs:
 
 - A way to name the land cover source in `osm()`. It should add the source, and insert the 9 layers at
@@ -140,7 +141,14 @@ kinds up to z10. With version 4 published, it would silently lose those kinds. T
 
 **Order matters.** Switching `osm` to plain tiles removes the land cover at z0–10 for every client whose style still
 expects the merge. So first serve `landcover-vectors`, then release and roll out the new style, and only then switch
-`osm`. Stacked over today's merged `osm`, the land cover would be drawn twice, with the merged copy on top.
+`osm`.
+
+The new style works over today's merged `osm` nearly unchanged. Its stock layers draw the merged copy of a kind on
+top of the land cover in the same colour, so it only shows where that copy, from the land cover of July 2026,
+differs from version 4. Painted like the experiment paints a map (`lib/measure.ts`), the top fill at z7–10 changes
+on 0–0.3 % of the pixels in 8 of the 10 test regions, 0.6 % in Atlanta at z10, and up to 1.3 % in Hudson Bay,
+mostly old wetland over new water. That count leaves out fills below half their opacity, and it was not looked at in
+a browser.
 
 ### download.versatiles.org (required)
 
@@ -174,7 +182,7 @@ versatiles-svg-renderer, versatiles-studio, playground and versatiles-org.github
 2. Remove the land cover merge from versatiles-planetiler (versatiles-docker#60).
 3. Rebuild version 4 with the `landcover` layer and the schema, then upload and publish it with the corrected
    attribution.
-4. Push `main` of this repository.
-5. Serve `landcover-vectors` on tiles.versatiles.org.
-6. Release versatiles-style with stacking, and update the documentation (versatiles-documentation#96).
-7. Roll out the new styles, switch `/tiles/osm/` to plain OSM, and delete `osm-landcover` from R2.
+4. Serve `landcover-vectors` on tiles.versatiles.org.
+5. Release versatiles-style with stacking (versatiles-style#145), and update the documentation
+   (versatiles-documentation#96).
+6. Roll out the new styles, switch `/tiles/osm/` to plain OSM, and delete `osm-landcover` from R2.
