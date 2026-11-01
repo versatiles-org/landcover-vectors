@@ -41,14 +41,13 @@ describe('filterKinds', () => {
 describe('styledChannels', () => {
 	test('is every emitting channel, and only those', () => {
 		const styled = styledChannels();
-		assert.equal(styled.length, channels.filter((c) => c.layer && c.kind).length);
-		assert.ok(styled.every((c) => c.color && c.kind && c.layer));
-		assert.ok(!styled.some((c) => c.layer === null));
+		assert.equal(styled.length, channels.filter((c) => c.kind).length);
+		assert.ok(styled.every((c) => c.color && c.kind && c.osmLayer));
 	});
 
-	test("takes each kind's colour from versatiles-style's colorful style, per layer", () => {
+	test("takes each kind's colour from versatiles-style's colorful style, for OSM's layer of the kind", () => {
 		const fills = versatilesFills();
-		for (const c of styledChannels()) assert.equal(c.color, fills.get(`${c.layer}:${c.kind}`), c.kind);
+		for (const c of styledChannels()) assert.equal(c.color, fills.get(`${c.osmLayer}:${c.kind}`), c.kind);
 		assert.match(fills.get('land:forest') ?? '', /^#[0-9A-F]{6}$/i);
 	});
 
@@ -60,12 +59,9 @@ describe('styledChannels', () => {
 describe('qgisVectorTileStyle', () => {
 	const xml = qgisVectorTileStyle(styledChannels());
 
-	test('emits one rule per kind, scoped to its layer', () => {
+	test('emits one rule per kind, scoped to the landcover layer', () => {
 		for (const c of styledChannels()) {
-			assert.ok(
-				xml.includes(`layer="${c.layer}" enabled="1" name="${c.kind}"`),
-				`no rule for ${c.kind} in ${c.layer}`,
-			);
+			assert.ok(xml.includes(`layer="landcover" enabled="1" name="${c.kind}"`), `no rule for ${c.kind}`);
 			assert.ok(xml.includes(qgisColor(c.color)), `colour of ${c.kind} missing`);
 		}
 		assert.equal(xml.match(/<style /g)?.length, styledChannels().length);

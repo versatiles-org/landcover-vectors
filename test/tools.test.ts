@@ -5,8 +5,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { TOOLS, requireTools, outsidePixi } from '../lib/tools.ts';
-import { versionAtLeast } from '../lib/handover.ts';
+import { TOOLS, requireTools, outsidePixi, versionAtLeast } from '../lib/tools.ts';
 import { gdalEnv } from '../lib/worldcover.ts';
 import { skipWithout } from './tools.ts';
 

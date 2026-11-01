@@ -69,7 +69,7 @@ export function className(code: number): string {
 
 // ESA codes drawn at zoom z — mirrors lib/block.ts: a channel above its cutoff folds into no-data
 export function activeCodes(z: number): Set<number> {
-	return new Set(channels.filter((c) => c.layer !== null && c.maxZoom >= z).flatMap((c) => c.esa));
+	return new Set(channels.filter((c) => c.kind !== null && c.maxZoom >= z).flatMap((c) => c.esa));
 }
 
 // the source with everything this zoom does not draw turned into a hole

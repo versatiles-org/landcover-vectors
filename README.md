@@ -1,28 +1,24 @@
 # VersaTiles Landcover Vectors
 
-Global land cover for zoom levels 0–10, as vector tiles that merge into an OSM-based
-[Shortbread](https://shortbread-tiles.org/) tileset. Built from [ESA WorldCover 2021](https://esa-worldcover.org/en/data-access),
+Global land cover for zoom levels 0–10, as vector tiles to draw under an OSM-based
+[Shortbread](https://shortbread-tiles.org/) map. Built from [ESA WorldCover 2021](https://esa-worldcover.org/en/data-access),
 with OpenStreetMap's land use burned in.
 
 OpenStreetMap's land cover is hand-mapped, so it is patchy, and Shortbread shows most of it only from z11. This
-tileset fills z0–10 with a complete classification from satellite imagery, written into Shortbread's own `land`
-and `water_polygons` layers and `kind` values, so a stock Shortbread style draws it without changes. Where OSM
-maps land use — a town, a park, allotments, a forest — that goes into the classification first, so z10 already
-shows what OSM shows from z11 (see [OSM land use](#osm-land-use)). From z11 on, OSM takes over.
+tileset is a complete classification from satellite imagery, in one layer, `landcover`, with Shortbread's `kind`
+values. A map draws it as a source of its own under OSM: OSM paints over it where it has data, and the land cover
+shows wherever OSM has none, at every zoom. Where OSM maps land use — a town, a park, allotments, a forest — that
+goes into the classification first, so the two agree where both exist (see [OSM land use](#osm-land-use)).
 
-**Download** from [download.versatiles.org](https://download.versatiles.org/):
-
-- [`landcover-vectors.versatiles`](https://download.versatiles.org/landcover-vectors.versatiles) (~4.7 GB) — this
-  tileset, to [merge with OSM](#merging-with-osm) yourself
-- [`osm-landcover.versatiles`](https://download.versatiles.org/osm-landcover.versatiles) (~69 GB) — OSM
-  Shortbread with it already merged in
+**Download** [`landcover-vectors.versatiles`](https://download.versatiles.org/landcover-vectors.versatiles)
+(~4.5 GB) from [download.versatiles.org](https://download.versatiles.org/).
 
 ![Versatiles Landcover Vectors Example](doc/example.png)
 
 ## Contents
 
 - [What's in the tiles](#whats-in-the-tiles)
-- [Merging with OSM](#merging-with-osm)
+- [Using it with OSM](#using-it-with-osm)
 - [Building](#building)
 - [How it works](#how-it-works)
 - [Development](#development)
@@ -30,29 +26,29 @@ shows what OSM shows from z11 (see [OSM land use](#osm-land-use)). From z11 on, 
 
 ## What's in the tiles
 
-Each ESA WorldCover class becomes an existing Shortbread `kind`, so the output validates and styles as plain
-Shortbread — no schema extension, no new style rules. The last column is what a merge with OSM uses of it; above
-that zoom the kind comes from OSM (see [the handover](#the-handover)):
+One layer, `landcover`, with one attribute, `kind`. Each ESA WorldCover class becomes the Shortbread `kind` a style
+already knows how to colour; the third column is the Shortbread layer in which OSM has that kind, and whose fill a
+style copies for it:
 
-| ESA WorldCover class     | → layer          | `kind`        | this container fills | used in a merge |
-| ------------------------ | ---------------- | ------------- | -------------------- | --------------- |
-| Tree cover               | `land`           | `forest`      | z0–10                | z0–10           |
-| Cropland                 | `land`           | `farmland`    | z0–10                | z0–10           |
-| Built-up                 | `land`           | `residential` | z0–10                | z0–10           |
-| Bare / sparse vegetation | `land`           | `bare_rock`   | z0–10                | z0–10           |
-| Moss & lichen            | `land`           | `heath`       | z0–10                | z0–10           |
-| Shrubland                | `land`           | `scrub`       | z0–10                | z0–10           |
-| Grassland                | `land`           | `grassland`   | z0–10                | z0–10           |
-| Herbaceous wetland       | `land`           | `marsh`       | z0–10                | z0–10           |
-| Mangroves                | `land`           | `swamp`       | z0–10                | z0–10           |
-| Snow and ice             | `water_polygons` | `glacier`     | z0–10                | z0–10           |
-| Permanent water bodies   | `water_polygons` | `water`       | z0–10                | z0–3            |
-| No data                  | —                | _(dropped)_   | —                    | —               |
+| ESA WorldCover class     | `kind`        | OSM's layer      | zooms |
+| ------------------------ | ------------- | ---------------- | ----- |
+| Tree cover               | `forest`      | `land`           | z0–10 |
+| Cropland                 | `farmland`    | `land`           | z0–10 |
+| Built-up                 | `residential` | `land`           | z0–10 |
+| Bare / sparse vegetation | `bare_rock`   | `land`           | z0–10 |
+| Moss & lichen            | `heath`       | `land`           | z0–10 |
+| Shrubland                | `scrub`       | `land`           | z0–10 |
+| Grassland                | `grassland`   | `land`           | z0–10 |
+| Herbaceous wetland       | `marsh`       | `land`           | z0–10 |
+| Mangroves                | `swamp`       | `land`           | z0–10 |
+| Snow and ice             | `glacier`     | `water_polygons` | z0–10 |
+| Permanent water bodies   | `water`       | `water_polygons` | z0–10 |
+| No data                  | _(dropped)_   | —                | —     |
 
-Only `kind` is stored. **The sea is a hole** for Shortbread's `ocean` layer to fill: every block masks out
-OSM's sea polygons, the ones Shortbread's `ocean` is built from, before it classifies ESA's pixels (see
-[ocean mask](#ocean-mask)). So the land cover ends at OSM's coastline, and ESA's own sea — which it classifies as
-permanent water inside its coastal 3° tiles — never becomes `water`. Lakes are not part of OSM's sea and stay.
+**The sea is a hole** for Shortbread's `ocean` layer to fill: every block masks out OSM's sea polygons, the ones
+Shortbread's `ocean` is built from, before it classifies ESA's pixels (see [ocean mask](#ocean-mask)). So the land
+cover ends at OSM's coastline, and ESA's own sea — which it classifies as permanent water inside its coastal 3°
+tiles — never becomes `water`. Lakes are not part of OSM's sea and stay.
 
 Some mappings are deliberately **lossy generalizations** — ESA can't resolve the OSM detail, and at these
 zooms it doesn't matter visually:
@@ -67,36 +63,45 @@ zooms it doesn't matter visually:
 
 `wetland` is split to keep fidelity: herbaceous wetland → `marsh`, mangroves → `swamp`.
 
-## Merging with OSM
+The container declares `tile_schema: other`: versatiles knows no schema for this layer yet.
 
-### The handover
+## Using it with OSM
 
-For most kinds there is **one handover, at z10 → z11**: up to z10 the land cover supplies them, from z11 OSM
-does. `water` goes to OSM earlier, and `residential` comes from both at z10 (see below); the mapping table above
-lists the zooms per kind.
+A style has two vector sources: OSM's Shortbread tiles, unchanged, and this container. It draws, bottom to top:
 
-OSM has its own copies of some kinds earlier — `forest` from z7, `farmland` from z10, `glacier` from z4 — but they are sparse where the satellite data is complete: in central Spitsbergen, OSM maps
-9 % of a tile as glacier where ESA sees 96 % ice. So a merge **drops OSM's features of these kinds up to z10**.
-Each zoom then has exactly one source per kind. OSM's other kinds (`river`, `reservoir`, `park`, …) are kept at
-every zoom.
+1. the background
+2. the land cover's fills, in versatiles-style's `osm.slots.belowFills`
+3. OSM's `ocean`
+4. OSM's layers, as they are
 
-**`water` and `residential` are the exceptions.** Where OSM has them, they are more precise than ESA's, so the
-merge keeps **OSM's** copy and drops the land cover's instead:
+Each land cover fill is a copy of the style's fill for the same kind in OSM's tiles, with its colour, reading the
+`landcover` layer, without its `minzoom`, and with this opacity:
 
-- **`water` from z4**, where Shortbread starts it. OSM's lakes are precise where ESA's are a classified raster.
-  The land cover's `water` is only used at z0–3, where Shortbread has no lakes at all.
-- **`residential` from z11**, like the other kinds, but OSM's own is kept at z10 too, where Shortbread starts
-  every urban kind: OSM separates residential, industrial, commercial, retail and railway land. The land cover's
-  `residential` at z10 holds OSM's urban land use burned in, so it covers what OSM's does and draws the same;
-  only where OSM maps no town does it show ESA's built-up area. (Before version 4, the land cover had no OSM
-  land use, and its `residential` was used only up to z9: at z10 ESA's built-up class, drawn on top, would have
-  hidden OSM's urban detail.)
+```json
+["interpolate", ["linear"], ["zoom"], 12, 1, 14, 0.25]
+```
 
-This container still carries both kinds to z10, so it also works on its own.
+The tiles end at z10, and MapLibre overzooms them above that. So the land cover is opaque up to z12, where its
+outlines grow coarse, fades to 25 % by z14, and stays at 25 % above that: land that OSM does not map keeps a hint of
+colour. OSM's own forests, lakes and towns draw on top wherever OSM has them, so nothing needs filtering. For
+versatiles-style's colorful style, the copy of `land-forest` reads:
 
-**Expect the land cover to thin out at z11**, in most of the world by far. At z10 every land pixel ESA
-classifies is filled; from z11 only what OSM maps is. Measured on one inland z8 tile per region (OSM container of
-October 2026), the share of land that OSM's `land` and `water_polygons` still cover at z11:
+```json
+{
+	"id": "landcover-land-forest",
+	"type": "fill",
+	"source": "landcover",
+	"source-layer": "landcover",
+	"filter": ["in", ["get", "kind"], ["literal", ["forest"]]],
+	"paint": { "fill-color": "rgb(203,229,184)", "fill-opacity": ["interpolate", ["linear"], ["zoom"], 12, 1, 14, 0.25] }
+}
+```
+
+`stackedStyle` in [`lib/style-versatiles.ts`](lib/style-versatiles.ts) builds that style from versatiles-style;
+`npm run dev` shows it.
+
+**Why a source of its own.** OSM maps only part of the land. Measured on one inland z8 tile per region (OSM
+container of October 2026), the share of land that OSM's `land` and `water_polygons` cover at z11:
 
 | region                  | covered at z11 |     | region                 | covered at z11 |
 | ----------------------- | -------------- | --- | ---------------------- | -------------- |
@@ -107,61 +112,14 @@ October 2026), the share of land that OSM's `land` and `water_polygons` still co
 | Brazil, Mato Grosso     | 40.4 %         |     | Niger, Sahel           | 2.7 %          |
 | Spain, Castilla         | 35.2 %         |     | Australia, outback     | 0.1 %          |
 
-So where OSM's land use is mapped wall to wall (Central Europe, the large rainforests) the handover is barely
-visible; elsewhere most of the coloured land turns into the style's background — farmland included, which
-OSM rarely maps as land use outside Europe. That is the cost of handing over to hand-mapped data: carrying the
-land cover beyond z10 would need a raster at twice the resolution per zoom (~4× disk and CPU) and, inside
-Shortbread's `land` layer, would cover OSM's own kinds wherever both exist.
+Up to version 3 the land cover was merged into OSM's `land` and `water_polygons`, and OSM took over at z11: outside
+Central Europe and the large rainforests, most of the coloured land turned into the style's background there. Under
+OSM, it stays.
 
-**At z10, both sources fill `land`.** OSM's urban kinds (`industrial`, `commercial`, `retail`, `railway`, …) start
-at z10 and are kept, while the land cover still supplies its natural kinds. The two agree where OSM maps land
-use, because the land cover has it burned in: where ESA sees trees inside an OSM residential area, the land
-cover is built-up there too, unless OSM itself maps a wood or a park. Where OSM maps nothing, ESA's
+**At z10, the land cover's towns are OSM's.** OSM's urban kinds (`industrial`, `commercial`, `retail`, `railway`, …)
+start at z10. The land cover has them burned in as `residential`: where ESA sees trees inside an OSM residential
+area, the land cover is built-up there too, unless OSM itself maps a wood or a park. Where OSM maps nothing, ESA's
 classification shows.
-
-### Merge with the VersaTiles CLI
-
-> [!WARNING]
-> **Don't merge without the filters.** This container fills every kind wall to wall up to z10, and OSM has its
-> own copies of many of them. A plain `from_merged_vector [ osm, landcover ]` keeps both, so up to z10 the
-> same `land` and `water_polygons` kinds come from two sources at once: OSM's sparse forest and glaciers on top
-> of ESA's, ESA's classified lakes on top of OSM's precise ones from z4, ESA's built-up area covering OSM's urban
-> detail at z10.
-
-Filter both sources on the way into `from_merged_vector`. The filter's CEL strings use single quotes, which a
-shell argument in single quotes cannot hold, so write the pipeline to a file:
-
-```sh
-cat > merge.vpl <<'EOF'
-from_merged_vector [
-  from_container filename="osm.versatiles"
-    | vector_filter_features layer=["land"] expr="!(zoom <= 10 && kind in ['forest', 'farmland', 'bare_rock', 'heath', 'scrub', 'grassland', 'marsh', 'swamp'])"
-    | vector_filter_features layer=["water_polygons"] expr="!(zoom <= 10 && kind in ['glacier'])",
-  from_container filename="landcover-vectors.versatiles"
-    | vector_filter_features layer=["land"] expr="!(zoom >= 11 && kind in ['residential'])"
-    | vector_filter_features layer=["water_polygons"] expr="!(zoom >= 4 && kind in ['water'])"
-]
-EOF
-versatiles convert -c brotli merge.vpl combined.versatiles
-```
-
-> [!WARNING]
-> **Needs versatiles ≥ 4.15.0.** `vector_filter_features` gained the tile's `zoom` in 4.15.0. Older versions do
-> not report an error: 4.14.0 silently drops every feature of the filtered layers, at every zoom, so the merged
-> tileset ends up without `land` and `water_polygons`.
-
-For a local build, `npm run merge` does the same: it downloads the latest
-[OSM Shortbread container](https://download.versatiles.org/osm.versatiles) to `data/osm.versatiles` (~66 GB,
-once and resumable), merges it with `data/landcover-vectors.versatiles` into `data/combined.versatiles`, and refuses to
-run with versatiles below 4.15.0. Its filters are generated from `channels` in `config.ts` (`lib/handover.ts`),
-so they follow any change of a cutoff.
-
-`npm run verify-merge` checks a merge on real tiles, without downloading either container: it opens both
-published containers raw, each filtered, and merged, reads the tile under 13 sample points at z0–14 from each,
-and counts features per layer and `kind`. It fails when a kind still comes from both sources at a zoom, when a
-filter drops features of the kind its source should supply, or when the merged tile is not exactly the two
-filtered ones; it prints which source each kind comes from per zoom. `--landcover data/landcover-vectors.versatiles`
-checks a local build before upload, `--unfiltered` the unfiltered merge, which has to fail.
 
 ## Building
 
@@ -174,7 +132,7 @@ pixi install       # GDAL, tippecanoe, curl, osmium and Node.js from conda-forge
 pixi run doctor    # checks every tool the pipeline runs, and says how to fix what is missing
 ```
 
-`pixi run build` (or `download`, `merge`, `preview`, `stats`, …) then runs the npm script in that environment;
+`pixi run build` (or `download`, `preview`, `stats`, …) then runs the npm script in that environment;
 CI tests against the same lockfile. Only versatiles is not on conda-forge yet:
 `brew install versatiles-org/versatiles/versatiles`, or see its
 [install instructions](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install).
@@ -186,8 +144,8 @@ it starts:
 - [`GDAL`](https://gdal.org/) ≥ 3.13 with `gdalbuildvrt`, `gdaladdo`, `gdalwarp`, `gdalinfo`, `gdal_translate`, `gdal_calc.py`, `gdal_rasterize`, `ogr2ogr`, `ogrinfo` and the `gdal raster` / `gdal vector` subcommands `sieve`, `polygonize` and `simplify-coverage` on `PATH`
 - Python 3 with `numpy` (used by `gdal_calc.py` for the class index; both ship with the GDAL install)
 - [`tippecanoe`](https://github.com/felt/tippecanoe) (e.g. `brew install tippecanoe`) — `tippecanoe-decode`, which ships with it, is used by `npm run inspect` and `npm run stats -- --attribute`
-- [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install) ≥ 5.0.0, the first to know the `shortbread@1.1` schema the build and the merge write
-- `curl`, for the ocean mask and the OSM base
+- [`versatiles`](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install) ≥ 5.0.0, which packs the container
+- `curl`, for the ocean mask and OSM's land use
 - [`osmium`](https://osmcode.org/osmium-tool/) (e.g. `brew install osmium-tool`), which cuts OSM's land use out of the planet for `npm run download` and `npm run experiment`
 - for `npm run preview`: a browser, and internet access for MapLibre GL from a CDN, the OSM container and versatiles-style's fonts and icons (the land cover tiles themselves are served locally)
 
@@ -196,7 +154,6 @@ it starts:
 ```sh
 npm run download   # once: the EPSG:3857 source raster from ESA's remote tiles, the ocean mask, OSM's land use
 npm run build      # everything else → data/landcover-vectors.versatiles
-npm run merge      # optional: merge with OSM → data/combined.versatiles
 ```
 
 > [!IMPORTANT]
@@ -227,16 +184,15 @@ names what changed and refuses to mix old and new. `npm run clean` clears them (
 
 Each step reads what an earlier one wrote; all files are under `data/`:
 
-| command                    | step                                                                     | reads                                            | writes                                                   |
-| -------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------ | -------------------------------------------------------- |
-| `npm run download`         | [reproject ESA WorldCover](#source-raster)                               | ESA's 3° tiles on S3                             | `0_download/worldcover-3857.tif`, with overviews         |
-|                            | [rasterize the sea](#ocean-mask)                                         | OSM's water polygons                             | `0_download/seashare-3857.tif`, with overviews           |
-|                            | [cut the planet to its land use, import it](#osm-land-use)               | OSM's planet                                     | `0_download/osm-landuse-<date>.osm.pbf`, `….vrt`         |
-|                            | [burn it into the source](#osm-land-use)                                 | the source raster, the land use                  | `0_download/worldcover-osm-3857.tif`, with overviews     |
-| `npm run build`            | [process and tile each block](#per-block-processing), for each zoom 0–10 | the burned source, the sea share                 | `1_results/z{z}_{x}_{y}.mbtiles`, one per block          |
-|                            | join each zoom                                                           | its blocks' tilesets                             | `2_tiles/z{z}.mbtiles`                                   |
-|                            | [pack](#pack)                                                            | `2_tiles/z{z}.mbtiles`                           | `landcover.mbtiles`, then `landcover-vectors.versatiles` |
-| `npm run merge` (optional) | [feature-merge, filtered](#merging-with-osm)                             | `landcover-vectors.versatiles`, `osm.versatiles` | `combined.versatiles`                                    |
+| command            | step                                                                     | reads                            | writes                                                   |
+| ------------------ | ------------------------------------------------------------------------ | -------------------------------- | -------------------------------------------------------- |
+| `npm run download` | [reproject ESA WorldCover](#source-raster)                               | ESA's 3° tiles on S3             | `0_download/worldcover-3857.tif`, with overviews         |
+|                    | [rasterize the sea](#ocean-mask)                                         | OSM's water polygons             | `0_download/seashare-3857.tif`, with overviews           |
+|                    | [cut the planet to its land use, import it](#osm-land-use)               | OSM's planet                     | `0_download/osm-landuse-<date>.osm.pbf`, `….vrt`         |
+|                    | [burn it into the source](#osm-land-use)                                 | the source raster, the land use  | `0_download/worldcover-osm-3857.tif`, with overviews     |
+| `npm run build`    | [process and tile each block](#per-block-processing), for each zoom 0–10 | the burned source, the sea share | `1_results/z{z}_{x}_{y}.mbtiles`, one per block          |
+|                    | join each zoom                                                           | its blocks' tilesets             | `2_tiles/z{z}.mbtiles`                                   |
+|                    | [pack](#pack)                                                            | `2_tiles/z{z}.mbtiles`           | `landcover.mbtiles`, then `landcover-vectors.versatiles` |
 
 Before the blocks, `build` reads which 3° cells ESA has tiles for (the [coverage index](#coverage-index)) and
 skips every block that touches none of them.
@@ -288,7 +244,7 @@ no-data. The result:
   single pixels (0.1–0.2 % of a coastal block's pixels). So it neither overlaps OSM's ocean nor leaves a gap.
 - ESA's coastal sea is gone at every zoom, also from `water` at z0–3 and from the container on its own.
 - Lakes stay: they are not in OSM's sea. Neither is ESA sea inside OSM's land (a harbour, a recently
-  reclaimed coast), which stays as `water`; a merge drops that from z4 along with the rest of ESA's water.
+  reclaimed coast), which stays as `water`; from z4, OSM's own water draws over it wherever OSM maps some.
 - ESA classes seaward of OSM's coastline are dropped, e.g. salt marsh on the outer tidal flats.
 
 Per block it costs next to nothing: the class index reads the share window alongside, about 0.03 s. Burning
@@ -350,22 +306,22 @@ it never skips a block that overlaps land.
 
 ### Per-block processing
 
-`lib/block.ts` turns one block at one zoom into its `land`/`water_polygons` tiles. It reads the block's window
+`lib/block.ts` turns one block at one zoom into its `landcover` tiles. It reads the block's window
 plus a margin from the source and the matching window of the sea share (see [ocean mask](#ocean-mask)), both
 straight from the pyramid level for its zoom (so a low-zoom block reads ≈100× less): a block's grid lines up with
 a level, so a small VRT points at the window's rectangle in it, with no warp and no resampling, then:
 
-| step          | tool                            | what the block is afterwards                                                 |
-| ------------- | ------------------------------- | ---------------------------------------------------------------------------- |
-| read          | VRTs                            | the window plus margin, and its sea share — rasters                          |
-| fast paths    | `gdalinfo -hist`                | all sea: an empty tileset, done; one kind and no sea: one rectangle, go to 7 |
-| 1 classify    | `gdal_calc.py`                  | a raster of class indices, with sea and inactive classes as no-data          |
-| 2 sieve       | `gdal raster sieve`, two passes | the same raster without patches below the sieve size                         |
-| 3 cut         | VRT                             | the same raster, its codes shifted per tile so no patch crosses a tile edge  |
-| 4 polygonize  | `gdal raster polygonize`        | a gap-free polygon coverage, no-data included — vectors from here on         |
-| 5 simplify    | `gdal vector simplify-coverage` | the same coverage, its shared edges simplified to ≈ 1 px                     |
-| 6 tag & split | `ogr2ogr`                       | `land` and `water_polygons` with their `kind`, no-data dropped               |
-| 7 tile        | `tippecanoe`                    | `1_results/z{z}_{x}_{y}.mbtiles`, the block's own tiles                      |
+| step         | tool                            | what the block is afterwards                                                 |
+| ------------ | ------------------------------- | ---------------------------------------------------------------------------- |
+| read         | VRTs                            | the window plus margin, and its sea share — rasters                          |
+| fast paths   | `gdalinfo -hist`                | all sea: an empty tileset, done; one kind and no sea: one rectangle, go to 7 |
+| 1 classify   | `gdal_calc.py`                  | a raster of class indices, with sea and inactive classes as no-data          |
+| 2 sieve      | `gdal raster sieve`, two passes | the same raster without patches below the sieve size                         |
+| 3 cut        | VRT                             | the same raster, its codes shifted per tile so no patch crosses a tile edge  |
+| 4 polygonize | `gdal raster polygonize`        | a gap-free polygon coverage, no-data included — vectors from here on         |
+| 5 simplify   | `gdal vector simplify-coverage` | the same coverage, its shared edges simplified to ≈ 1 px                     |
+| 6 tag        | `ogr2ogr`                       | `landcover` with its `kind`, no-data dropped                                 |
+| 7 tile       | `tippecanoe`                    | `1_results/z{z}_{x}_{y}.mbtiles`, the block's own tiles                      |
 
 1. **Classify** — one `gdal_calc.py` call maps each pixel's ESA code to its class index. ESA's no-data,
    every inactive class and OSM's sea fold into the no-data class. Each pixel keeps its own class: there is no smoothing
@@ -387,8 +343,7 @@ a level, so a small VRT points at the window's rectangle in it, with no warp and
    `(2·MERC)/(256·DETAIL_PX·2^z)` ≈ 1 px at a 256·`DETAIL_PX` px tile (`DETAIL_PX` = 1.5 today).
    ⚠️ It simplifies only edges _shared_ between polygons, which is why no-data must still be there: without it,
    every coastline would be an outer edge and keep its pixel staircase.
-6. **Tag & split** — drop no-data, tag each polygon's Shortbread `kind` (margin included) and split into `land`
-   and `water_polygons`. The polygons stay in EPSG:3857, which tippecanoe reads directly: reprojected to
+6. **Tag** — drop no-data and tag each polygon with its `kind` (margin included). The polygons stay in EPSG:3857, which tippecanoe reads directly: reprojected to
    EPSG:4326, straight edges bend, and a hole touching its shell at a point can end up crossing it.
 7. **Tile** — one `tippecanoe -Z z -z z` over the block → `data/1_results/z{z}_{x}_{y}.mbtiles`, keeping only
    the block's own tiles (tippecanoe also writes the ones the margin reaches into). `--coalesce-smallest-as-needed`
@@ -422,7 +377,7 @@ requires the histogram to count every pixel of the window as well.
 tile, so this is a plain copy, nothing is decoded), and `versatiles convert -c brotli` packs
 it into `data/landcover-vectors.versatiles`, the name it is published under. Its whole metadata is one TileJSON,
 `data/tmp/container-meta.json`, which `meta_update tilejson_file=…` puts in place of the mbtiles' own:
-`tile_schema: shortbread@1.1`, so consumers can tell that a Shortbread style fits; name, description, attribution,
+`tile_schema: other` (see [what's in the tiles](#whats-in-the-tiles)); name, description, attribution,
 revision (`version`), center and the layer descriptions from `meta` in `config.ts`; bounds, zooms and layers of
 the joined tileset; and, like the `planetiler:*` keys of `osm.versatiles`, the build it came from:
 `landcover:fingerprint` (the config), `landcover:githash` (the commit, `-dirty` with uncommitted changes) and
@@ -431,19 +386,18 @@ the joined tileset; and, like the `planetiler:*` keys of `osm.versatiles`, the b
 
 ## Development
 
-| command                | what it does                                                                          |
-| ---------------------- | ------------------------------------------------------------------------------------- |
-| `npm run dev`          | look at OSM, the land cover and the merge in versatiles-style, switching between them |
-| `npm run preview`      | build one area, serve it next to real OSM data and open a viewer                      |
-| `npm run stats`        | tile size distribution, worst tiles, and a baseline to diff builds against            |
-| `npm run timings`      | where a download or build spent its time, per step and per command                    |
-| `npm run sweep`        | build an area once per parameter value and compare size and quality                   |
-| `npm run inspect`      | compare one tile pixel by pixel with what it should show, as numbers and a PNG        |
-| `npm run verify-merge` | check the filtered merge on real tiles: every kind from one source per zoom           |
-| `npm run experiment`   | build variants of the pipeline over test regions and measure the handover             |
-| `npm run style`        | write a QGIS vector-tiles style (`landcover.qml`) in versatiles-style's colours       |
-| `npm run clean`        | delete the build caches (keeps the download)                                          |
-| `npm run check`        | typecheck, formatting and tests                                                       |
+| command              | what it does                                                                             |
+| -------------------- | ---------------------------------------------------------------------------------------- |
+| `npm run dev`        | look at OSM, the land cover and both stacked in versatiles-style, switching between them |
+| `npm run preview`    | build one area, serve it next to real OSM data and open a viewer                         |
+| `npm run stats`      | tile size distribution, worst tiles, and a baseline to diff builds against               |
+| `npm run timings`    | where a download or build spent its time, per step and per command                       |
+| `npm run sweep`      | build an area once per parameter value and compare size and quality                      |
+| `npm run inspect`    | compare one tile pixel by pixel with what it should show, as numbers and a PNG           |
+| `npm run experiment` | build variants of the pipeline over test regions and measure the handover                |
+| `npm run style`      | write a QGIS vector-tiles style (`landcover.qml`) in versatiles-style's colours          |
+| `npm run clean`      | delete the build caches (keeps the download)                                             |
+| `npm run check`      | typecheck, formatting and tests                                                          |
 
 ### Timings
 
@@ -463,24 +417,24 @@ npm run dev -- --landcover <path|url>      # any other, e.g. an experiment's bui
 npm run dev -- --ip 0.0.0.0                # on a server: reachable from other machines (default: this one only)
 ```
 
-Serves OSM's Shortbread container, the landcover container and their merge — filtered exactly like
-`npm run merge` — from one in-process server (`@versatiles/versatiles-rs`), without downloading anything. OSM
-always comes from `download.versatiles.org`. The map (`dev/map/`) switches between **osm**, **landcover** and
-**osm+landcover** (keys 1, 2, 3) at the same position, each drawn with versatiles-style's colorful style: osm
-without its `landcover` feature, as OSM looks today; the other two with it. The header shows the zoom and which
-side of the z10 → z11 handover it is on.
+Serves OSM's Shortbread container and the landcover container from one in-process server
+(`@versatiles/versatiles-rs`), without downloading anything. OSM always comes from `download.versatiles.org`. The map
+(`dev/map/`) switches between **osm**, **landcover** and **osm+landcover** (keys 1, 2, 3) at the same position, each
+drawn with versatiles-style's colorful style: osm as OSM looks today, the land cover alone, and the land cover under
+OSM (see [using it with OSM](#using-it-with-osm)). The header shows the zoom and whether the land cover is overzoomed
+or fading there.
 
 ### Experiments
 
 ```sh
 npm run experiment                      # build and measure every variant (lib/variants.ts)
-npm run experiment -- burn-z11 baseline # just these
+npm run experiment -- burn baseline     # just these
 npm run experiment -- --report          # the tables of everything measured so far
 npm run experiment -- --render a b      # the regions as these variants draw them, side by side, in results/render
 npm run experiment -- --planet 8-9 a    # build these zooms of a variant over the whole planet, and compare its bytes
 ```
 
-Compares variants of the pipeline — OSM land use burned into ESA's classes, other handover zooms — on ten test
+Compares variants of the pipeline — OSM land use burned into ESA's classes, other outlines — on ten test
 regions (`lib/regions.ts`), each picked for one way the land cover and OSM disagree. Each region gets a small
 source of its own on the build's pixel grid (`lib/regionsource.ts`): ESA from the bucket, OSM's sea from the
 download's water polygons (fetched if missing), and OSM's land use imported from the planet. That needs one
@@ -488,12 +442,14 @@ download first, `npm run download -- --landuse`: the newest planet (~95 GB, an h
 `osmium tags-filter` to the areas Shortbread's `land` layer is built from (~16 GB,
 `data/0_download/osm-landuse-<date>.osm.pbf`); the planet itself is removed after. The experiment cuts its
 regions out of that and imports each like the download imports the world (`lib/osmland.ts`), cemeteries and polygons under a pixel at z11 included, which the tiles lack. A variant
-builds z8–10 with the build's own pipeline, and `lib/measure.ts` paints the merge at z8–13 the way versatiles-style draws it and compares the zooms
-pixel by pixel: how often z10 shows what z11 shows, holes, towns, forest, tile size — per region, and per
-Shortbread `land` and `water_polygons` kind, located with OSM's z14 tiles. The tables go to
+builds z8–10 with the build's own pipeline, and `lib/measure.ts` paints the map the way versatiles-style draws it — the land cover
+under OSM at z8–10, OSM alone at z11–13 — and compares the zooms pixel by pixel: how often z10 shows what OSM shows
+at z11, holes, towns, forest, tile size — per region, and per Shortbread `land` and `water_polygons` kind, located
+with OSM's z14 tiles. The tables go to
 `data/experiment/results/report.md`. `baseline` is the pipeline as configured, with OSM's land use burned in;
-`esa` is the pipeline before the burn, and matches the published version-3 container to within half a point at
-z10 (1–2 points at z8), which is the noise to read differences against.
+`esa` is the pipeline before the burn, which matched the published version-3 container to within half a point at
+z10 (1–2 points at z8), the noise to read differences against. `published` reads the `landcover` layer, so it
+measures nothing until a container with that layer is published.
 
 The report's summary gives each variant's size in gzipped bytes, weighted by each zoom's share of the planet; the
 per-region tile tables are uncompressed, as `getTile` gunzips, and overstate what a change saves. The regions read about 3 points
@@ -513,18 +469,16 @@ through **the same** `lib/pipeline.ts` as the build and serves the result with `
 set builds into its own `data/preview/<config fingerprint>/`, so switching back and forth reuses the caches.
 
 The viewer (`dev/viewer/`, MapLibre GL) mounts the **real OSM Shortbread container** from
-`download.versatiles.org` alongside, drawn the way the merge keeps it, so the handover is visible against real
-data. OSM's `ocean` sits under the land cover, so no-data holes show up as ocean. The viewer also has a
+`download.versatiles.org` alongside, with OSM's fills of the same kinds on top, so the land cover can be checked
+against real data. OSM's `ocean` sits under the land cover, so no-data holes show up as ocean. The viewer also has a
 block-grid overlay, a legend with per-kind toggles, click-to-inspect, and the config fingerprint in the header,
 so a screenshot documents itself. The position is in the URL hash (`#z/lat/lon`), which is what
 `npm run stats -- --worst` prints.
 
 It has two styles. **debug** colours each land cover kind distinctly, so you can tell them apart and toggle
-them. **versatiles-style** is the real map: versatiles-style's colorful style (`@versatiles/style`, with its
-`landcover` feature on) over the actual merge, which the preview serves filtered exactly like `npm run merge`.
-It shows versatiles-style's draw order, OSM's other kinds, roads and labels — what users will see. It needs
-versatiles ≥ 4.15.0 for the merge filter; with an older version, or `--no-osm`, only the debug style is
-offered. `?style=versatiles` in the URL opens it directly.
+them. **versatiles-style** is the real map: versatiles-style's colorful style (`@versatiles/style`) with the
+land cover under OSM (see [using it with OSM](#using-it-with-osm)). It shows versatiles-style's draw order, OSM's
+other kinds, roads and labels — what users will see. With `--no-osm`, only the debug style is offered. `?style=versatiles` in the URL opens it directly.
 
 ### Tuning
 

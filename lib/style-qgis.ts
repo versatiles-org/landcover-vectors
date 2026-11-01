@@ -4,14 +4,14 @@
 
 import { osm, Color } from '@versatiles/style';
 
-import { channels, type Channel } from '../config.ts';
+import { channels, LAYER, type Channel } from '../config.ts';
 
-// versatiles-style's colorful fills per Shortbread layer and kind, as it draws them over a merge with this
-// container (its `landcover` feature), keyed "layer:kind" → "#RRGGBB" ("#RRGGBBAA" where translucent). Read
-// from the installed package, so the QGIS style follows a versatiles-style update without a copy to maintain.
+// versatiles-style's colorful fills per Shortbread layer and kind, keyed "layer:kind" → "#RRGGBB" ("#RRGGBBAA"
+// where translucent). Read from the installed package, so the QGIS style follows a versatiles-style update without
+// a copy to maintain.
 export function versatilesFills(): Map<string, string> {
 	const fills = new Map<string, string>();
-	for (const layer of osm({ features: { landcover: true } }).layers) {
+	for (const layer of osm().layers) {
 		if (layer.type !== 'fill' || !layer['source-layer']) continue;
 		const color = layer.paint?.['fill-color'];
 		if (typeof color !== 'string') continue; // a zoom- or data-driven colour has no single value
@@ -73,20 +73,20 @@ function mapFillSymbol(color: string): string {
           </symbol>`;
 }
 
-// channels that end up in the output (no-data is dropped), each with versatiles-style's fill for its kind. A
-// kind versatiles-style does not fill is an error, not an unstyled layer nobody notices.
-export type Styled = Channel & { layer: 'land' | 'water_polygons'; kind: string; color: string };
+// channels that end up in the output (no-data is dropped), each with versatiles-style's fill for its kind in OSM's
+// tiles. A kind versatiles-style does not fill is an error, not an unstyled layer nobody notices.
+export type Styled = Channel & { osmLayer: 'land' | 'water_polygons'; kind: string; color: string };
 export function styledChannels(list: Channel[] = channels, fills = versatilesFills()): Styled[] {
 	return list.flatMap((c) => {
-		if (!c.layer || !c.kind) return [];
-		const color = fills.get(`${c.layer}:${c.kind}`);
-		if (!color) throw new Error(`versatiles-style has no fill for kind "${c.kind}" in layer "${c.layer}"`);
-		return [{ ...c, layer: c.layer, kind: c.kind, color }];
+		if (!c.osmLayer || !c.kind) return [];
+		const color = fills.get(`${c.osmLayer}:${c.kind}`);
+		if (!color) throw new Error(`versatiles-style has no fill for kind "${c.kind}" in layer "${c.osmLayer}"`);
+		return [{ ...c, osmLayer: c.osmLayer, kind: c.kind, color }];
 	});
 }
 
 // vector-tiles renderer (native mbtiles/versatiles "Vector Tiles" layer): one fill style per
-// kind, scoped to its sub-layer and filtered on `kind`. Schema matches what QGIS 3.40 writes.
+// kind, scoped to the `landcover` layer and filtered on `kind`. Schema matches what QGIS 3.40 writes.
 export function qgisVectorTileStyle(styled: Styled[]): string {
 	return `<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
 <qgis minScale="1e+08" hasScaleBasedVisibilityFlag="0" styleCategories="AllStyleCategories" maxScale="0" version="3.40.3-Bratislava" autoRefreshTime="0" autoRefreshMode="Disabled">
@@ -105,7 +105,7 @@ ${styled
 	.map(
 		(
 			c,
-		) => `      <style geometry="2" min-zoom="-1" max-zoom="-1" layer="${c.layer}" enabled="1" name="${c.kind}" expression="&quot;kind&quot; = '${c.kind}'">
+		) => `      <style geometry="2" min-zoom="-1" max-zoom="-1" layer="${LAYER}" enabled="1" name="${c.kind}" expression="&quot;kind&quot; = '${c.kind}'">
         <symbols>
 ${mapFillSymbol(qgisColor(c.color))}
         </symbols>

@@ -2,7 +2,7 @@
 // handover, and compare.
 //
 //   npm run experiment                      # every variant (lib/variants.ts)
-//   npm run experiment -- burn burn-z11     # just these
+//   npm run experiment -- burn burn-keep    # just these
 //   npm run experiment -- --report          # the tables of everything measured so far
 //   npm run experiment -- --list            # the variants and the regions
 //   npm run experiment -- --render a b      # the regions' z10, z9 and z8 as these variants draw them, side by side
@@ -32,9 +32,8 @@ import { progress } from '../lib/progress.ts';
 import { cacheValues, fingerprint } from '../lib/fingerprint.ts';
 import { downloadOcean, seaShareValues } from '../lib/ocean.ts';
 import { findLanduse } from '../lib/osmland.ts';
-import { mergePipeline } from '../lib/handover.ts';
 import { REGIONS, extentLonLat } from '../lib/regions.ts';
-import { VARIANTS, channelsFor, burnsOf, paramsFor, paramValues, type Variant } from '../lib/variants.ts';
+import { VARIANTS, burnsOf, paramsFor, paramValues, type Variant } from '../lib/variants.ts';
 import {
 	measureRegion,
 	renderWindow,
@@ -143,7 +142,6 @@ async function runVariant(name: string, v: Variant): Promise<Result> {
 
 	const osm = await TileSource.fromPath(OSM_URL);
 	const lc = await TileSource.fromPath(landcover);
-	const merged = await TileSource.fromVpl(mergePipeline(OSM_URL, landcover, channelsFor(v)));
 	const regions: Record<string, RegionMetrics> = {};
 	for (const [r, region] of Object.entries(REGIONS)) {
 		const cache = path.join(root, 'regions', r, 'osm-reference.bin.gz');
@@ -156,7 +154,7 @@ async function runVariant(name: string, v: Variant): Promise<Result> {
 					scratch: path.join(root, 'tmp', 'measure'),
 				}
 			: undefined;
-		regions[r] = await measureRegion(region.window, { osm, merged, landcover: lc }, cache, truth);
+		regions[r] = await measureRegion(region.window, { osm, landcover: lc }, cache, truth);
 		const m = regions[r];
 		console.error(
 			'  %s handover %s %%, holes %s %%, towns z10 %s %%, sharp turns z10 %s %%, agreement z10 %s %%',

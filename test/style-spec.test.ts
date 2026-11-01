@@ -5,9 +5,9 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { maplibreStyle, layerId } from '../lib/style-spec.ts';
-import { channels, MAXLEVEL } from '../config.ts';
+import { channels, LAYER, MAXLEVEL } from '../config.ts';
 
-const kinded = channels.filter((c) => c.layer && c.kind && c.color);
+const kinded = channels.filter((c) => c.kind && c.color);
 const local = maplibreStyle({ tiles: '/tiles/landcover/tiles.json' });
 const withOsm = maplibreStyle({ tiles: '/t.json', osm: '/osm.json', fingerprint: 'abc12345' });
 const layers = (style: Record<string, unknown>) => style.layers as { id: string; [k: string]: unknown }[];
@@ -29,11 +29,12 @@ describe('maplibreStyle', () => {
 		);
 	});
 
-	test('each fill is scoped to its Shortbread layer and filtered on its kind', () => {
+	test("each fill is scoped to the landcover layer, OSM's to its Shortbread layer, and filtered on its kind", () => {
 		for (const c of kinded) {
 			const layer = layers(local).find((l) => l.id === layerId('landcover', c));
 			assert.ok(layer, `${c.kind} has no layer`);
-			assert.equal(layer['source-layer'], c.layer);
+			assert.equal(layer['source-layer'], LAYER);
+			assert.equal(layers(withOsm).find((l) => l.id === layerId('osm', c))?.['source-layer'], c.osmLayer);
 			assert.deepEqual(layer.filter, ['==', ['get', 'kind'], c.kind]);
 			assert.equal((layer.paint as Record<string, string>)['fill-color'], c.color);
 			assert.equal((layer.metadata as Record<string, unknown>).maxZoom, c.maxZoom);
@@ -45,37 +46,10 @@ describe('maplibreStyle', () => {
 		assert.equal(new Set(ids).size, ids.length);
 	});
 
-	const meta = (l: { [k: string]: unknown }) => (l.metadata ?? {}) as Record<string, unknown>;
-
-	test('the landcover carries no zoom limits, so a kind drawing past its cutoff is visible', () => {
-		for (const l of layers(local)) {
+	test('no layer has zoom limits: a kind drawing past its cutoff is visible, and OSM is on top at every zoom', () => {
+		for (const l of [...layers(local), ...layers(withOsm)]) {
 			assert.equal(l.minzoom, undefined, `${l.id} has a minzoom`);
 			assert.equal(l.maxzoom, undefined, `${l.id} has a maxzoom`);
-		}
-		for (const l of layers(withOsm).filter((l) => !l.id.startsWith('osm-') && meta(l).osmFrom === undefined)) {
-			assert.equal(l.minzoom, undefined, `${l.id} has a minzoom`);
-			assert.equal(l.maxzoom, undefined, `${l.id} has a maxzoom`);
-		}
-	});
-
-	test("OSM's copy of a kind starts above its cutoff, like the merge keeps it", () => {
-		for (const l of layers(withOsm).filter((l) => l.id.startsWith('osm-') && meta(l).kind)) {
-			const osmFrom = meta(l).osmFrom;
-			assert.equal(
-				l.minzoom,
-				osmFrom === undefined ? (meta(l).maxZoom as number) + 1 : undefined,
-				`${l.id} minzoom`,
-			);
-			assert.equal(l.maxzoom, undefined, `${l.id} has a maxzoom`);
-		}
-	});
-
-	test("next to OSM, the landcover's copy of a kind OSM supplies stops where OSM's begins", () => {
-		for (const [id, maxzoom] of [['landcover-water_polygons-water', 4]] as const) {
-			const layer = layers(withOsm).find((l) => l.id === id);
-			assert.ok(layer, id);
-			assert.equal(layer.maxzoom, maxzoom, `${id}: MapLibre maxzoom is exclusive, drawn up to z${maxzoom - 1}`);
-			assert.equal(layer.minzoom, undefined);
 		}
 	});
 
@@ -85,7 +59,7 @@ describe('maplibreStyle', () => {
 		assert.equal(ids[1], 'osm-ocean', 'ocean must sit below the landcover to show its holes');
 		const firstLandcover = ids.findIndex((id) => id.startsWith('landcover-'));
 		const firstOsmFill = ids.findIndex((id) => id.startsWith('osm-land') || id.startsWith('osm-water'));
-		assert.ok(firstLandcover < firstOsmFill, 'OSM should be drawn on top at the handover');
+		assert.ok(firstLandcover < firstOsmFill, 'OSM should be drawn on top');
 		assert.equal(ids.at(-1), 'osm-boundaries');
 	});
 
@@ -103,22 +77,16 @@ describe('maplibreStyle', () => {
 		const meta = withOsm.metadata as Record<string, unknown>;
 		assert.equal(meta['landcover:fingerprint'], 'abc12345');
 		assert.equal(meta['landcover:maxLevel'], MAXLEVEL);
-		const legend = meta['landcover:kinds'] as { kind: string; color: string; maxZoom: number; drawnTo: number }[];
+		const legend = meta['landcover:kinds'] as { kind: string; color: string; maxZoom: number }[];
 		assert.equal(legend.length, kinded.length);
 		assert.deepEqual(
 			legend.map((k) => k.kind),
 			kinded.map((c) => c.kind),
 		);
 		assert.ok(legend.every((k) => /^#[0-9A-Fa-f]{6}$/.test(k.color)));
-		// the legend's "≤ z" is where the landcover stops being drawn, which next to OSM is the merge's handover
-		const drawnTo = Object.fromEntries(legend.map((k) => [k.kind, k.drawnTo]));
-		assert.equal(drawnTo.water, 3);
-		assert.equal(drawnTo.residential, 10); // OSM's from z11, like every other kind
-		assert.equal(drawnTo.forest, 10);
-		const alone = (local.metadata as Record<string, unknown>)['landcover:kinds'] as typeof legend;
-		assert.ok(
-			alone.every((k) => k.drawnTo === k.maxZoom),
-			'without OSM every kind is drawn to its cutoff',
+		assert.deepEqual(
+			legend.map((k) => k.maxZoom),
+			kinded.map((c) => c.maxZoom),
 		);
 	});
 

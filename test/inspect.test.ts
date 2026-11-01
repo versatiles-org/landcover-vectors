@@ -32,7 +32,7 @@ const u8 = (...v: number[]) => new Uint8Array(v);
 
 describe('what a zoom draws', () => {
 	test('mirrors the channel cutoffs', () => {
-		// every kind runs to MAXLEVEL (one handover for all, see lib/handover.ts); no-data is never drawn
+		// every kind runs to MAXLEVEL; no-data is never drawn
 		for (const z of [0, 3, 9, MAXLEVEL]) {
 			for (const code of [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100])
 				assert.ok(activeCodes(z).has(code), `z${z} should draw ${code}`);

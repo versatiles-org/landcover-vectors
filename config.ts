@@ -1,12 +1,10 @@
 // shared configuration for the landcover-vectors pipeline
 //
-// The pipeline builds, per zoom level, a set of vector tiles that populate Shortbread's
-// `land` and `water_polygons` layers up to z10, where OSM is still sparse or absent; a merge drops OSM's
-// own features of those kinds there (lib/handover.ts), so OSM takes over from z11. `water` and
-// `residential` are the exceptions: OSM's lakes and urban land use are the better source wherever OSM
-// has them, so the merge keeps those instead.
+// The pipeline builds, per zoom level up to z10, vector tiles with one layer, `landcover`, whose `kind`s are
+// Shortbread's names for ESA's classes. A style draws it as a source of its own under OSM, which paints over it
+// wherever it has data (lib/style-versatiles.ts); MapLibre overzooms z10 above that.
 // Each zoom is processed in BLOCK×BLOCK-tile blocks (with a pixel margin for the sieve) so
-// memory stays bounded; see lib/block.ts and the README "Merging with OSM" section.
+// memory stays bounded; see lib/block.ts and the README "Using it with OSM" section.
 
 import os from 'node:os';
 import path from 'node:path';
@@ -51,13 +49,11 @@ export const file = {
 	timings: path.join(datadir, 'timings.jsonl'), // how long every step and command took (download, build)
 	tiles: path.join(datadir, 'landcover.mbtiles'), // every block's tiles in one tileset (pack)
 	container: path.join(datadir, 'landcover-vectors.versatiles'), // brotli versatiles, named as published (pack)
-	osm: path.join(datadir, 'osm.versatiles'), // OSM Shortbread base, downloaded on demand (merge)
-	merged: path.join(datadir, 'combined.versatiles'), // OSM + landcover feature-merge (merge)
 };
 
-// upstream OSM-based Shortbread container the landcover is feature-merged into (bin/merge.ts)
+// OSM's Shortbread container, which a style draws over the land cover (bin/dev.ts, bin/preview.ts, bin/experiment.ts)
 export const OSM_URL = 'https://download.versatiles.org/osm.versatiles';
-// this container as published, what `npm run verify-merge` checks by default
+// this container as published
 export const LANDCOVER_URL = 'https://download.versatiles.org/landcover-vectors.versatiles';
 
 // OSM's sea, computed from its coastline: the polygons Shortbread's `ocean` layer is built from (planetiler-shortbread
@@ -284,38 +280,39 @@ export function blockWindow(z: number, bx: number, by: number, tilePx = tilePxAt
 	};
 }
 
-// One output class of the classification. `esa` are the ESA WorldCover class codes that map to
-// it; `layer`/`kind` are the Shortbread target (null = the dropped no-data class); `maxZoom`
-// is the highest zoom this pipeline emits the kind — up to there the merge drops OSM's features of
-// that kind, above it OSM owns it (lib/handover.ts); `osmFrom`, if set, turns that around for a kind
-// OSM maps better: from that zoom on the merge keeps OSM's features and drops this container's instead;
-// `color` is the kind's fill in the preview's debug style, picked to tell kinds apart (the QGIS style uses
-// versatiles-style's colours instead, lib/style-qgis.ts).
+// the one layer of the output
+export const LAYER = 'landcover';
+
+// One output class of the classification. `esa` are the ESA WorldCover class codes that map to it; `kind` is its
+// value in the `landcover` layer, Shortbread's name for the class (null = the dropped no-data class); `osmLayer`
+// is the Shortbread layer in which OSM has that kind, and in which versatiles-style draws it, so a style copies
+// that fill (lib/style-versatiles.ts). `maxZoom` is the highest zoom this pipeline emits the kind; `color` is the
+// kind's fill in the preview's debug style, picked to tell kinds apart (the QGIS style uses versatiles-style's
+// colours instead, lib/style-qgis.ts).
 // At a given zoom z, channels with maxZoom < z are folded into the no-data class (lib/block.ts).
 export type Channel = {
 	esa: number[];
-	layer: 'land' | 'water_polygons' | null;
 	kind: string | null;
+	osmLayer: 'land' | 'water_polygons' | null;
 	maxZoom: number;
-	osmFrom?: number;
 	color?: string;
 };
 
-// ESA WorldCover → Shortbread mapping. Order is the class index order in a block; the no-data class is
-// first. Legend: https://esa-worldcover.org/en/data-access
+// ESA WorldCover → Shortbread kinds. Order is the class index order in a block; the no-data class is first.
+// Legend: https://esa-worldcover.org/en/data-access
 export const channels: Channel[] = [
-	{ esa: [0], layer: null, kind: null, maxZoom: -1 }, // no data / OSM's sea (dropped)
-	{ esa: [10], layer: 'land', kind: 'forest', maxZoom: 10, color: '#66AA44' }, // tree cover
-	{ esa: [40], layer: 'land', kind: 'farmland', maxZoom: 10, color: '#F0E7D1' }, // cropland
-	{ esa: [50], layer: 'land', kind: 'residential', maxZoom: 10, osmFrom: 11, color: '#EAE6E1' }, // built-up (OSM's from z11: at z10 OSM's urban land use is burned in, see OSM_BURNS)
-	{ esa: [60], layer: 'land', kind: 'bare_rock', maxZoom: 10, color: '#D9D5CE' }, // bare / sparse vegetation
-	{ esa: [100], layer: 'land', kind: 'heath', maxZoom: 10, color: '#CFD3B0' }, // moss & lichen (tundra)
-	{ esa: [20], layer: 'land', kind: 'scrub', maxZoom: 10, color: '#E0E4E5' }, // shrubland
-	{ esa: [30], layer: 'land', kind: 'grassland', maxZoom: 10, color: '#D8E8C8' }, // grassland
-	{ esa: [90], layer: 'land', kind: 'marsh', maxZoom: 10, color: '#D3E6DB' }, // herbaceous wetland
-	{ esa: [95], layer: 'land', kind: 'swamp', maxZoom: 10, color: '#C6DCC6' }, // mangroves
-	{ esa: [70], layer: 'water_polygons', kind: 'glacier', maxZoom: 10, color: '#FFFFFF' }, // snow & ice
-	{ esa: [80], layer: 'water_polygons', kind: 'water', maxZoom: 10, osmFrom: 4, color: '#B3D9E6' }, // permanent water (OSM's from z4, where Shortbread starts it)
+	{ esa: [0], kind: null, osmLayer: null, maxZoom: -1 }, // no data / OSM's sea (dropped)
+	{ esa: [10], kind: 'forest', osmLayer: 'land', maxZoom: 10, color: '#66AA44' }, // tree cover
+	{ esa: [40], kind: 'farmland', osmLayer: 'land', maxZoom: 10, color: '#F0E7D1' }, // cropland
+	{ esa: [50], kind: 'residential', osmLayer: 'land', maxZoom: 10, color: '#EAE6E1' }, // built-up (OSM's urban land use is burned in, see OSM_BURNS)
+	{ esa: [60], kind: 'bare_rock', osmLayer: 'land', maxZoom: 10, color: '#D9D5CE' }, // bare / sparse vegetation
+	{ esa: [100], kind: 'heath', osmLayer: 'land', maxZoom: 10, color: '#CFD3B0' }, // moss & lichen (tundra)
+	{ esa: [20], kind: 'scrub', osmLayer: 'land', maxZoom: 10, color: '#E0E4E5' }, // shrubland
+	{ esa: [30], kind: 'grassland', osmLayer: 'land', maxZoom: 10, color: '#D8E8C8' }, // grassland
+	{ esa: [90], kind: 'marsh', osmLayer: 'land', maxZoom: 10, color: '#D3E6DB' }, // herbaceous wetland
+	{ esa: [95], kind: 'swamp', osmLayer: 'land', maxZoom: 10, color: '#C6DCC6' }, // mangroves
+	{ esa: [70], kind: 'glacier', osmLayer: 'water_polygons', maxZoom: 10, color: '#FFFFFF' }, // snow & ice
+	{ esa: [80], kind: 'water', osmLayer: 'water_polygons', maxZoom: 10, color: '#B3D9E6' }, // permanent water
 ];
 
 // OSM's land use, burned into the source's ESA classes before the overviews (lib/landburn.ts), so it is resampled,
@@ -352,22 +349,21 @@ export const OSM_BURNS: Burn[] = [
 // burn at each zoom and moves the coastline by single pixels (0.1–0.2 % of a coastal block's pixels).
 export const SEA_SHARE_MIN = 50;
 
-// the tile schema the output conforms to: Shortbread's own layer names and `kind` values (see the README
-// section "What's in the tiles"). Stamped into the container by lib/assemble.ts and bin/merge.ts.
-export const SCHEMA = 'shortbread@1.1';
+// The tile schema stamped into the container (lib/assemble.ts). The `landcover` layer is no Shortbread layer, and
+// versatiles knows no schema for it yet: it refuses a value it does not know, so this stays `other` until it does.
+export const SCHEMA = 'other';
 
 // metadata embedded in the generated tilesets; `description` carries ESA's required credit word for word
 export const meta = {
 	name: 'VersaTiles Landcover Vectors',
 	attribution:
 		'<a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a> (<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>), coastline and land use <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>',
-	description: `Global land cover for zoom levels 0-${MAXLEVEL} from ESA WorldCover 2021 (v200) with OpenStreetMap's land use burned in, in Shortbread's land and water_polygons layers. © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium`,
+	description: `Global land cover for zoom levels 0-${MAXLEVEL} from ESA WorldCover 2021 (v200) with OpenStreetMap's land use burned in, in one layer, landcover, with Shortbread's kinds. © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium`,
 	// the tileset's revision (MBTiles `version`): raise it with every published build whose tiles differ
 	version: '4',
 	// where a viewer opens the container: [lon, lat, zoom]
 	center: [10, 30, 2] as [number, number, number],
 	layers: {
-		land: 'ESA WorldCover classes as Shortbread land kinds',
-		water_polygons: "Permanent water and glaciers from ESA WorldCover; the sea is left to Shortbread's ocean layer",
+		landcover: "ESA WorldCover's classes with Shortbread's kinds; the sea is left to Shortbread's ocean layer",
 	} as Record<string, string>,
 };

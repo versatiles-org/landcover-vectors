@@ -1,5 +1,4 @@
-// Per-block wrapper: turns one BLOCK×BLOCK-tile region at zoom z into the Shortbread `land` /
-// `water_polygons` tiles of that region. Everything runs on the small (~window) raster in tmp,
+// Per-block wrapper: turns one BLOCK×BLOCK-tile region at zoom z into the `landcover` tiles of that region. Everything runs on the small (~window) raster in tmp,
 // so memory stays bounded. See the README and the plan for the rationale of each step.
 
 import fs from 'node:fs/promises';
@@ -15,6 +14,7 @@ import { windowVrt } from './window.ts';
 import { roundCoverageProcess } from './roundcoverage.ts';
 import {
 	channels,
+	LAYER,
 	blockWindow,
 	sieveRendered,
 	SIEVE_THRESHOLD,
@@ -168,7 +168,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 	};
 
 	// channels active at this zoom; everything else (incl. ESA 0) folds into the no-data class.
-	const active = channels.filter((c) => c.layer !== null && c.maxZoom >= z);
+	const active = channels.filter((c) => c.kind !== null && c.maxZoom >= z);
 
 	// resume: if this block's tileset is already on disk, skip the work
 	if (existsSync(tileset)) return finish('cached');
@@ -236,7 +236,7 @@ export async function processBlock(z: number, bx: number, by: number, ctx: Block
 			await timed('emit', () =>
 				fs.writeFile(gj, JSON.stringify({ type: 'FeatureCollection', features: [feature] })),
 			);
-			await tile([{ name: route.kind.layer as Layer['name'], file: gj }]);
+			await tile([{ name: LAYER, file: gj }]);
 			return finish('uniform', { ...content, kind: route.kind.kind });
 		}
 		const activePresent = route.classes;
@@ -419,37 +419,32 @@ ${sources.join('\n')}
 			),
 		);
 
-		// 7. now drop the no-data class, tag each polygon's Shortbread `kind` and split per layer, keeping only the
-		// layers with a kind present. The polygons stay in EPSG:3857, which tippecanoe reads as it is: reprojected
-		// to EPSG:4326, straight edges bend, and a hole touching its shell at a point could cross it instead.
+		// 7. now drop the no-data class and tag each polygon with its `kind`. The polygons stay in EPSG:3857, which
+		// tippecanoe reads as it is: reprojected to EPSG:4326, straight edges bend, and a hole touching its shell at
+		// a point could cross it instead.
 		const kindWhen = activePresent.map((c, j) => `WHEN ${j + 2} THEN '${c.kind}'`).join(' ');
-		const layers: Layer[] = [];
-		await timed('split', async () => {
-			for (const name of ['land', 'water_polygons'] as const) {
-				const codes = activePresent.flatMap((c, j) => (c.layer === name ? [j + 2] : []));
-				if (codes.length === 0) continue;
-				const out = tmp(`${name}.fgb`);
-				await runQuiet(
-					'ogr2ogr',
-					['-f', 'FlatGeobuf'],
-					['-lco', 'SPATIAL_INDEX=NO'],
-					['-nlt', 'PROMOTE_TO_MULTI'],
-					['-nln', name],
-					['-dialect', 'SQLite'],
-					[
-						'-sql',
-						`SELECT *, CASE code % ${TILE_CODE} ${kindWhen} END AS kind FROM data ` +
-							`WHERE code % ${TILE_CODE} IN (${codes.join(',')})`,
-					],
-					out,
-					simplified,
-				);
-				layers.push({ name, file: out });
-			}
-		});
+		const codes = activePresent.map((_, j) => j + 2);
+		const kinds = tmp(`${LAYER}.fgb`);
+		await timed('split', () =>
+			runQuiet(
+				'ogr2ogr',
+				['-f', 'FlatGeobuf'],
+				['-lco', 'SPATIAL_INDEX=NO'],
+				['-nlt', 'PROMOTE_TO_MULTI'],
+				['-nln', LAYER],
+				['-dialect', 'SQLite'],
+				[
+					'-sql',
+					`SELECT *, CASE code % ${TILE_CODE} ${kindWhen} END AS kind FROM data ` +
+						`WHERE code % ${TILE_CODE} IN (${codes.join(',')})`,
+				],
+				kinds,
+				simplified,
+			),
+		);
 
 		// 8. tile the block
-		await tile(layers);
+		await tile([{ name: LAYER, file: kinds }]);
 		return finish('full', { ...content, channels: activePresent.length });
 	} catch (err) {
 		// leave a row behind, then let the caller decide: bin/build.ts collects every failed block of a

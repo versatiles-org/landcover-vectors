@@ -1,7 +1,8 @@
-// What a map shows around the handover, measured: for one test region (lib/regions.ts), the merge at z8–10 and
-// OSM at z11 are rasterised onto one grid and painted the way versatiles-style draws them (its draw order, and its
-// zoom-dependent opacity at mid-zoom), then compared pixel by pixel in coarse categories, since ESA's and OSM's
-// kinds do not map one to one. bin/experiment.ts runs this on every variant.
+// What a map shows around the handover, measured: for one test region (lib/regions.ts), the map at z8–10 — the land
+// cover under OSM — and OSM alone at z11 are rasterised onto one grid and painted the way versatiles-style draws
+// them (its draw order, and its zoom-dependent opacity at mid-zoom), then compared pixel by pixel in coarse
+// categories, since ESA's and OSM's kinds do not map one to one. The handover is where the land cover's own tiles
+// end (z10) and OSM's detail takes over the map. bin/experiment.ts runs this on every variant.
 
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -12,11 +13,12 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import { osm as osmStyle } from '@versatiles/style';
 
 import { decodeTile, rings } from './mvt.ts';
+import { landcoverLayers } from './style-versatiles.ts';
 import { majority, pixelsOfPGM } from './inspect.ts';
 import type { RGBImage } from './png.ts';
 import { runQuiet } from './worldcover.ts';
 import { WINDOW_ZOOM, type Window } from './regions.ts';
-import { channels, MERC, SEA_SHARE_MIN } from '../config.ts';
+import { channels, LAYER, MERC, SEA_SHARE_MIN } from '../config.ts';
 
 export type TileReader = { getTile(z: number, x: number, y: number): Promise<Uint8Array | null | undefined> };
 
@@ -48,7 +50,7 @@ const CATEGORY: Record<string, Category> = {
 };
 
 export const PX = 256; // grid pixels per z12 tile: ~24 m at 52°N
-const LAYERS = ['land', 'water_polygons'];
+const LAYERS = ['land', 'water_polygons', LAYER]; // OSM's, and the land cover's
 
 // ---------------------------------------------------------------- rasterising
 
@@ -124,8 +126,8 @@ function fill(mask: Uint8Array, n: number, rs: [number, number][][], scale: numb
 
 type FillLayer = { id: string; layer: string; minzoom?: number; maxzoom?: number; filter?: unknown; opacity: unknown };
 
-// versatiles-style's land and water fills, bottom to top, as the merge is drawn (its landcover feature on)
-const FILLS: FillLayer[] = osmStyle({ features: { landcover: true } })
+// versatiles-style's land and water fills for OSM's tiles, bottom to top
+const FILLS: FillLayer[] = osmStyle()
 	.layers.filter((l) => l.type === 'fill' && 'source-layer' in l && LAYERS.includes(l['source-layer'] as string))
 	.map((l) => ({
 		id: l.id,
@@ -160,11 +162,26 @@ export function kindsOf(filter: unknown): string[] {
 	return [];
 }
 
-// Which fill is on top at tile zoom z, per pixel: its index in FILLS + 1 (0 = none). The map is seen between z and
-// z+1, so a fill counts when it is at least half opaque at z+0.5: at z10, commercial and industrial (fading in from
-// z10 to z11) do, parks do not; at z11, parks (fading in from z11 to z12) just do.
+// the land cover's fills, drawn under all of FILLS (lib/style-versatiles.ts), each as the index of the fill it copies
+const UNDER = landcoverLayers().map((l) => ({
+	fill: FILLS.findIndex((f) => `landcover-${f.id}` === l.id),
+	kinds: kindsOf('filter' in l ? l.filter : undefined),
+	opacity: (l.paint as Record<string, unknown> | undefined)?.['fill-opacity'],
+}));
+
+// Which fill is on top at tile zoom z, per pixel: its index in FILLS + 1 (0 = none), the land cover's painted as the
+// fill it copies. The map is seen between z and z+1, so a fill counts when it is at least half opaque at z+0.5: at
+// z10, commercial and industrial (fading in from z10 to z11) do, parks do not; at z11, parks (fading in from z11 to
+// z12) just do.
 export function paintFills(masks: Masks, z: number, n: number): Uint8Array {
 	const top = new Uint8Array(n * n);
+	for (const u of UNDER) {
+		if (opacityAt(u.opacity, z + 0.5) < 0.5) continue;
+		for (const kind of u.kinds) {
+			const mask = masks.get(`${LAYER}/${kind}`);
+			if (mask) for (let i = 0; i < mask.length; i++) if (mask[i]) top[i] = u.fill + 1;
+		}
+	}
 	for (const [f, l] of FILLS.entries()) {
 		if ((l.minzoom ?? 0) > z || (l.maxzoom ?? 99) <= z || opacityAt(l.opacity, z + 0.5) < 0.5) continue;
 		for (const kind of kindsOf(l.filter)) {
@@ -202,7 +219,7 @@ export type RegionMetrics = {
 
 const pct = (num: number, den: number): number | null => (den ? Math.round((1000 * num) / den) / 10 : null);
 
-// the comparison, from painted grids: z11 is OSM's, the others the merge's
+// the comparison, from painted grids: z11 is OSM's alone, the others the land cover's under OSM
 export function compare(
 	painted: Record<number, Uint8Array>,
 ): Omit<RegionMetrics, 'tiles' | 'shape' | 'agreement' | 'kinds'> {
@@ -353,7 +370,7 @@ export async function measureShape(source: TileReader, z: number, win: Window): 
 
 // the landcover's kinds, as codes of a grid: 1.. in channel order, 0 none
 const KIND_CODE = new Map<string, number>(
-	channels.filter((c) => c.layer && c.kind).map((c, i) => [`${c.layer}/${c.kind}`, i + 1] as const),
+	channels.filter((c) => c.kind).map((c, i) => [`${LAYER}/${c.kind}`, i + 1] as const),
 );
 
 // What a block at zoom z reads as each kind, per grid pixel: the classes of the channels drawn at z, sea-masked
@@ -361,8 +378,7 @@ const KIND_CODE = new Map<string, number>(
 export function truthGrid(classes: Uint8Array, share: Uint8Array, z: number): Uint8Array {
 	const codeOf = new Uint8Array(256);
 	for (const c of channels)
-		if (c.layer && c.kind && c.maxZoom >= z)
-			for (const esa of c.esa) codeOf[esa] = KIND_CODE.get(`${c.layer}/${c.kind}`)!;
+		if (c.kind && c.maxZoom >= z) for (const esa of c.esa) codeOf[esa] = KIND_CODE.get(`${LAYER}/${c.kind}`)!;
 	return classes.map((v, i) => (share[i] >= SEA_SHARE_MIN ? 0 : codeOf[v]));
 }
 
@@ -442,7 +458,7 @@ export function zoomBytes(tileset: string): Map<number, number> {
 const hex = (c: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)) as never;
 const COLORS: [number, number, number][] = [
 	[255, 255, 255], // no kind
-	...channels.filter((c) => c.layer && c.kind).map((c) => hex(c.color ?? '#FF00FF')),
+	...channels.filter((c) => c.kind).map((c) => hex(c.color ?? '#FF00FF')),
 ];
 
 // a region's window as a tileset draws it at zoom z, in its kinds' preview colours, each outline darkened so the shape
@@ -552,16 +568,14 @@ export type Truth = { classes: string; seaShare: string; scratch: string };
 
 export async function measureRegion(
 	win: Window,
-	src: { osm: TileReader; merged: TileReader; landcover: TileReader },
+	src: { osm: TileReader; landcover: TileReader },
 	cache?: string,
 	truth?: Truth,
 ): Promise<RegionMetrics> {
 	const n = win.side * PX;
-	// above z10 the merge is OSM's alone: the landcover has no tiles there
+	// z11–13 are OSM's alone: what the land cover is compared with
 	const reference = await osmReference(src.osm, win, cache);
 	const fills: Record<number, Uint8Array> = { ...reference.fills };
-	for (const z of [8, 9, 10]) fills[z] = paintFills((await rasterise(src.merged, z, win)).masks, z, n);
-	const painted = Object.fromEntries(Object.entries(fills).map(([z, f]) => [z, f.map((v) => FILL_CATEGORY[v])]));
 	const source = truth && {
 		classes: await readWindow(truth.classes, win, truth.scratch),
 		share: await readWindow(truth.seaShare, win, truth.scratch),
@@ -573,11 +587,13 @@ export async function measureRegion(
 	];
 	for (const z of [8, 9, 10]) {
 		const r = await rasterise(src.landcover, z, win);
+		fills[z] = paintFills(new Map([...r.masks, ...(await rasterise(src.osm, z, win)).masks]), z, n);
 		tiles[`z${z}`] = { kb: Math.round(r.bytes / 102.4) / 10, features: r.features };
 		shape[`z${z}`] = await measureShape(src.landcover, z, win);
 		agree[`z${z}`] = source
 			? agreement(truthGrid(source.classes, source.share, z), kindGrid(r.masks, n), n, z)
 			: null;
 	}
+	const painted = Object.fromEntries(Object.entries(fills).map(([z, f]) => [z, f.map((v) => FILL_CATEGORY[v])]));
 	return { ...compare(painted), tiles, shape, agreement: agree, kinds: kindBreakdown(reference.kinds, fills) };
 }

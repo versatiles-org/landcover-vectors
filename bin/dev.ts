@@ -1,15 +1,14 @@
-// Dev mode: look at the result — OSM, the land cover, and the two merged — in versatiles-style, side by side.
+// Dev mode: look at the result — OSM, the land cover, and the land cover under OSM — in versatiles-style.
 //
 //   npm run dev                # the published landcover container
 //   npm run dev -- --local     # the local build, data/landcover-vectors.versatiles
 //   npm run dev -- --landcover <path|url>   # any other landcover container, e.g. an experiment's
 //   npm run dev -- --ip 0.0.0.0             # reachable from other machines, e.g. on a server
 //
-// Serves three sources from one in-process server (@versatiles/versatiles-rs, nothing downloaded): OSM's
-// Shortbread container, the landcover container, and their merge, filtered exactly like `npm run merge`
-// (lib/handover.ts). The map (dev/map/) switches between them, each drawn with versatiles-style's colorful
-// style: `osm` without its landcover feature, as OSM looks today; `landcover` and `merged` with it. `stacked` and
-// `stacked-fade` test the land cover as a second source under OSM (lib/style-versatiles.ts).
+// Serves two sources from one in-process server (@versatiles/versatiles-rs, nothing downloaded): OSM's Shortbread
+// container and the landcover container. The map (dev/map/) switches between three views, each drawn with
+// versatiles-style's colorful style: `osm` as OSM looks today, `landcover` alone, and `stacked`, the land cover as a
+// source of its own under OSM (lib/style-versatiles.ts), as a map will draw it.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -20,7 +19,6 @@ import { fileURLToPath } from 'node:url';
 import { TileServer, TileSource } from '@versatiles/versatiles-rs';
 
 import { commandExists } from '../lib/worldcover.ts';
-import { mergePipeline } from '../lib/handover.ts';
 import { stackedStyle, versatilesStyle } from '../lib/style-versatiles.ts';
 import { datadir, file, OSM_URL, LANDCOVER_URL } from '../config.ts';
 
@@ -63,30 +61,21 @@ const where = remote(landcover) ? 'remote' : 'local';
 const sources = {
 	osm: await TileSource.fromPath(OSM_URL),
 	landcover: await TileSource.fromPath(landcover),
-	merged: await TileSource.fromVpl(mergePipeline(OSM_URL, landcover)),
 };
 
 // the map page, and what it reads: one style per view, and which landcover is shown
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const genDir = path.join(datadir, 'dev');
 await fs.mkdir(genDir, { recursive: true });
-for (const [name, source] of Object.entries(sources)) {
-	const style = versatilesStyle(`/tiles/${name}/tiles.json`, name !== 'osm');
-	// only the layers the tiles have: the landcover alone has two, and MapLibre logs every style layer
-	// whose source layer is missing
-	const layers = new Set(source.tileJson().vectorLayers?.map((l) => l.id));
-	style.layers = style.layers.filter((l) => !('source-layer' in l) || layers.has(l['source-layer']!));
+const stacked = stackedStyle('/tiles/osm/tiles.json', '/tiles/landcover/tiles.json');
+const styles = {
+	osm: versatilesStyle('/tiles/osm/tiles.json'),
+	// the stacked style without OSM's layers: the background and the land cover
+	landcover: { ...stacked, layers: stacked.layers.filter((l) => !('source' in l) || l.source === 'landcover') },
+	stacked,
+};
+for (const [name, style] of Object.entries(styles))
 	await fs.writeFile(path.join(genDir, `style-${name}.json`), JSON.stringify(style));
-}
-// the test of a separate land cover source under OSM: without and with a fade at high zooms
-for (const [name, fade] of [
-	['stacked', false],
-	['stacked-fade', true],
-] as const)
-	await fs.writeFile(
-		path.join(genDir, `style-${name}.json`),
-		JSON.stringify(stackedStyle('/tiles/osm/tiles.json', '/tiles/landcover/tiles.json', fade)),
-	);
 await fs.writeFile(
 	path.join(genDir, 'state.json'),
 	JSON.stringify({ landcover: where, source: landcover, osm: OSM_URL }),

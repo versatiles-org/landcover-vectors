@@ -1,6 +1,6 @@
 // Tile every block on its own, join each zoom's blocks, then join the zooms and pack.
 //
-// A block tiles itself: one tippecanoe run over its land/water polygons → a small mbtiles of just its own tiles,
+// A block tiles itself: one tippecanoe run over its land cover polygons → a small mbtiles of just its own tiles,
 // which is also the block's cache entry. The tiles on a block's edge get their buffer from the block's own margin
 // (lib/block.ts), so no tile needs a neighbour's polygons, and the blocks of a zoom never have to meet in one big
 // file of polygons. Blocks never share a tile, so joining them is a plain copy of rows: into one mbtiles per zoom
@@ -13,12 +13,12 @@ import { DatabaseSync } from 'node:sqlite';
 import { promisify } from 'node:util';
 
 import { run, runQuiet, runCapture, atomic } from './worldcover.ts';
-import { file, meta, SCHEMA, TIPPECANOE_ARGS, TIPPECANOE_COMPACT } from '../config.ts';
+import { file, meta, LAYER, SCHEMA, TIPPECANOE_ARGS, TIPPECANOE_COMPACT } from '../config.ts';
 
 const execFileAsync = promisify(execFile);
 
 export type TileRange = { x0: number; y0: number; x1: number; y1: number }; // XYZ, x1/y1 exclusive
-export type Layer = { name: 'land' | 'water_polygons'; file: string };
+export type Layer = { name: typeof LAYER; file: string };
 
 // Tile block polygons at zoom z → `out`, an mbtiles holding only the tiles of `range`. tippecanoe also writes
 // tiles just outside the block, wherever the margin reaches into them; those belong to the neighbours.
@@ -230,10 +230,7 @@ export async function gitCommit(cwd = path.resolve(import.meta.dirname, '..')): 
 }
 
 // join the per-zoom tilesets and pack them into a brotli versatiles container (the build's final step), with
-// data/tmp/container-meta.json (containerMeta) as its whole metadata. The container declares Shortbread
-// explicitly: it writes Shortbread's own layer names and `kind` values, which is the whole point, and tippecanoe
-// has no way to say so — without this it ships as "other" and a consumer cannot tell that a stock Shortbread
-// style already fits.
+// data/tmp/container-meta.json (containerMeta) as its whole metadata.
 export async function pack(zooms: string[], provenance: Provenance, tmpdir: string): Promise<void> {
 	if (!(await joinTilesets(zooms, file.tiles))) throw new Error('nothing to pack — no zoom produced any tiles');
 	await fs.rm(file.container, { force: true });

@@ -7,7 +7,6 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { gdalEnv, commandExists } from './worldcover.ts';
-import { versionAtLeast } from './handover.ts';
 
 export type ToolName =
 	'node' | 'gdal' | 'gdal_calc' | 'tippecanoe' | 'tippecanoe-decode' | 'versatiles' | 'curl' | 'osmium';
@@ -18,9 +17,8 @@ type Tool = { neededBy: string; hint: string; check: () => Promise<CheckResult> 
 
 const PIXI = 'run "pixi install" (see pixi.toml)';
 
-// build and merge stamp the shortbread@1.1 schema, which versatiles knows from 5.0.0 on; older ones refuse it,
-// which a build would only find out in its final step. (The merge filter alone needs 4.15, see lib/handover.ts.)
-export const MIN_VERSATILES_SCHEMA = '5.0.0';
+// the oldest versatiles the build's final step (lib/assemble.ts pack) is known to work with
+export const MIN_VERSATILES = '5.0.0';
 const VERSATILES_HINT =
 	'brew install versatiles-org/versatiles/versatiles (or brew upgrade versatiles), or see ' +
 	'https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles/README.md#install';
@@ -34,6 +32,16 @@ function output(cmd: string, ...args: string[]): Promise<string | null> {
 }
 
 const version = (out: string) => out.match(/\d+\.\d+\.\d+/)?.[0];
+
+// "versatiles 5.4.0" (or a bare "5.4.0") → true when it is at least `min`
+export function versionAtLeast(output: string, min: string): boolean {
+	const m = output.match(/(\d+)\.(\d+)\.(\d+)/);
+	if (!m) return false;
+	const have = m.slice(1, 4).map(Number);
+	const want = min.split('.').map(Number);
+	for (let i = 0; i < 3; i++) if (have[i] !== want[i]) return have[i] > want[i];
+	return true;
+}
 
 // A note when a pixi environment is installed here but this process does not run in it (pixi sets
 // PIXI_ENVIRONMENT_NAME in `pixi run` and `pixi shell`): the tools found are the system's, not the pinned ones.
@@ -114,12 +122,12 @@ export const TOOLS: Record<ToolName, Tool> = {
 		check: async () => ((await commandExists('tippecanoe-decode')) ? {} : { problem: 'not on PATH' }),
 	},
 	versatiles: {
-		neededBy: 'build, merge',
+		neededBy: 'build',
 		hint: VERSATILES_HINT,
-		check: versioned('versatiles', { min: MIN_VERSATILES_SCHEMA }),
+		check: versioned('versatiles', { min: MIN_VERSATILES }),
 	},
 	curl: {
-		neededBy: 'download, merge',
+		neededBy: 'download',
 		hint: PIXI,
 		check: versioned('curl'),
 	},

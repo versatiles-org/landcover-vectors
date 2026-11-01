@@ -45,7 +45,7 @@ const rows = (db: string, sql: string) => {
 
 async function block(z: number, bx: number, by: number): Promise<string> {
 	const out = path.join(tmp, `z${z}_${bx}_${by}.mbtiles`);
-	const layer = { name: 'land' as const, file: await windowPolygon(z, bx, by, 'forest') };
+	const layer = { name: 'landcover' as const, file: await windowPolygon(z, bx, by, 'forest') };
 	await tileBlock(z, blockWindow(z, bx, by).tiles, [layer], out, tmp);
 	return out;
 }
@@ -68,12 +68,8 @@ describe('tileBlock', { skip }, () => {
 		const empty = path.join(tmp, 'nothing.geojson');
 		await fs.writeFile(empty, JSON.stringify({ type: 'FeatureCollection', features: [] }));
 		const range = blockWindow(5, 1, 2).tiles;
-		const some = path.join(tmp, 'some.mbtiles');
-		const land = { name: 'land' as const, file: await windowPolygon(5, 1, 2, 'forest') };
-		await tileBlock(5, range, [land, { name: 'water_polygons', file: empty }], some, tmp);
-		assert.equal(tileCount(some), 64);
 		const none = path.join(tmp, 'none-left.mbtiles');
-		await tileBlock(5, range, [{ name: 'water_polygons', file: empty }], none, tmp);
+		await tileBlock(5, range, [{ name: 'landcover', file: empty }], none, tmp);
 		assert.equal(tileCount(none), 0);
 	});
 
@@ -109,7 +105,13 @@ describe('joinTilesets', { skip }, () => {
 			[west, south, east, north].map((v) => Number(v.toFixed(6))),
 		);
 		assert.deepEqual(JSON.parse(meta.json).vector_layers, [
-			{ id: 'land', minzoom: 5, maxzoom: 5, fields: { kind: 'String' }, description: tilesetMeta.layers.land },
+			{
+				id: 'landcover',
+				minzoom: 5,
+				maxzoom: 5,
+				fields: { kind: 'String' },
+				description: tilesetMeta.layers.landcover,
+			},
 		]);
 	});
 
@@ -149,7 +151,7 @@ describe('container metadata', () => {
 			bounds: [-180, -85.051129, 180, 85.051129],
 			minzoom: 0,
 			maxzoom: 10,
-			vector_layers: [{ id: 'land' }],
+			vector_layers: [{ id: 'landcover' }],
 		};
 		assert.deepEqual(containerMeta(joined, { fingerprint: 'ce387963', commit: 'abc123', buildtime }), {
 			tilejson: '3.0.0',
@@ -179,6 +181,6 @@ describe('container metadata', () => {
 	});
 
 	test('every layer the tiles have is described', () => {
-		assert.deepEqual(Object.keys(tilesetMeta.layers).sort(), ['land', 'water_polygons']);
+		assert.deepEqual(Object.keys(tilesetMeta.layers), ['landcover']);
 	});
 });

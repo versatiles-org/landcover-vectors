@@ -1,7 +1,7 @@
 // Run the whole landcover build pipeline.
 //
 // Builds zoom levels 0..MAXLEVEL. Each zoom is split into BLOCK×BLOCK-tile blocks; every
-// non-empty block is turned into its Shortbread land/water_polygons tiles independently
+// non-empty block is turned into its `landcover` tiles independently
 // (lib/block.ts, bounded memory), and once a zoom's blocks are done, their tiles are joined into one tileset
 // of the zoom. Finally the zooms are joined and packed to versatiles (lib/assemble.ts).
 // The single EPSG:3857 source raster is built once by bin/download.ts (`npm run download`).

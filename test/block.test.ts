@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { fastPath, diskKernel, type WindowContent } from '../lib/block.ts';
 import { channels } from '../config.ts';
 
-const active = channels.filter((c) => c.layer !== null);
+const active = channels.filter((c) => c.kind !== null);
 const kind = (esa: number) => active.find((c) => c.esa.includes(esa))?.kind;
 const PIXELS = 100;
 const window = (over: Partial<WindowContent>): WindowContent => ({

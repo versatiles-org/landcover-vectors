@@ -1,6 +1,6 @@
 // The experiment's yardstick (bin/experiment.ts): the test regions must sit where they claim, their sources must
-// land on the build's pixel grid at every pyramid level, a variant's handover must reach the merge, and the
-// measurement must paint and count the way versatiles-style draws.
+// land on the build's pixel grid at every pyramid level, and the measurement must paint and count the way
+// versatiles-style draws the land cover under OSM.
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +10,7 @@ import path from 'node:path';
 
 import { REGIONS, windowAt, extentTiles, extentLonLat, WINDOW_ZOOM } from '../lib/regions.ts';
 import { regionGrid, regionKeys, pyramidVrt } from '../lib/regionsource.ts';
-import { VARIANTS, paramsFor, channelsFor, burnsOf } from '../lib/variants.ts';
+import { VARIANTS, paramsFor, burnsOf } from '../lib/variants.ts';
 import {
 	compare,
 	paint,
@@ -29,7 +29,6 @@ import {
 	CATEGORIES,
 } from '../lib/measure.ts';
 import { rings } from '../lib/mvt.ts';
-import { mergePipeline, landcoverKeepExpr } from '../lib/handover.ts';
 import { channels, TILE_PX, FULL_PX, OSM_BURNS } from '../config.ts';
 
 describe('the test regions', () => {
@@ -90,19 +89,10 @@ test('pyramidVrt places a region at its offset on every level', async () => {
 });
 
 describe('variants', () => {
-	test("a variant's osmFrom reaches the merge, and nothing else changes", () => {
-		const chans = channelsFor(VARIANTS.esa);
-		assert.equal(chans.find((c) => c.kind === 'residential')!.osmFrom, 10);
-		assert.equal(chans.find((c) => c.kind === 'water')!.osmFrom, 4);
-		assert.match(landcoverKeepExpr('land'), /zoom >= 11 && kind in \['residential'\]/);
-		assert.match(mergePipeline('o', 'l', chans), /zoom >= 10 && kind in \['residential'\]/);
-		assert.deepEqual(channelsFor(VARIANTS.baseline), channels);
-	});
-
 	test("a variant burns its own table, none, or the pipeline's", () => {
 		assert.deepEqual(burnsOf(VARIANTS.baseline), OSM_BURNS);
 		assert.deepEqual(burnsOf(VARIANTS.esa), []);
-		assert.equal(burnsOf(VARIANTS['burn-z11'])[0].esa, 50);
+		assert.equal(burnsOf(VARIANTS.burn)[0].esa, 50);
 	});
 
 	test('previous turns every outline setting of config.ts off', () => {
@@ -115,11 +105,6 @@ describe('variants', () => {
 			tilePx: undefined,
 		});
 		assert.equal(VARIANTS.previous.burn, undefined, "burns the pipeline's table, like baseline");
-	});
-
-	test('null hands a kind to the landcover at every zoom', () => {
-		const chans = channelsFor({ why: '', osmFrom: { water: null } });
-		assert.equal(chans.find((c) => c.kind === 'water')!.osmFrom, undefined);
 	});
 });
 
@@ -150,6 +135,17 @@ describe('the measurement', () => {
 		assert.equal(CATEGORIES[paint(park, 10, 1)[0]], 'none');
 		assert.equal(CATEGORIES[paint(park, 11, 1)[0]], 'green');
 		assert.equal(CATEGORIES[paint(new Map([['water_polygons/glacier', one()]]), 10, 1)[0]], 'bare');
+	});
+
+	test('the land cover draws under OSM, from z0, and fades out of the count above z12', () => {
+		const one = () => new Uint8Array([1]);
+		const at = (keys: string[], z: number) => CATEGORIES[paint(new Map(keys.map((k) => [k, one()])), z, 1)[0]];
+		assert.equal(at(['landcover/forest', 'land/residential'], 10), 'urban');
+		assert.equal(at(['landcover/residential', 'land/forest'], 10), 'forest');
+		assert.equal(at(['landcover/forest'], 0), 'forest');
+		assert.equal(at(['landcover/water'], 2), 'water');
+		assert.equal(at(['landcover/forest'], 12), 'forest');
+		assert.equal(at(['landcover/forest'], 13), 'none', 'below half opaque at z13.5');
 	});
 
 	test('compare counts against OSM at z11', () => {
@@ -253,7 +249,7 @@ describe('shape', () => {
 });
 
 describe('agreement with the source', () => {
-	const code = (kind: string) => channels.filter((c) => c.layer && c.kind).findIndex((c) => c.kind === kind) + 1;
+	const code = (kind: string) => channels.filter((c) => c.kind).findIndex((c) => c.kind === kind) + 1;
 
 	test('truthGrid draws what a block at that zoom draws: sea and kinds past their cutoff are none', () => {
 		const forest = channels.find((c) => c.kind === 'forest')!.esa[0];
@@ -266,7 +262,7 @@ describe('agreement with the source', () => {
 	test('kindGrid codes the tiles alike, and agreement compares the majorities of each rendered pixel', () => {
 		const n = 8; // two z11 pixels a side at 4 grid px each
 		const forest = new Uint8Array(n * n).fill(1);
-		const shown = kindGrid(new Map([['land/forest', forest]]), n);
+		const shown = kindGrid(new Map([['landcover/forest', forest]]), n);
 		assert.equal(shown[0], code('forest'));
 		const truth = new Uint8Array(n * n).fill(code('forest'));
 		for (let i = 0; i < n * n; i++) if (i % n >= 4 && i < 4 * n) truth[i] = 0; // top-right pixel: none

@@ -1,23 +1,21 @@
 // The variants an experiment compares (bin/experiment.ts): each is today's pipeline with one or more changes, built
 // over the test regions (lib/regions.ts) and measured the same way (lib/measure.ts).
 //
-// A variant changes the source before the blocks see it, and/or the handover:
+// A variant changes the source before the blocks see it, and/or the outlines:
 //   burn     OSM's land use burned into ESA's classes before the overviews (lib/landburn.ts), instead of the
 //            pipeline's own table (config.ts OSM_BURNS); [] burns nothing, which is ESA alone.
 //            `close` first closes the gaps between the polygons (streets, mostly) by that many source pixels.
 //            `keep` lists kinds under which ESA's class stays: what OSM draws on top of the burned kinds anyway.
-//   osmFrom  the zoom from which the merge takes a kind from OSM instead (config.ts `channels`); null = never.
 //   sieve, detail, smooth, outline, tippecanoe, tilePx   BlockParams (lib/block.ts): the outlines, instead of config.ts's.
 //   zooms    any of these for one zoom, over the variant's own.
 
-import { channels, LANDCOVER_URL, OSM_BURNS, type Burn, type Channel } from '../config.ts';
+import { LANDCOVER_URL, OSM_BURNS, type Burn } from '../config.ts';
 import type { BlockParams } from './block.ts';
 
 export type Variant = BlockParams & {
 	why: string;
 	container?: string; // measure this container as it is, build nothing
 	burn?: Burn[];
-	osmFrom?: Record<string, number | null>;
 	zooms?: Record<number, BlockParams>;
 };
 
@@ -73,35 +71,27 @@ const lowZooms = (tilePx: number): Record<number, BlockParams> =>
 	Object.fromEntries([0, 1, 2, 3, 4, 5, 6, 7].map((z) => [z, { tilePx }]));
 
 export const VARIANTS: Record<string, Variant> = {
-	// merged the way it was published (version 3): residential OSM's from z10
 	published: {
 		why: 'the published container: a check that the regional builds match it',
 		container: LANDCOVER_URL,
-		osmFrom: { residential: 10 },
 	},
-	esa: {
-		why: "ESA alone, residential OSM's from z10: the pipeline before the burn (published up to version 3)",
-		burn: [],
-		osmFrom: { residential: 10 },
-	},
-	baseline: { why: "today's pipeline: every OSM land kind burned in (OSM_BURNS), residential OSM's from z11" },
-	'handover-z11': { why: 'ESA alone, residential ours at z10, OSM takes over at z11', burn: [] },
-	burn: { why: "OSM's urban land use burned in as built-up", burn: burnUrban(), osmFrom: { residential: 10 } },
-	'burn-z11': { why: 'burn, and residential stays ours at z10', burn: burnUrban() },
-	'burn-z11-keep': {
-		why: "burn-z11, but ESA's class stays where OSM draws woods, parks or fields on top of the town",
+	esa: { why: 'ESA alone: the pipeline before the burn (published up to version 3)', burn: [] },
+	baseline: { why: "today's pipeline: every OSM land kind burned in (OSM_BURNS)" },
+	burn: { why: "OSM's urban land use burned in as built-up", burn: burnUrban() },
+	'burn-keep': {
+		why: "burn, but ESA's class stays where OSM draws woods, parks or fields on top of the town",
 		burn: burnUrban(undefined, ABOVE_URBAN),
 	},
-	'burn-green-z11': {
-		why: "burn-z11, and OSM's parks, allotments, gardens and leisure grounds as grassland",
+	'burn-green': {
+		why: "burn, and OSM's parks, allotments, gardens and leisure grounds as grassland",
 		burn: [...burnUrban(), { kinds: GREEN, esa: 30, keep: ['forest'] }],
 	},
-	'burn-z11-close1': {
-		why: 'burn-z11, with gaps up to 2 source px (76 m) between urban polygons closed',
+	'burn-close1': {
+		why: 'burn, with gaps up to 2 source px (76 m) between urban polygons closed',
 		burn: burnUrban(1),
 	},
-	'burn-z11-close2': {
-		why: 'burn-z11, with gaps up to 4 source px (153 m) between urban polygons closed',
+	'burn-close2': {
+		why: 'burn, with gaps up to 4 source px (153 m) between urban polygons closed',
 		burn: burnUrban(2),
 	},
 	// the sieve of 5 px² at every zoom, the rest as configured
@@ -124,13 +114,3 @@ export const VARIANTS: Record<string, Variant> = {
 
 // the variant's burns: its own, or the pipeline's
 export const burnsOf = (v: Variant): Burn[] => v.burn ?? OSM_BURNS;
-
-// the channel table with the variant's handover
-export function channelsFor(v: Variant): Channel[] {
-	return channels.map((c) => {
-		if (!c.kind || !v.osmFrom || !(c.kind in v.osmFrom)) return c;
-		const from = v.osmFrom[c.kind];
-		const { osmFrom: _, ...rest } = c;
-		return from === null ? rest : { ...rest, osmFrom: from };
-	});
-}

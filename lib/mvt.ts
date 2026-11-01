@@ -1,5 +1,5 @@
 // A minimal Mapbox Vector Tile reader: layers, their features' `kind`, and polygon rings in tile units. Enough to
-// rasterise a tile (lib/measure.ts); bin/verify-merge.ts only counts features and has its own, smaller reader.
+// rasterise a tile (lib/measure.ts).
 
 export type Feature = { type: number; kind: string; geometry: number[] };
 export type Layer = { name: string; extent: number; features: Feature[] };

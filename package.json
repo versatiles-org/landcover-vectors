@@ -14,8 +14,6 @@
     "doctor": "node bin/doctor.ts",
     "download": "node bin/download.ts",
     "build": "node --disable-warning=ExperimentalWarning bin/build.ts",
-    "merge": "node bin/merge.ts",
-    "verify-merge": "node bin/verify-merge.ts",
     "experiment": "node --disable-warning=ExperimentalWarning bin/experiment.ts",
     "inspect": "node --disable-warning=ExperimentalWarning bin/inspect.ts",
     "dev": "node bin/dev.ts",

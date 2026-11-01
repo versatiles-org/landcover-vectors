@@ -21,7 +21,7 @@ import { LAT_LIMIT } from './areas.ts';
 
 // tippecanoe's default --maximum-tile-bytes; above this it coalesces or drops features
 export const MVT_LIMIT = 500_000;
-// a soft budget, half the hard one: staying under it keeps room for the OSM features a merged tile carries
+// a soft budget, half the hard one: a map loads these tiles on top of OSM's, so they should stay light
 export const WARN_LIMIT = MVT_LIMIT / 2;
 
 // the marker a table puts next to a size, so trouble shows up without arithmetic

@@ -2,14 +2,12 @@
 // same `channels` table as the tiles and the QGIS style — so what the browser shows is what the pipeline
 // produced, and a recoloured channel needs no second edit anywhere.
 //
-// The interesting thing to look at is the handover: each kind stops at its `maxZoom` and OSM takes over
-// above it. Mounting the real OSM Shortbread container alongside makes that visible. The OSM fills start
-// above the cutoff, exactly like the merge drops them below it (lib/handover.ts), so the viewer shows the
-// merged result; the landcover layers carry no zoom limits, so a kind that keeps drawing past its cutoff
-// is a bug you can see rather than infer. The one exception mirrors the merge too: a kind OSM supplies
-// (`osmFrom`: `water`, `residential`) is OSM's at every zoom, and the landcover's copy stops where OSM's begins.
+// Mounting the real OSM Shortbread container alongside stacks OSM's own fills of the same kinds on top, at every
+// zoom, as a real map draws them (lib/style-versatiles.ts): where OSM maps a kind, the land cover under it should
+// mostly agree. The landcover layers carry no zoom limits, so a kind that keeps drawing past its `maxZoom` is a
+// bug you can see rather than infer.
 
-import { channels, MAXLEVEL, type Channel } from '../config.ts';
+import { channels, LAYER, MAXLEVEL, type Channel } from '../config.ts';
 
 export type StyleOpts = {
 	tiles: string; // URL of the landcover TileJSON
@@ -17,37 +15,27 @@ export type StyleOpts = {
 	fingerprint?: string; // shown in the viewer header, and used to bust tile caches
 };
 
-// a landcover layer's id encodes source, layer and kind, which is what the legend toggles on
-export const layerId = (source: 'landcover' | 'osm', c: Channel): string => `${source}-${c.layer}-${c.kind}`;
+// a layer's id encodes source and kind, which is what the legend toggles on
+export const layerId = (source: 'landcover' | 'osm', c: Channel): string => `${source}-${c.kind}`;
 
 const OCEAN = '#a8cfe0'; // the hole the landcover deliberately leaves for Shortbread's ocean layer
 
 export type StyleLayer = Record<string, unknown> & { id: string };
 
 export function maplibreStyle(opts: StyleOpts): Record<string, unknown> {
-	const kinded = channels.filter((c) => c.layer && c.kind && c.color);
+	const kinded = channels.filter((c) => c.kind && c.osmLayer && c.color);
 	const sources: Record<string, unknown> = { landcover: { type: 'vector', url: opts.tiles } };
 	if (opts.osm) sources.osm = { type: 'vector', url: opts.osm };
 
-	// the highest zoom the landcover's copy of a kind is drawn at: its cutoff, or below OSM's takeover when
-	// OSM is mounted — what the merge keeps (lib/handover.ts)
-	const drawnTo = (c: Channel): number => (opts.osm && c.osmFrom !== undefined ? c.osmFrom - 1 : c.maxZoom);
-
-	// the zooms the merge keeps of each source's copy of a kind; MapLibre's maxzoom is exclusive
-	const zooms = (source: 'landcover' | 'osm', c: Channel): Record<string, number> => {
-		if (source === 'osm') return c.osmFrom === undefined ? { minzoom: c.maxZoom + 1 } : {};
-		return drawnTo(c) < c.maxZoom ? { maxzoom: drawnTo(c) + 1 } : {};
-	};
-
+	// OSM has each kind in its Shortbread layer
 	const fill = (source: 'landcover' | 'osm', c: Channel): StyleLayer => ({
 		id: layerId(source, c),
-		...zooms(source, c),
 		type: 'fill',
 		source,
-		'source-layer': c.layer as string,
+		'source-layer': source === 'landcover' ? LAYER : (c.osmLayer as string),
 		filter: ['==', ['get', 'kind'], c.kind],
 		paint: { 'fill-color': c.color as string, 'fill-antialias': false },
-		metadata: { kind: c.kind, layer: c.layer, maxZoom: c.maxZoom, osmFrom: c.osmFrom, source },
+		metadata: { kind: c.kind, maxZoom: c.maxZoom, source },
 	});
 
 	const layers: StyleLayer[] = [{ id: 'background', type: 'background', paint: { 'background-color': '#f6f4f0' } }];
@@ -65,7 +53,7 @@ export function maplibreStyle(opts: StyleOpts): Record<string, unknown> {
 		});
 	}
 
-	// the landcover itself, then OSM's own land/water on top from each cutoff up, so the handover reads as a takeover
+	// the landcover itself, then OSM's own land/water on top
 	for (const c of kinded) layers.push(fill('landcover', c));
 	if (opts.osm) {
 		for (const c of kinded) layers.push(fill('osm', c));
@@ -88,13 +76,7 @@ export function maplibreStyle(opts: StyleOpts): Record<string, unknown> {
 		metadata: {
 			'landcover:fingerprint': opts.fingerprint ?? null,
 			'landcover:maxLevel': MAXLEVEL,
-			'landcover:kinds': kinded.map((c) => ({
-				kind: c.kind,
-				layer: c.layer,
-				color: c.color,
-				maxZoom: c.maxZoom,
-				drawnTo: drawnTo(c),
-			})),
+			'landcover:kinds': kinded.map((c) => ({ kind: c.kind, color: c.color, maxZoom: c.maxZoom })),
 		},
 	};
 }

@@ -1,8 +1,8 @@
 // Generate a QGIS vector-tiles style (.qml) for the generated tileset, colouring each
 // Shortbread `kind` the way versatiles-style's colorful map does (solid fill, no stroke).
 //
-// The output tileset has two sub-layers — `land` and `water_polygons` — so each channel
-// emits one rule scoped to its layer and filtered on `kind`. Open data/landcover.mbtiles
+// The output tileset has one layer, `landcover`, so each channel emits one rule scoped to it
+// and filtered on `kind`. Open data/landcover.mbtiles
 // (or the .versatiles) in QGIS as a native "Vector Tiles" layer and apply landcover.qml.
 //
 // Run with: node bin/style.ts (or `npm run style`).
@@ -20,4 +20,4 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const vtStyle = path.join(root, 'landcover.qml');
 await fs.writeFile(vtStyle, qgisVectorTileStyle(styled));
 
-console.error('Wrote %s (vector tiles) — %d kinds across land + water_polygons', vtStyle, styled.length);
+console.error('Wrote %s (vector tiles) — %d kinds', vtStyle, styled.length);

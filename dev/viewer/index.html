@@ -138,7 +138,7 @@
 			const state = await fetch('/gen/state.json').then((r) => r.json());
 			const style = await fetch('/gen/style.json').then((r) => r.json());
 			const kinds = style.metadata['landcover:kinds'];
-			// versatiles-style's colorful map over the merge, filtered like `npm run merge` (preview serves it when it can)
+			// versatiles-style's colorful map with the land cover under OSM (the preview writes it when OSM is mounted)
 			const realStyle = state.versatilesStyle
 				? await fetch('/gen/style-versatiles.json').then((r) => r.json())
 				: null;
@@ -199,12 +199,7 @@
 					.map(([k, v]) => `${k}=${v}`)
 					.join(' · ')}</div>`;
 
-			// one legend row per kind: colour, name, and the highest zoom the landcover is drawn at — its cutoff,
-			// or lower where the merge hands the kind to OSM earlier (the hover says which)
-			const cutTitle = (k) =>
-				k.drawnTo < k.maxZoom
-					? `built to z${k.maxZoom}; the merge takes OSM's from z${k.drawnTo + 1}`
-					: `built and merged to z${k.maxZoom}`;
+			// one legend row per kind: colour, name, and the highest zoom the landcover is built to
 			$('legend').innerHTML =
 				'<h4>kinds</h4>' +
 				kinds
@@ -212,7 +207,7 @@
 						(k) =>
 							`<label><input type="checkbox" data-kind="${k.kind}" checked />` +
 							`<span class="sw" style="background:${k.color}"></span>${k.kind}` +
-							`<span class="cut" title="${cutTitle(k)}">≤ z${k.drawnTo}</span></label>`,
+							`<span class="cut" title="built to z${k.maxZoom}">≤ z${k.maxZoom}</span></label>`,
 					)
 					.join('');
 
@@ -302,7 +297,7 @@
 			});
 
 			// click to see what a polygon actually is — kind, layer, and which source it came from. In the
-			// versatiles-style view both sources are one merged source, so the style layer is shown instead.
+			// versatiles-style view, the style layer is shown instead.
 			map.on('click', (e) => {
 				const hits = map
 					.queryRenderedFeatures(e.point)
