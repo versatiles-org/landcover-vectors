@@ -8,7 +8,8 @@
 // Serves three sources from one in-process server (@versatiles/versatiles-rs, nothing downloaded): OSM's
 // Shortbread container, the landcover container, and their merge, filtered exactly like `npm run merge`
 // (lib/handover.ts). The map (dev/map/) switches between them, each drawn with versatiles-style's colorful
-// style: `osm` without its landcover feature, as OSM looks today; `landcover` and `merged` with it.
+// style: `osm` without its landcover feature, as OSM looks today; `landcover` and `merged` with it. `stacked` and
+// `stacked-fade` test the land cover as a second source under OSM (lib/style-versatiles.ts).
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -20,7 +21,7 @@ import { TileServer, TileSource } from '@versatiles/versatiles-rs';
 
 import { commandExists } from '../lib/worldcover.ts';
 import { mergePipeline } from '../lib/handover.ts';
-import { versatilesStyle } from '../lib/style-versatiles.ts';
+import { stackedStyle, versatilesStyle } from '../lib/style-versatiles.ts';
 import { datadir, file, OSM_URL, LANDCOVER_URL } from '../config.ts';
 
 const { values: opt } = parseArgs({
@@ -77,6 +78,15 @@ for (const [name, source] of Object.entries(sources)) {
 	style.layers = style.layers.filter((l) => !('source-layer' in l) || layers.has(l['source-layer']!));
 	await fs.writeFile(path.join(genDir, `style-${name}.json`), JSON.stringify(style));
 }
+// the test of a separate land cover source under OSM: without and with a fade at high zooms
+for (const [name, fade] of [
+	['stacked', false],
+	['stacked-fade', true],
+] as const)
+	await fs.writeFile(
+		path.join(genDir, `style-${name}.json`),
+		JSON.stringify(stackedStyle('/tiles/osm/tiles.json', '/tiles/landcover/tiles.json', fade)),
+	);
 await fs.writeFile(
 	path.join(genDir, 'state.json'),
 	JSON.stringify({ landcover: where, source: landcover, osm: OSM_URL }),

@@ -104,10 +104,12 @@
 			<button data-view="osm">osm<kbd>1</kbd></button>
 			<button data-view="landcover">landcover<kbd>2</kbd></button>
 			<button data-view="merged">osm+landcover<kbd>3</kbd></button>
+			<button data-view="stacked">stacked<kbd>4</kbd></button>
+			<button data-view="stacked-fade">stacked fade<kbd>5</kbd></button>
 		</div>
 		<script type="module">
 			const $ = (id) => document.getElementById(id);
-			const VIEWS = ['osm', 'landcover', 'merged'];
+			const VIEWS = ['osm', 'landcover', 'merged', 'stacked', 'stacked-fade'];
 			const state = await fetch('/gen/state.json').then((r) => r.json());
 			const styles = Object.fromEntries(
 				await Promise.all(VIEWS.map(async (v) => [v, await fetch(`/gen/style-${v}.json`).then((r) => r.json())])),
@@ -151,7 +153,13 @@
 			// the land cover hands over to OSM at z10 → z11 (z4 for water, z10 for residential); say which side the map is on
 			function head() {
 				const z = map.getZoom();
-				const side = z < 11 ? 'below the handover z10 → z11' : 'above the handover z10 → z11';
+				const side = view.startsWith('stacked')
+					? z < 11
+						? 'land cover at its own zoom'
+						: 'land cover overzoomed from z10'
+					: z < 11
+						? 'below the handover z10 → z11'
+						: 'above the handover z10 → z11';
 				$('head').innerHTML =
 					`<b>z${z.toFixed(1)}</b> <span class="dim">· tile z${Math.min(14, Math.floor(z))} · ${side}</span><br>` +
 					`<span class="dim">landcover:</span> <b>${state.landcover}</b> <span class="dim">${state.source}</span>`;
@@ -162,7 +170,7 @@
 			addEventListener('keydown', (e) => {
 				if (e.target instanceof Element && e.target.closest('input, textarea')) return;
 				if (e.metaKey || e.ctrlKey || e.altKey) return;
-				const i = ['1', '2', '3'].indexOf(e.key);
+				const i = ['1', '2', '3', '4', '5'].indexOf(e.key);
 				if (i >= 0) show(VIEWS[i]);
 			});
 			map.on('zoom', head);

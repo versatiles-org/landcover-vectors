@@ -15,3 +15,29 @@ export function versatilesStyle(tiles: string, landcover = true): StyleSpecifica
 	for (const source of Object.values(style.sources)) if (source.type === 'vector') source.url = tiles;
 	return style;
 }
+
+// A test of another way to combine the two (bin/dev.ts): OSM as it is, over the land cover as a source of its own. That
+// source ends at z10, and MapLibre overzooms a source past its maxzoom, so the land cover stays under OSM at any zoom.
+// Its colours are versatiles-style's for the same kinds. `fade` thins it out at the zooms where its outlines grow coarse.
+export function stackedStyle(osmTiles: string, landcoverTiles: string, fade = false): StyleSpecification {
+	const style = versatilesStyle(osmTiles, false);
+	const opacity = fade ? ['interpolate', ['linear'], ['zoom'], 12, 1, 15, 0.3] : 1;
+	const under = versatilesStyle(osmTiles, true).layers.flatMap((l) =>
+		l.type === 'fill' && (l['source-layer'] === 'land' || l['source-layer'] === 'water_polygons')
+			? [
+					{
+						...l,
+						id: `landcover-${l.id}`,
+						source: 'landcover',
+						minzoom: undefined,
+						paint: { ...l.paint, 'fill-opacity': opacity },
+					} as typeof l,
+				]
+			: [],
+	);
+	style.sources.landcover = { type: 'vector', url: landcoverTiles };
+	const at = style.layers.findIndex((l) => l.id === 'water-ocean');
+	if (at < 0) throw new Error('versatiles-style has no water-ocean layer to put the land cover under');
+	style.layers.splice(at, 0, ...under);
+	return style;
+}
