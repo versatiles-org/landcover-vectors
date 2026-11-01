@@ -18,21 +18,23 @@ full rebuild before it is uploaded. No other repository has changed yet; the iss
 - **Attribution and licence.** The container is licensed under the ODbL and contains ESA WorldCover data under
   CC BY 4.0. Its `attribution` starts with OSM's attribution exactly as OSM's Shortbread tiles carry it, so that
   MapLibre, which drops an attribution contained in another one, shows OSM's credit once on a map that draws both.
-- **`tile_schema` is `other` for now.** versatiles refuses a schema it doesn't know, so a land cover schema needs a
-  versatiles-rs release first (see [Open decisions](#open-decisions)).
+- **`tile_schema` is `versatiles/landcover@1.0`.** versatiles knows it from 5.6.0 on. No other project has a schema
+  field like `tile_schema`; where one tileset combines several schemas, Mapbox and OGC's tileset metadata describe
+  them per layer, so a joined name like `shortbread@1.1+…` has no precedent. The name follows the spec's
+  `<family>[/<subtype>][@<version>]` and keeps VersaTiles' own schemas together.
 
 ## The data
 
-| property      | value                                                               |
-| ------------- | ------------------------------------------------------------------- |
-| file          | `landcover-vectors.versatiles`                                      |
-| size          | about 4.5 GB (brotli), measured again after the rebuild             |
-| format        | VersaTiles container with MVT tiles                                 |
-| zooms         | z0–10; a style overzooms z10 above that                             |
-| `version`     | `4`                                                                 |
-| `tile_schema` | `other`, until versatiles knows a land cover schema                 |
-| layers        | one, `landcover`, with one attribute, `kind`                        |
-| built from    | not built yet; the container of commit `ac26416` has the old layers |
+| property      | value                                                              |
+| ------------- | ------------------------------------------------------------------ |
+| file          | `landcover-vectors.versatiles`                                     |
+| size          | about 4.5 GB (brotli), measured again after the rebuild            |
+| format        | VersaTiles container with MVT tiles                                |
+| zooms         | z0–10; a style overzooms z10 above that                            |
+| `version`     | `4`                                                                |
+| `tile_schema` | `versatiles/landcover@1.0`                                         |
+| layers        | one, `landcover`, with one attribute, `kind`                       |
+| built from    | being built since 2026-11-01; the published one has the old layers |
 
 | ESA WorldCover class     | `kind`        | OSM's layer      | versatiles-style layer |
 | ------------------------ | ------------- | ---------------- | ---------------------- |
@@ -108,10 +110,9 @@ no source. The stacked style needs:
   with only that layer is not recognised; whether it should get a style of its own is open.
 - Tests, and the matching sections of `API_DESIGN.md`.
 
-### versatiles-rs (required for a schema)
+### versatiles-rs (done)
 
-`TileSchema` in `versatiles_core/src/types/tile_schema.rs` is a closed list: `meta_update` refuses any other value,
-and reading drops it. Either issue unblocks `SCHEMA` in this repository's `config.ts`, once released:
+Released in 5.6.0, which this repository's pack uses through `@versatiles/versatiles-rs`:
 
 - [versatiles-rs#300](https://github.com/versatiles-org/versatiles-rs/issues/300): accept and keep well-formed
   `tile_schema` values versatiles doesn't know.
@@ -124,11 +125,12 @@ and reading drops it. Either issue unblocks `SCHEMA` in this repository's `confi
   the separate source instead.
 - `compendium/specification_extended_tilejson.md`: the new `tile_schema` value, following versatiles-rs#300 and #301.
 
-### versatiles-docker (required before publishing)
+### versatiles-docker (done)
 
 [versatiles-docker#60](https://github.com/versatiles-org/versatiles-docker/issues/60): `versatiles-planetiler
---landcover` merges the public `landcover-vectors.versatiles` into Shortbread's layers, and drops OSM's own land
-kinds up to z10. With version 4 published, it would silently lose those kinds. The merge has to go before then.
+--landcover` merged the public `landcover-vectors.versatiles` into Shortbread's layers. The merge is removed, and
+`--landcover` now fails with a pointer to the separate source. All images were rebuilt with versatiles 5.6.0 on
+2026-11-01.
 
 ### tiles.versatiles.org (required)
 
@@ -167,19 +169,13 @@ versatiles-svg-renderer, versatiles-studio, playground and versatiles-org.github
 
 ## Open decisions
 
-1. **The schema's name.** No other project has a schema field like `tile_schema`: Mapbox, OpenMapTiles,
-   Protomaps and Planetiler name a tileset's schema in `name`, `id` or `version`. Where one tileset combines
-   several, Mapbox and OGC's tileset metadata describe it per layer (Mapbox's `vector_layers[].source`), not as a
-   list at the top. The extended TileJSON spec's pattern is `<family>[/<subtype>][@<version>]`, and its DEM values
-   name the data first and the variant second (`dem/mapbox`). Proposed in versatiles-rs#301:
-   `versatiles/landcover@1.0`, which keeps VersaTiles' own schemas together.
-2. **Replace version 3 in place, or publish with a date?** Replacing is what has been done so far. With
+1. **Replace version 3 in place, or publish with a date?** Replacing is what has been done so far. With
    `osm-landcover` retired, nothing depends on version 3 staying available.
 
 ## Suggested order
 
-1. Settle the schema's name, and release versatiles-rs#300 or #301; add the value to the TileJSON spec.
-2. Remove the land cover merge from versatiles-planetiler (versatiles-docker#60).
+1. ~~Settle the schema's name, and release versatiles-rs#300 or #301~~ (5.6.0); add the value to the TileJSON spec.
+2. ~~Remove the land cover merge from versatiles-planetiler (versatiles-docker#60).~~
 3. Rebuild version 4 with the `landcover` layer and the schema, then upload and publish it with the corrected
    attribution.
 4. Serve `landcover-vectors` on tiles.versatiles.org.

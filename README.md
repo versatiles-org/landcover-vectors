@@ -63,7 +63,7 @@ zooms it doesn't matter visually:
 
 `wetland` is split to keep fidelity: herbaceous wetland → `marsh`, mangroves → `swamp`.
 
-The container declares `tile_schema: other`: versatiles knows no schema for this layer yet.
+The container declares `tile_schema: versatiles/landcover@1.0`, the schema of this layout.
 
 ## Using it with OSM
 
@@ -376,7 +376,7 @@ requires the histogram to count every pixel of the window as well.
 tile, so this is a plain copy, nothing is decoded), and versatiles (`@versatiles/versatiles-rs`, in the build's own
 process) packs it with brotli into `data/landcover-vectors.versatiles`, the name it is published under. Its whole metadata is one TileJSON,
 `data/tmp/container-meta.json`, which `meta_update tilejson_file=…` puts in place of the mbtiles' own:
-`tile_schema: other` (see [what's in the tiles](#whats-in-the-tiles)); name, description, attribution,
+`tile_schema: versatiles/landcover@1.0` (see [what's in the tiles](#whats-in-the-tiles)); name, description, attribution,
 revision (`version`), center and the layer descriptions from `meta` in `config.ts`; bounds, zooms and layers of
 the joined tileset; and, like the `planetiler:*` keys of `osm.versatiles`, the build it came from:
 `landcover:fingerprint` (the config), `landcover:githash` (the commit, `-dirty` with uncommitted changes) and

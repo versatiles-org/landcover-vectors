@@ -349,9 +349,9 @@ export const OSM_BURNS: Burn[] = [
 // burn at each zoom and moves the coastline by single pixels (0.1–0.2 % of a coastal block's pixels).
 export const SEA_SHARE_MIN = 50;
 
-// The tile schema stamped into the container (lib/assemble.ts). The `landcover` layer is no Shortbread layer, and
-// versatiles knows no schema for it yet: it refuses a value it does not know, so this stays `other` until it does.
-export const SCHEMA = 'other';
+// The tile schema stamped into the container (lib/assemble.ts). The `landcover` layer is no Shortbread layer, so it
+// has a schema of its own, which versatiles knows from 5.6.0 on (versatiles-org/versatiles-rs#301).
+export const SCHEMA = 'versatiles/landcover@1.0';
 
 // OSM's attribution exactly as its Shortbread tiles carry it, so that a map drawing both sources shows it once:
 // MapLibre drops an attribution that is part of another one
