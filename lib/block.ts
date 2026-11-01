@@ -24,7 +24,7 @@ import {
 	SEA_SHARE_MIN,
 	MARGIN_PX,
 	OVERSAMPLE,
-	TILE_PX,
+	tilePxAt,
 	simplifyForLevel,
 	type Channel,
 } from '../config.ts';
@@ -45,7 +45,7 @@ export type BlockParams = {
 	smooth?: number; // the round majority filter after the sieve (3b), its radius (SMOOTH_RENDERED); 0: none
 	outline?: { cap: number; passes: number } | null; // the rounding before the simplify (5b, OUTLINE); null: none
 	tippecanoe?: string[]; // arguments instead of TIPPECANOE_COMPACT
-	tilePx?: number; // the raster's px per tile (TILE_PX), a power of 2 the pyramid has at this zoom
+	tilePx?: number; // the raster's px per tile (tilePxAt), a power of 2 the pyramid has at this zoom
 };
 
 // Each tile's class codes are shifted by one of four multiples of this, by the parity of its column and row, so
@@ -128,7 +128,7 @@ export function fastPath(c: WindowContent, active: Channel[]): FastPath {
 export async function processBlock(z: number, bx: number, by: number, ctx: BlockCtx): Promise<BlockResult> {
 	const t0 = performance.now();
 	const id = `z${z}_${bx}_${by}`;
-	const tilePx = ctx.params?.tilePx ?? TILE_PX;
+	const tilePx = ctx.params?.tilePx ?? tilePxAt(z);
 	const oversample = tilePx / 256; // raw px per rendered px
 	const win = blockWindow(z, bx, by, tilePx);
 

@@ -12,6 +12,7 @@ import {
 	MERC,
 	MAXLEVEL,
 	TILE_PX,
+	tilePxAt,
 	BLOCK,
 	MARGIN_PX,
 	FULL_PX,
@@ -43,6 +44,15 @@ describe('blocksPerAxis', () => {
 });
 
 describe('blockWindow', () => {
+	test('the lowest zooms read a finer raster, the rest TILE_PX', () => {
+		assert.deepEqual(
+			[0, 1, 2, 3, 10].map((z) => tilePxAt(z)),
+			[4096, 4096, 2048, TILE_PX, TILE_PX],
+		);
+		assert.equal(blockWindow(0, 0, 0).innerPx.width, 4096);
+		assert.equal(blockWindow(0, 0, 0, TILE_PX).innerPx.width, TILE_PX);
+	});
+
 	test('another tilePx keeps the block and its margin in metres, on whole pixels', () => {
 		const [a, b] = [blockWindow(8, 3, 2), blockWindow(8, 3, 2, 4096)];
 		assert.deepEqual(b.inner3857, a.inner3857);
@@ -135,7 +145,7 @@ describe('blockWindow', () => {
 	test('a single-block zoom covers the world at exactly 2^z tiles', () => {
 		for (const z of [0, 2, 3]) {
 			const { windowPx, inner3857 } = blockWindow(z, 0, 0);
-			assert.equal(windowPx.width, Math.pow(2, z) * TILE_PX, `z${z} width`);
+			assert.equal(windowPx.width, Math.pow(2, z) * tilePxAt(z), `z${z} width`);
 			assert.equal(inner3857.minx, -MERC, `z${z} minx`);
 			assert.equal(inner3857.maxx, MERC, `z${z} maxx`);
 		}

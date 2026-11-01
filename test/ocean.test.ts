@@ -17,7 +17,7 @@ const { runQuiet } = await import('../lib/worldcover.ts');
 const { maskOcean, buildSeaShare, seaShareWindow, SEA } = await import('../lib/ocean.ts');
 const { pyramidLevel } = await import('../lib/window.ts');
 const { readBytes } = await import('../lib/inspect.ts');
-const { file, MERC, MAXLEVEL, FULL_PX, blockWindow, blocksPerAxis } = await import('../config.ts');
+const { file, MERC, MAXLEVEL, FULL_PX, TILE_PX, tilePxAt, blockWindow, blocksPerAxis } = await import('../config.ts');
 
 const skip = await skipWithout('gdal_rasterize', 'ogr2ogr', 'gdal_translate');
 const PX = 10;
@@ -169,8 +169,9 @@ describe('pyramidLevel', () => {
 			]) {
 				const { window3857: r, windowPx: w } = blockWindow(z, bx, by);
 				const { overview, xOff, yOff } = pyramidLevel(r, w.width, w.height);
-				assert.equal(overview, z === MAXLEVEL ? null : MAXLEVEL - z - 1, `z${z} ${bx}/${by}`);
-				const size = FULL_PX / 2 ** (MAXLEVEL - z); // that level's side in pixels
+				const level = z + Math.log2(tilePxAt(z) / TILE_PX); // the zoom whose level of the pyramid it reads
+				assert.equal(overview, level === MAXLEVEL ? null : MAXLEVEL - level - 1, `z${z} ${bx}/${by}`);
+				const size = FULL_PX / 2 ** (MAXLEVEL - level); // that level's side in pixels
 				assert.ok(xOff >= 0 && yOff >= 0 && xOff + w.width <= size && yOff + w.height <= size, `z${z} ${bx}/${by}`);
 			}
 		}

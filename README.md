@@ -246,7 +246,7 @@ skips every block that touches none of them.
 A naïve pipeline renders one global EPSG:3857 raster per zoom level. At the resolution we want that reaches
 60000×60000 px and beyond, and a global coverage-simplify loads the whole thing into RAM and gets OOM-killed.
 Instead each zoom is processed in **blocks** of `BLOCK`×`BLOCK` = 8×8 tiles (`TILE_PX` = 1024 raw px per tile),
-so every raster/vector operation works on a ≤ ~8246² px window — bounded memory, feasible at every zoom. Each
+so every raster/vector operation works on a ≤ ~8246² px window (z0–2 read finer, `TILE_PX_LOW`, but cover at most 4×4 tiles) — bounded memory, feasible at every zoom. Each
 block is tiled on its own, and the blocks' tiles are joined into one tileset per zoom.
 
 ### Source raster
@@ -533,6 +533,7 @@ offered. `?style=versatiles` in the URL opens it directly.
 | raster | `SIEVE_RENDERED` (5 rendered px²), `SIEVE_RAMP` below z9     | the smallest patch kept, sieved in two passes; the main lever on feature count; 0 turns it off       | `LANDCOVER_SIEVE_RENDERED` |
 | vector | `DETAIL_PX` (1.5)                                            | the simplify tolerance — how precisely outlines follow the result                                    | `LANDCOVER_DETAIL_PX`      |
 | raster | `TILE_PX` (1024 → 38 m/px at z10, against ESA's native 10 m) | the resolution the source is classified at; 4× source raster and CPU per doubling, and a re-download | — (edit, then re-download) |
+| raster | `TILE_PX_LOW` (4096 at z0–1, 2048 at z2)                     | a finer level of the pyramid at the lowest zooms, for a few KB; no re-download                       | — (edit)                   |
 
 The overrides are for sweeps; each value builds into its own cache, because all knobs are part of the config
 fingerprint. The largest tiles sit in Hudson Bay's wetland mosaic; at the 5 px² sieve its worst z8 tile is 69 KB,

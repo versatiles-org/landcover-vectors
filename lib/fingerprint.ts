@@ -19,6 +19,7 @@ import {
 	channels,
 	MAXLEVEL,
 	TILE_PX,
+	tilePxAt,
 	BLOCK,
 	SIEVE_THRESHOLD,
 	sieveRendered,
@@ -45,6 +46,7 @@ export function cacheValues(): Values {
 	return {
 		maxLevel: MAXLEVEL,
 		tilePx: TILE_PX,
+		tilePxPerZoom: Array.from({ length: MAXLEVEL + 1 }, (_, z) => tilePxAt(z)),
 		block: BLOCK,
 		sieveThreshold: SIEVE_THRESHOLD,
 		sieveStages: SIEVE_STAGES, // the sieve's passes, in raw pixels

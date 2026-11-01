@@ -207,7 +207,8 @@ Over the planet (variants `low-2048`, `low-4096`), agreement with the source's f
 | 7    | 91.0    | 91.3    | –       | +15.2 %    | –          |
 
 Turning rises by about 1 degree per px at 2048 and 2 at 4096. z0–7 took 38 min at 2048 and z0–5 alone 76 min at 4096,
-on 30 cores. A finer raster pays at z0–2 and hardly from z3 on.
+on 30 cores. A finer raster pays at z0–2 and hardly from z3 on, so the pipeline adopted `TILE_PX_LOW`: 4096 px at z0–1
+and 2048 at z2, for 22 KB.
 
 ## Sweeps and `inspect`
 

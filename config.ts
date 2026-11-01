@@ -87,6 +87,13 @@ export const TILE_PX = 1024; // raw raster pixels per output tile
 export const BLOCK = 8; // tiles per block side
 export const OVERSAMPLE = TILE_PX / 256; // raw pixels per rendered pixel (4)
 
+// The lowest zooms read a finer level of the pyramid: its cascaded majorities lose most there, and tiles are few. It
+// adds 22 KB over the planet; from z3 on it gains next to nothing (doc/TUNING.md#per-zoom-a-lower-sieve-a-finer-raster).
+export const TILE_PX_LOW: Record<number, number> = { 0: 4096, 1: 4096, 2: 2048 };
+
+// the raster's px per tile at zoom z
+export const tilePxAt = (z: number): number => TILE_PX_LOW[z] ?? TILE_PX;
+
 // Smallest patch kept, in rendered px²; smaller regions are merged into their largest neighbour. This is
 // the only raster generalization: each pixel otherwise keeps its own ESA class. (A Gaussian blur before a
 // per-pixel majority vote used to round the patches as well, but it moved area from scattered classes to
@@ -223,7 +230,7 @@ export type BlockWindow = {
 // / world square. All exact tile-aligned 3857 metres, so neighbouring blocks share an
 // identical inner edge (no seam gaps after clip + simplify --preserve-boundary).
 // `tilePx` reads the zoom at another resolution of the pyramid, with the same margin in metres.
-export function blockWindow(z: number, bx: number, by: number, tilePx = TILE_PX): BlockWindow {
+export function blockWindow(z: number, bx: number, by: number, tilePx = tilePxAt(z)): BlockWindow {
 	const tiles = Math.pow(2, z);
 	const tileSpan = WORLD / tiles; // metres per tile
 	const pxSize = tileSpan / tilePx; // metres per raster pixel
