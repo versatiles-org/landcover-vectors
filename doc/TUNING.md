@@ -210,6 +210,21 @@ Turning rises by about 1 degree per px at 2048 and 2 at 4096. z0–7 took 38 min
 on 30 cores. A finer raster pays at z0–2 and hardly from z3 on, so the pipeline adopted `TILE_PX_LOW`: 4096 px at z0–1
 and 2048 at z2, for 22 KB.
 
+Forest and water at z0 shift step by step, in shares of the land drawn, in Mercator pixels:
+
+| stage                                          | forest % | water % | KB    |
+| ---------------------------------------------- | -------- | ------- | ----- |
+| the source at 262144 px                        | 29.6     | 3.5     |       |
+| its pyramid at 4096 px                         | 32.1     | 2.5     |       |
+| the tile, without sieve or filter              | 33.9     | 1.7     | 457.9 |
+| the tile, with the sieve only (1 px²)          | 37.7     | 0.5     | 16.1  |
+| the tile, with the filter only (0.5 px)        | 37.0     | 0.4     | 24.3  |
+| the tile as built                              | 38.6     | 0.4     | 11.9  |
+
+Most of it is generalization, not the pyramid: what is removed goes to its largest neighbour, mostly forest, and lakes
+below the sieve's size cannot stay. Weaker settings buy little: a sieve of 0.1 px² without the filter is 36.1 % and 0.7 %
+at 62.9 KB, and a filter of 0.125 px without the sieve 35.5 % and 0.8 % at 109.5 KB.
+
 ## Sweeps and `inspect`
 
 ```sh
