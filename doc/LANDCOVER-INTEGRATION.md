@@ -134,8 +134,9 @@ Released in 5.6.0, which this repository's pack uses through `@versatiles/versat
 
 ### tiles.versatiles.org (required)
 
-`/tiles/osm/` is served from the merged `osm-landcover.versatiles`, and `landcover-vectors` isn't served at all: its
-`tiles.json` returns 404. In `download/sources.json`:
+[tiles.versatiles.org#39](https://github.com/versatiles-org/tiles.versatiles.org/issues/39): `/tiles/osm/` is
+served from the merged `osm-landcover.versatiles`, and `landcover-vectors` isn't served at all: its `tiles.json`
+returns 404. In `download/sources.json`:
 
 - Add `landcover-vectors` as a served dataset.
 - Later, serve `osm` from plain `osm.versatiles` by removing `"source": "osm-landcover"`.
