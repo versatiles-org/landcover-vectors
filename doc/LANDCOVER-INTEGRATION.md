@@ -1,61 +1,61 @@
 # Land cover version 4 and its integration
 
-Version 4 of `landcover-vectors` is built, and it can now be drawn as a **source of its own under OSM**, instead of
-being merged into OSM's tiles. This document describes the data, how a style uses it, and what other repositories
-have to change.
+Version 4 of `landcover-vectors` is drawn as a **source of its own under OSM**, instead of being merged into OSM's
+tiles. This document describes the data, how a style uses it, and what other repositories have to change.
 
-Status on 2026-11-01: the container is built and the stacked style is tested in `dev/map`. The container is not
-uploaded and no other repository has changed yet. `main` is not pushed.
+Status on 2026-11-01: the code writes a single `landcover` layer, and the merged `osm-landcover` is retired. The
+container built from commit `ac26416` still has Shortbread's `land` and `water_polygons` layers, so version 4 needs a
+full rebuild before it is uploaded. No other repository has changed yet. `main` is not pushed.
 
-## Why the integration changes
+## Decisions
 
-So far the land cover has been merged into OSM's `land` and `water_polygons` layers, and OSM took over at z11. Since
-OSM maps only part of the land, the coloured land thins out abruptly there: at z11 OSM still covers 89 % of the land
-in the Netherlands, but 14 % in Iowa and 0.1 % in the Australian outback.
-
-Drawn as a separate source, the land cover stays under OSM at every zoom. OSM paints over it where it has data, and
-the land cover shows wherever it has none.
+- **One `landcover` layer, with Shortbread's kinds.** The layer is no longer Shortbread's `land` and
+  `water_polygons`, so a Shortbread style can't mistake it for OSM, and a style copies its fills from one source
+  layer. The `kind` values stay Shortbread's, so versatiles-style's colours apply as they are.
+- **The merged `osm-landcover` is retired.** It is deleted from the Storage Box. The download updater never deletes
+  from R2, so `/tiles/osm/` keeps serving it from the CDN until it is switched to plain OSM. Delete it from R2 only
+  after that switch (`docs/runbook.md` in download.versatiles.org). This repository no longer has merge tooling.
+- **Attribution and licence.** The container is licensed under the ODbL and contains ESA WorldCover data under
+  CC BY 4.0. Its `attribution` starts with OSM's attribution exactly as OSM's Shortbread tiles carry it, so that
+  MapLibre, which drops an attribution contained in another one, shows OSM's credit once on a map that draws both.
+- **`tile_schema` is `other` for now.** versatiles refuses a schema it doesn't know, so a land cover schema needs a
+  versatiles-rs release first (see [Open decisions](#open-decisions)).
 
 ## The data
 
-| property      | value                                                                   |
-| ------------- | ----------------------------------------------------------------------- |
-| file          | `landcover-vectors.versatiles`                                          |
-| size          | 4,453,468,476 bytes (brotli); the published version 3 has 4,682,409,043 |
-| format        | VersaTiles container with MVT tiles, 831,344 tiles                      |
-| zooms         | z0–10; a style overzooms z10 above that                                 |
-| `version`     | `4`                                                                     |
-| `tile_schema` | `shortbread@1.1`                                                        |
-| built from    | commit `ac26416`, config fingerprint `f16f3d9d`                         |
-| largest tile  | 72.2 KB gzipped                                                         |
+| property      | value                                                               |
+| ------------- | ------------------------------------------------------------------- |
+| file          | `landcover-vectors.versatiles`                                      |
+| size          | about 4.5 GB (brotli), measured again after the rebuild             |
+| format        | VersaTiles container with MVT tiles                                 |
+| zooms         | z0–10; a style overzooms z10 above that                             |
+| `version`     | `4`                                                                 |
+| `tile_schema` | `other`, until versatiles knows a land cover schema                 |
+| layers        | one, `landcover`, with one attribute, `kind`                        |
+| built from    | not built yet; the container of commit `ac26416` has the old layers |
 
-**Layers.** There are two, `land` and `water_polygons`, and the only attribute is `kind`:
+| ESA WorldCover class     | `kind`        | OSM's layer      | versatiles-style layer |
+| ------------------------ | ------------- | ---------------- | ---------------------- |
+| Tree cover               | `forest`      | `land`           | `land-forest`          |
+| Cropland                 | `farmland`    | `land`           | `land-agriculture`     |
+| Built-up                 | `residential` | `land`           | `land-residential`     |
+| Bare / sparse vegetation | `bare_rock`   | `land`           | `land-rock`            |
+| Moss and lichen          | `heath`       | `land`           | `land-vegetation`      |
+| Shrubland                | `scrub`       | `land`           | `land-vegetation`      |
+| Grassland                | `grassland`   | `land`           | `land-grass`           |
+| Herbaceous wetland       | `marsh`       | `land`           | `land-wetland`         |
+| Mangroves                | `swamp`       | `land`           | `land-wetland`         |
+| Snow and ice             | `glacier`     | `water_polygons` | `land-glacier`         |
+| Permanent water          | `water`       | `water_polygons` | `water-area`           |
 
-| ESA WorldCover class     | layer            | `kind`        | versatiles-style layer |
-| ------------------------ | ---------------- | ------------- | ---------------------- |
-| Tree cover               | `land`           | `forest`      | `land-forest`          |
-| Cropland                 | `land`           | `farmland`    | `land-agriculture`     |
-| Built-up                 | `land`           | `residential` | `land-residential`     |
-| Bare / sparse vegetation | `land`           | `bare_rock`   | `land-rock`            |
-| Moss and lichen          | `land`           | `heath`       | `land-vegetation`      |
-| Shrubland                | `land`           | `scrub`       | `land-vegetation`      |
-| Grassland                | `land`           | `grassland`   | `land-grass`           |
-| Herbaceous wetland       | `land`           | `marsh`       | `land-wetland`         |
-| Mangroves                | `land`           | `swamp`       | `land-wetland`         |
-| Snow and ice             | `water_polygons` | `glacier`     | `land-glacier`         |
-| Permanent water          | `water_polygons` | `water`       | `water-area`           |
+"OSM's layer" is where OSM's Shortbread tiles have the kind, and where the versatiles-style layer reads it.
 
 **Sea.** The sea is a hole. The land cover ends at OSM's coastline, and OSM's `ocean` layer fills the rest.
 
-**OSM land use.** OSM's land use is burned into ESA's classes before the tiles are generalized. Since version 4, the
-container is therefore also subject to OSM's licence, the [ODbL](https://opendatacommons.org/licenses/odbl/). Its
-attribution names both ESA and OSM.
+**OSM land use.** OSM's land use is burned into ESA's classes before the tiles are generalized.
 
-**What changed since version 3.** The outlines are rounder and the patches kept at low zooms are smaller, z0–2 read a
-finer raster, and OSM's land use is burned in. Measured results are in [TUNING.md](TUNING.md).
-
-The layer names and kinds are still Shortbread's. A dedicated `landcover` layer was discussed, but this build does not
-have one (see [Open decisions](#open-decisions)).
+**What changed since version 3.** The layer, the outlines are rounder and the patches kept at low zooms are smaller,
+z0–2 read a finer raster, and OSM's land use is burned in. Measured results are in [TUNING.md](TUNING.md).
 
 ## How a style draws it
 
@@ -63,14 +63,15 @@ The stacked style has two vector sources: plain OSM, **without** merged land cov
 order is:
 
 1. `background`
-2. the land cover fills
+2. the land cover fills, in versatiles-style's `osm.slots.belowFills` (`slot-below-fills`)
 3. `water-ocean`
 4. the stock OSM layers, unchanged
 
-Each land cover layer is a copy of the stock fill with its colour and filter, and with these changes:
+Each land cover layer is a copy of the stock fill for its kinds, with these changes:
 
-- `source` is the land cover source.
+- `source` is the land cover source, and `source-layer` is `landcover`.
 - `id` gets a prefix, for example `landcover-land-forest`.
+- `filter` keeps only the kinds of the table, for example `["in", ["get", "kind"], ["literal", ["heath", "scrub"]]]`.
 - `minzoom` is removed, so it draws from z0.
 - `fill-opacity` is replaced by this fade:
 
@@ -84,9 +85,9 @@ completely, so land OSM doesn't map keeps a hint of colour.
 No merge and no `vector_filter_features` are needed. Lakes need no special handling either: from z4, OSM's lakes draw
 above the land cover's `water`, which still shows where OSM has no lake.
 
-The reference implementation is `stackedStyle` in [`lib/style-versatiles.ts`](../lib/style-versatiles.ts). It copies
-all 19 fills on those two layers, but only the 9 in the table above can match anything in this container. The real
-implementation should copy only those 9.
+The reference implementation is `landcoverLayers` and `stackedStyle` in
+[`lib/style-versatiles.ts`](../lib/style-versatiles.ts). They produce the 9 layers of the table, one for each stock
+fill that draws one of the kinds.
 
 ## Changes in other repositories
 
@@ -97,14 +98,24 @@ Findings come from reading each repository's current state. Nothing below has be
 `features.landcover` currently means "the tiles are a merge": it removes the fade-ins of the stock layers, and adds
 no source. The stacked style needs:
 
-- A way to name the land cover source and switch to stacking, in `osm()`. It should insert the 9 layers before
-  `water-ocean`, add the source, and apply the fade.
+- A way to name the land cover source in `osm()`. It should add the source, and insert the 9 layers at
+  `osm.slots.belowFills`, with the fade.
 - Stock OSM layers that stay unchanged when stacking.
-- The existing `features.landcover: true` kept for now, because the public `osm` tiles remain a merge until
-  tiles.versatiles.org changes.
+- The existing `features.landcover: true` kept until tiles.versatiles.org serves plain OSM, then deprecated.
 - `osm.supportsLandcover(tileJSON)` kept for the merged case. It says nothing about a separate source.
-- A check of `guessStyle`, which builds a style from a single tileset.
+- `guessSchema` and `guessStyle` recognise schemas by their layer names, and know no `landcover` layer. A tileset
+  with only that layer is not recognised; whether it should get a style of its own is open.
 - Tests, and the matching sections of `API_DESIGN.md`.
+
+### versatiles-rs (required for a schema)
+
+`TileSchema` in `versatiles_core/src/types/tile_schema.rs` is a closed list, and `meta_update` refuses any other
+value. A land cover schema needs a variant there and a release, and then `SCHEMA` in this repository's `config.ts`.
+
+### versatiles-documentation (required)
+
+- `compendium/specification_extended_tilejson.md`: the new `tile_schema` value.
+- `compendium/specification_shortbread_landcover.md` describes only the merge. It needs the stacked style instead.
 
 ### tiles.versatiles.org (required)
 
@@ -123,25 +134,10 @@ expects the merge. So first serve `landcover-vectors`, then release and roll out
 
 - **Publishing** follows `docs/runbook.md`. Put the file on the Storage Box as
   `download/landcover-vectors/landcover-vectors.versatiles`, with its `.md5` and `.sha256`, and start the Update
-  workflow or wait for the 20th. At 4.5 GB it is below the workflow's 80 GB limit. This name replaces version 3 in
-  place; a name with a date would keep it available.
+  workflow or wait for the 20th.
 - **`src/lib/file/datasets.ts`:** the `landcover-vectors` entry credits only ESA and needs OSM and the ODbL added. Its
-  description points users to the merge, and should mention stacking.
-- **`osm-landcover`:** on the Storage Box it is dated 2026-07-04, so it predates version 4. It needs either a rebuild
-  or a retirement (see [Open decisions](#open-decisions)).
-
-### versatiles-documentation (required)
-
-`compendium/specification_shortbread_landcover.md` describes only the merge and needs the stacked variant. Its filter
-is also out of date: it drops the land cover's `residential` from z10, while the current one drops it from z11.
-
-### landcover-vectors (this repository)
-
-- **README:** the size (~4.7 GB) and the introduction, which describes the merge as the way to use the data.
-- **`npm run verify-merge`:** on this build it fails with 7 `overlap` problems, all `land/residential` at z10. The
-  README documents exactly that overlap as intended, while the check still expects one source per kind. So the check
-  needs updating; nothing suggests the data is wrong. It only concerns the merge, not stacking.
-- **Dev views:** `stacked` and `stacked-fade` can go once versatiles-style has the feature.
+  description points users to the merge, and should describe the stacked style.
+- **`osm-landcover`:** remove its entry, if it has one, and delete the file from R2 after `/tiles/osm/` is switched.
 
 ### Not checked
 
@@ -151,20 +147,20 @@ versatiles-svg-renderer, versatiles-studio, playground and versatiles-org.github
 
 ## Open decisions
 
-1. **Keep the merged `osm-landcover`?** Retiring it after the switch saves a 69 GB rebuild for each release, but users
-   who download it lose the land cover at low zooms unless they also take the second file and the new style. If it
-   stays, it needs a rebuild with version 4 and a fixed `verify-merge`.
-2. **Keep Shortbread's layers and kinds?** They let the merge keep working and need no rebuild. A single `landcover`
-   layer with its own kinds would be cleaner for stacking, but it needs a full rebuild and breaks the merge. It is
-   cheaper to decide before clients depend on the separate source.
-3. **Replace version 3 in place, or publish with a date?** Replacing is what has been done so far. A dated name keeps
-   version 3 available while `osm-landcover` still contains older data.
+1. **The schema's name.** No other project has a schema field like `tile_schema`: Mapbox, OpenMapTiles,
+   Protomaps and Planetiler name a tileset's schema in `name`, `id` or `version`. Where one tileset combines
+   several, Mapbox and OGC's tileset metadata describe it per layer (Mapbox's `vector_layers[].source`), not as a
+   list at the top. The extended TileJSON spec's pattern is `<family>[/<subtype>][@<version>]`, and its DEM values
+   name the data first and the variant second (`dem/mapbox`). Candidates: `landcover/versatiles@1.0`,
+   `versatiles/landcover@1.0`.
+2. **Replace version 3 in place, or publish with a date?** Replacing is what has been done so far. With
+   `osm-landcover` retired, nothing depends on version 3 staying available.
 
 ## Suggested order
 
-1. Upload version 4 and publish it on download.versatiles.org, with the corrected attribution.
-2. Push `main` of this repository.
-3. Serve `landcover-vectors` on tiles.versatiles.org.
-4. Release versatiles-style with stacking, and update the documentation.
-5. Roll out the new styles, then switch `/tiles/osm/` to plain OSM.
-6. Rebuild or retire `osm-landcover`.
+1. Settle the schema's name, and add it to versatiles-rs and the TileJSON spec.
+2. Rebuild version 4 with the `landcover` layer, then upload and publish it with the corrected attribution.
+3. Push `main` of this repository.
+4. Serve `landcover-vectors` on tiles.versatiles.org.
+5. Release versatiles-style with stacking, and update the documentation.
+6. Roll out the new styles, switch `/tiles/osm/` to plain OSM, and delete `osm-landcover` from R2.
