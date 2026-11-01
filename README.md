@@ -497,7 +497,6 @@ to measure a change, and what the measurements so far say, is in [doc/TUNING.md]
 ## License
 
 - [ESA Worldcover](https://esa-worldcover.org/en/data-access) is licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/)
-- The Versatiles Landcover Vectors tileset is derived from ESA Worldcover and therefore also licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/)
 - The ocean mask is [OSM's water polygons](https://osmdata.openstreetmap.de/data/water-polygons.html), © OpenStreetMap contributors, [ODbL](https://opendatacommons.org/licenses/odbl/)
-- From version 4 on, the tileset also holds OSM's land use, burned into ESA's classes: © OpenStreetMap contributors, [ODbL](https://opendatacommons.org/licenses/odbl/)
+- From version 4 on, the tileset holds OSM's land use, burned into ESA's classes, so it is licensed under the [ODbL](https://opendatacommons.org/licenses/odbl/), © OpenStreetMap contributors, and contains ESA WorldCover data under [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/). Up to version 3 it was derived from ESA WorldCover alone and licensed CC BY 4.0.
 - The code in this repository is in the [Public Domain](http://unlicense.org/UNLICENSE)

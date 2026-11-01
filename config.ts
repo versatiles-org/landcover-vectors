@@ -353,12 +353,17 @@ export const SEA_SHARE_MIN = 50;
 // versatiles knows no schema for it yet: it refuses a value it does not know, so this stays `other` until it does.
 export const SCHEMA = 'other';
 
-// metadata embedded in the generated tilesets; `description` carries ESA's required credit word for word
+// OSM's attribution exactly as its Shortbread tiles carry it, so that a map drawing both sources shows it once:
+// MapLibre drops an attribution that is part of another one
+const OSM_ATTRIBUTION =
+	'<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>';
+
+// metadata embedded in the generated tilesets; `description` carries ESA's required credit word for word. OSM's
+// land use is burned in, so the container falls under OSM's licence, the ODbL, too.
 export const meta = {
 	name: 'VersaTiles Landcover Vectors',
-	attribution:
-		'<a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a> (<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>), coastline and land use <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>',
-	description: `Global land cover for zoom levels 0-${MAXLEVEL} from ESA WorldCover 2021 (v200) with OpenStreetMap's land use burned in, in one layer, landcover, with Shortbread's kinds. © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium`,
+	attribution: `${OSM_ATTRIBUTION} · <a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a> (<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>)`,
+	description: `Global land cover for zoom levels 0-${MAXLEVEL} from ESA WorldCover 2021 (v200) with OpenStreetMap's land use burned in, in one layer, landcover, with Shortbread's kinds. © OpenStreetMap contributors, ODbL. © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium`,
 	// the tileset's revision (MBTiles `version`): raise it with every published build whose tiles differ
 	version: '4',
 	// where a viewer opens the container: [lon, lat, zoom]
