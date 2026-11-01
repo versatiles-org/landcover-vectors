@@ -164,10 +164,11 @@ a browser.
 
 ### tools (after the upload)
 
-Issue drafted, not filed yet: the server setup offers OSM, satellite and elevation, and should offer
-`landcover-vectors` too. That means a map option, a size index built from the download, and its checksum in CI's
-cache key. With four maps, two generated lines get too long for the layout test. Work on it only after version 4 is
-on download.versatiles.org: until then that URL has version 3, whose layers no style draws on its own.
+[tools#67](https://github.com/versatiles-org/tools/issues/67): the server setup offers OSM, satellite and
+elevation, and should offer `landcover-vectors` too. That means a map option, a size index built from the download,
+and its checksum in CI's cache key. With four maps, two generated lines get too long for the layout test. Work on it
+only after version 4 is on download.versatiles.org: until then that URL has version 3, whose layers no style draws
+on its own.
 
 ### Not checked
 
@@ -186,7 +187,7 @@ versatiles-svg-renderer, versatiles-studio, playground and versatiles-org.github
 2. ~~Remove the land cover merge from versatiles-planetiler (versatiles-docker#60).~~
 3. Rebuild version 4 with the `landcover` layer and the schema, then upload and publish it with the corrected
    attribution.
-4. Serve `landcover-vectors` on tiles.versatiles.org, and offer it in tools' server setup.
+4. Serve `landcover-vectors` on tiles.versatiles.org, and offer it in tools' server setup (tools#67).
 5. Release versatiles-style with stacking (versatiles-style#145), and update the documentation
    (versatiles-documentation#96).
 6. Roll out the new styles, switch `/tiles/osm/` to plain OSM, and delete `osm-landcover` from R2.
