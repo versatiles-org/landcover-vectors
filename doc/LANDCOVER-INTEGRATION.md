@@ -22,6 +22,8 @@ full rebuild before it is uploaded. No other repository has changed yet; the iss
   field like `tile_schema`; where one tileset combines several schemas, Mapbox and OGC's tileset metadata describe
   them per layer, so a joined name like `shortbread@1.1+…` has no precedent. The name follows the spec's
   `<family>[/<subtype>][@<version>]` and keeps VersaTiles' own schemas together.
+- **Version 4 replaces version 3 in place**, as `landcover-vectors.versatiles`, without a date in the name. That is
+  how it has been published so far, and with `osm-landcover` retired, nothing depends on version 3 staying available.
 
 ## The data
 
@@ -194,11 +196,6 @@ The reference implementation is `landcoverLayers` and `stackedStyle` in `lib/sty
 These may expose `features.landcover` or assume a single vector source. They need a look once the style's API is
 settled: versatiles-frontend, maplibre-versatiles-styler, editor, maputnik, node-versatiles-svelte,
 versatiles-svg-renderer, versatiles-studio, playground and versatiles-org.github.io.
-
-## Open decisions
-
-1. **Replace version 3 in place, or publish with a date?** Replacing is what has been done so far. With
-   `osm-landcover` retired, nothing depends on version 3 staying available.
 
 ## Suggested order
 
