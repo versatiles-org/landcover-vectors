@@ -112,7 +112,9 @@ Released in 5.6.0, which this repository's pack uses through `@versatiles/versat
 
 ### download.versatiles.org (open)
 
-No issue yet.
+[download.versatiles.org#43](https://github.com/versatiles-org/download.versatiles.org/issues/43). The page has
+listed neither `landcover-vectors` nor `osm-landcover` since the update of 2026-10-27: both are gone from the Storage
+Box, and stay downloadable from R2.
 
 - **Publishing** follows `docs/runbook.md`. Put the file on the Storage Box as
   `download/landcover-vectors/landcover-vectors.versatiles`, with its `.md5` and `.sha256`, and start the Update
@@ -203,7 +205,7 @@ versatiles-svg-renderer, versatiles-studio, playground and versatiles-org.github
 1. ~~Settle the schema's name, and release versatiles-rs#300 or #301~~ (5.6.0); add the value to the TileJSON spec.
 2. ~~Remove the land cover merge from versatiles-planetiler (versatiles-docker#60).~~
 3. Rebuild version 4 with the `landcover` layer and the schema, then upload and publish it with the corrected
-   attribution.
+   attribution (download.versatiles.org#43).
 4. Serve `landcover-vectors` on tiles.versatiles.org, and offer it in tools' server setup (tools#67).
 5. Release versatiles-style with stacking (versatiles-style#145), and update the documentation
    (versatiles-documentation#96).
