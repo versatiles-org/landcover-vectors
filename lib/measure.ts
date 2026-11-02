@@ -61,7 +61,8 @@ export type Raster = { masks: Masks; bytes: number; features: number; tiles: num
 export async function rasterise(source: TileReader, z: number, win: Window): Promise<Raster> {
 	const n = win.side * PX;
 	const masks: Masks = new Map();
-	const f = 2 ** (z - WINDOW_ZOOM);
+	const gridZoom = win.zoom ?? WINDOW_ZOOM;
+	const f = 2 ** (z - gridZoom);
 	const [tx0, ty0] = [Math.floor(win.x0 * f), Math.floor(win.y0 * f)];
 	const [tx1, ty1] = [Math.ceil((win.x0 + win.side) * f), Math.ceil((win.y0 + win.side) * f)];
 	const jobs: [number, number][] = [];
@@ -75,7 +76,7 @@ export async function rasterise(source: TileReader, z: number, win: Window): Pro
 			for (const layer of decodeTile(buf)) {
 				if (!LAYERS.includes(layer.name)) continue;
 				// tile units → grid pixels
-				const scale = (PX * 2 ** (WINDOW_ZOOM - z)) / layer.extent;
+				const scale = (PX * 2 ** (gridZoom - z)) / layer.extent;
 				const ox = (tx / f - win.x0) * PX;
 				const oy = (ty / f - win.y0) * PX;
 				for (const feature of layer.features) {
@@ -393,11 +394,11 @@ export function kindGrid(masks: Masks, n: number): Uint8Array {
 	return out;
 }
 
-// The share of the zoom's rendered pixels (2^(12−z) grid px a side) where the tiles show what the source has, both
+// The share of the zoom's rendered pixels (2^(gridZoom−z) grid px a side) where the tiles show what the source has, both
 // taken as the pixel's majority: the scale the sieve and the simplify work at (as `npm run inspect`'s @256). At z8
 // the block read the source's mode overview instead, a majority of majorities: close, not the same.
-export function agreement(truth: Uint8Array, shown: Uint8Array, n: number, z: number): number {
-	const factor = 2 ** (WINDOW_ZOOM - z);
+export function agreement(truth: Uint8Array, shown: Uint8Array, n: number, z: number, gridZoom = WINDOW_ZOOM): number {
+	const factor = 2 ** (gridZoom - z);
 	const [a, b] = [majority(truth, n, factor), majority(shown, n, factor)];
 	let same = 0;
 	for (let i = 0; i < a.length; i++) if (a[i] === b[i]) same++;
@@ -410,9 +411,9 @@ export function agreement(truth: Uint8Array, shown: Uint8Array, n: number, z: nu
 // map crosses into z and swaps its tiles. rasterise puts both zooms on one grid, as overzooming the coarser tile does.
 // Lower is better, but only while agreement and bytes hold: a blank tileset scores 0. Null if either zoom has no tiles
 // in the window, which would otherwise count as a change to or from nothing.
-export function stepChange(coarse: Raster, fine: Raster, n: number, z: number): number | null {
+export function stepChange(coarse: Raster, fine: Raster, n: number, z: number, gridZoom = WINDOW_ZOOM): number | null {
 	if (!coarse.bytes || !fine.bytes) return null;
-	return Math.round(10 * (100 - agreement(kindGrid(coarse.masks, n), kindGrid(fine.masks, n), n, z))) / 10;
+	return Math.round(10 * (100 - agreement(kindGrid(coarse.masks, n), kindGrid(fine.masks, n), n, z, gridZoom))) / 10;
 }
 
 // stepChange for each of these zooms over a window
@@ -424,7 +425,7 @@ export async function zoomSteps(
 	const out: Record<string, number | null> = {};
 	for (const z of zooms) {
 		const [coarse, fine] = await Promise.all([rasterise(source, z - 1, win), rasterise(source, z, win)]);
-		out[`z${z}`] = stepChange(coarse, fine, win.side * PX, z);
+		out[`z${z}`] = stepChange(coarse, fine, win.side * PX, z, win.zoom);
 	}
 	return out;
 }
@@ -432,7 +433,7 @@ export async function zoomSteps(
 // a window's pixels of a raster on the build's grid (lib/regionsource.ts), which is the measurement's
 export async function readWindow(tif: string, win: Window, scratch: string): Promise<Uint8Array> {
 	const n = win.side * PX;
-	const span = (2 * MERC) / 2 ** WINDOW_ZOOM;
+	const span = (2 * MERC) / 2 ** (win.zoom ?? WINDOW_ZOOM);
 	const [ulx, uly] = [-MERC + win.x0 * span, MERC - win.y0 * span];
 	await fs.mkdir(scratch, { recursive: true });
 	const pgm = path.join(scratch, `${path.basename(tif, '.tif')}-window.pgm`);
@@ -440,6 +441,8 @@ export async function readWindow(tif: string, win: Window, scratch: string): Pro
 		'gdal_translate',
 		'-q',
 		['-of', 'PNM'],
+		['-outsize', n, n], // a window of low zoom reads the raster's overview for this grid
+		['-r', 'nearest'],
 		['-projwin', ulx, uly, ulx + win.side * span, uly - win.side * span],
 		tif,
 		pgm,

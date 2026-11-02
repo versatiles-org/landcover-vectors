@@ -259,12 +259,71 @@ The published container, per region:
 Reading these numbers:
 
 - A zoom needs the one below it. An experiment therefore also builds z7, so a build from before that has no z8 step.
-- The regions are 64 rendered px across at z8, too few to go lower. A sweep measures up to 16 × 16 z12 tiles in the middle
-  of its area, not all of it, and only zooms where that window is at least 64 rendered px across, so z6 and up.
+- The regions are 64 rendered px across at z8, too few to go lower. A sweep measures whole tiles of each zoom in the
+  middle of its area, not all of it: one tile at z6 and below, a quarter of the world at z1, and up to 5 × 5 at z10.
 - Every pixel in the window counts, sea included, so values compare better between variants of one region than between
   regions.
 - All kinds count equally: forest to water weighs the same as grassland to scrub, although the second looks much
   milder on a map.
+
+### What sieve and detail can do
+
+`npm run sweep -- --zoom 0-10` over three areas, one knob at a time. **Current** is the config as it is: detail 1.5, and
+the sieve ramp up to z8 with 5 px² from z9. A sieve row sets that sieve at every zoom instead, with detail 1.5; a detail
+row keeps the ramp. Bytes are the gzipped tiles of all zooms the area's blocks plan. Agreement is against the source's
+pyramid, sea included, so it reads higher than the land-only figures above; every value is on whole tiles in the middle of
+the area, in `doc/size-baseline.json` per zoom.
+
+`hudson-bay`:
+
+| setting     | bytes % | agreement z10 | agreement z7 | step z10 | step z9 | step z8 | step z7 | step z4 |
+| ----------- | ------: | ------------: | -----------: | -------: | ------: | ------: | ------: | ------: |
+| sieve 1     |     +53 |          85.0 |         76.3 |     18.5 |    20.3 |    21.1 |    23.4 |     5.2 |
+| sieve 2     |     +24 |          83.2 |         74.0 |     19.0 |    20.4 |    22.2 |    24.6 |     5.5 |
+| sieve 3     |     +10 |          81.6 |         71.8 |     19.3 |    20.7 |    23.0 |    25.6 |     5.8 |
+| sieve 5     |      −7 |          78.9 |         67.8 |     19.6 |    21.4 |    24.6 |    27.7 |     5.9 |
+| sieve 8     |     −19 |          76.1 |         63.6 |     19.8 |    22.2 |    26.6 |    29.4 |     6.0 |
+| detail 1    |     −20 |          77.2 |         70.6 |     20.4 |    20.0 |    23.2 |    25.3 |     5.8 |
+| **current** |       0 |          78.9 |         72.7 |     19.6 |    18.9 |    22.3 |    24.5 |     5.4 |
+| detail 2    |     +16 |          79.7 |         73.5 |     19.2 |    18.6 |    21.9 |    24.2 |     5.2 |
+| detail 3    |     +40 |          80.5 |         74.2 |     19.0 |    18.4 |    21.7 |    24.0 |     5.1 |
+
+`nile-delta`:
+
+| setting     | bytes % | agreement z10 | agreement z7 | step z10 | step z9 | step z8 | step z7 | step z4 |
+| ----------- | ------: | ------------: | -----------: | -------: | ------: | ------: | ------: | ------: |
+| sieve 1     |     +32 |          94.8 |         98.1 |      5.8 |     5.4 |     4.3 |     1.7 |     3.8 |
+| sieve 2     |      +7 |          94.4 |         98.0 |      5.9 |     5.6 |     4.3 |     1.7 |     3.8 |
+| sieve 3     |      −5 |          94.0 |         97.9 |      6.0 |     5.8 |     4.3 |     1.7 |     3.9 |
+| sieve 5     |     −19 |          93.3 |         97.7 |      6.2 |     6.0 |     4.3 |     1.7 |     3.9 |
+| sieve 8     |     −29 |          92.5 |         97.5 |      6.4 |     6.0 |     4.2 |     1.8 |     4.0 |
+| detail 1    |     −19 |          92.7 |         97.7 |      6.5 |     5.6 |     4.4 |     1.9 |     4.1 |
+| **current** |       0 |          93.3 |         97.9 |      6.2 |     5.2 |     4.2 |     1.7 |     3.8 |
+| detail 2    |     +16 |          93.6 |         98.0 |      6.0 |     5.0 |     4.1 |     1.7 |     3.6 |
+| detail 3    |     +40 |          93.9 |         98.1 |      5.9 |     4.9 |     4.1 |     1.6 |     3.5 |
+
+The Ruhr, `6,51,8,52`:
+
+| setting     | bytes % | agreement z10 | agreement z7 | step z10 | step z9 | step z8 | step z7 | step z4 |
+| ----------- | ------: | ------------: | -----------: | -------: | ------: | ------: | ------: | ------: |
+| sieve 1     |     +40 |          91.9 |         84.0 |     10.7 |    12.2 |    13.6 |    14.2 |     8.6 |
+| sieve 2     |     +13 |          91.1 |         82.6 |     11.3 |    12.6 |    13.9 |    14.2 |     8.7 |
+| sieve 3     |      −1 |          90.3 |         81.2 |     11.7 |    12.8 |    14.1 |    14.6 |     8.7 |
+| sieve 5     |     −17 |          88.8 |         79.1 |     12.2 |    13.0 |    14.5 |    14.7 |     9.0 |
+| sieve 8     |     −28 |          87.0 |         76.8 |     12.5 |    13.3 |    14.9 |    14.8 |     9.5 |
+| detail 1    |     −19 |          87.5 |         80.0 |     12.9 |    12.2 |    14.4 |    14.5 |     9.0 |
+| **current** |       0 |          88.8 |         81.7 |     12.2 |    11.3 |    13.6 |    14.1 |     8.6 |
+| detail 2    |     +16 |          89.3 |         82.4 |     12.0 |    10.9 |    13.3 |    14.0 |     8.4 |
+| detail 3    |     +39 |          89.9 |         83.1 |     11.8 |    10.7 |    13.2 |    14.1 |     8.4 |
+
+- The settings move the step little: from sieve 8 to sieve 1, it falls 0.6–1.8 points at z10, for about 1.9× the bytes. Between the areas, it differs by 13 points at z10. So the landscape decides it far more than these
+  two settings do.
+- At z10 a lower sieve beats a higher detail: at equal z10 bytes, sieve 3 and detail 2 reach the same step within 0.3 points,
+  and sieve 3 agrees better by 0.4–1.9 points.
+- The sieve's rise between zooms seems to matter. At z9, the current ramp (3 px² at z8, 5 at z9) has a lower step in all
+  three areas than sieve 3 or sieve 5 at both zooms: 18.9 against 20.7 and 21.4 in Hudson Bay. z10, with 5 px² at z9 and at z10, has no such rise.
+  One comparison, not yet tested on its own.
+- Compare rows, not zooms: the window is one tile up to z6, and which land and sea it holds changes with the zoom.
 
 ## Sweeps and `inspect`
 

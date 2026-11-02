@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { REGIONS, windowAt, windowIn, extentTiles, extentLonLat, WINDOW_ZOOM } from '../lib/regions.ts';
+import { REGIONS, windowAt, windowIn, tilesWindow, extentTiles, extentLonLat, WINDOW_ZOOM } from '../lib/regions.ts';
 import { regionGrid, regionKeys, pyramidVrt } from '../lib/regionsource.ts';
 import { VARIANTS, paramsFor, burnsOf } from '../lib/variants.ts';
 import {
@@ -59,6 +59,19 @@ describe('the test regions', () => {
 		assert.equal(narrow.side, 2, '0.2° is 2.3 z12 tiles');
 		assert.equal(windowIn({ west: 0, south: 0, east: 0.01, north: 0.01 }).side, 1, 'a tiny box still gets a tile');
 		assert.equal(windowIn({ west: -180, south: 80, east: 180, north: 90 }).y0 >= 0, true, 'nothing past the pole');
+	});
+
+	test('tilesWindow takes whole tiles of the zoom around the middle of a box, at any zoom', () => {
+		const box = { west: 1, south: 1, east: 3, north: 3 };
+		const z10 = tilesWindow(box, 10);
+		assert.equal(z10.zoom, 12);
+		assert.ok(z10.side % 4 === 0 && z10.x0 % 4 === 0 && z10.y0 % 4 === 0, 'whole z10 tiles');
+		assert.ok(z10.side >= 16, 'at least the 16 z12 tiles of windowIn');
+		assert.deepEqual(
+			tilesWindow(box, 1),
+			{ x0: 4, y0: 0, side: 4, zoom: 3 },
+			'the one z1 tile north-east of the origin',
+		);
 	});
 
 	test("a region's grid is whole z10 tiles, so every overview level's pixels are the world's", () => {
@@ -318,6 +331,16 @@ describe('the zoom step', () => {
 			['landcover/water', speck],
 		]);
 		assert.equal(stepChange(raster([['landcover/forest', forest]]), specked, n, 11), 0);
+	});
+
+	test('a grid finer than the window zoom compares at the rendered pixels of the zoom', () => {
+		// the same 8 px grid read as z3 tiles: at z2 its rendered pixel is 2 grid px, so one speck is a quarter pixel
+		const whole = raster([['landcover/forest', forest]]);
+		const split = raster([
+			['landcover/forest', landForest],
+			['landcover/water', water],
+		]);
+		assert.equal(stepChange(whole, split, n, 2, 3), 25);
 	});
 
 	test('a zoom without tiles has no value, rather than a change from nothing', async () => {

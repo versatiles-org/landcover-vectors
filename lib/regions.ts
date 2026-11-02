@@ -14,7 +14,8 @@ const LAT_LIMIT = 85.0511287798066; // the Mercator limit: no tiles beyond it
 // full build: its margin is 27 raw pixels, 4 km at z8, and a z10 tile is 39 km (in Mercator metres)
 const EXTENT_PAD = 1;
 
-export type Window = { x0: number; y0: number; side: number }; // z12 tiles, x0/y0 the top-left one
+// tiles of `zoom` (default WINDOW_ZOOM), x0/y0 the top-left one; a grid has PX pixels per one of them
+export type Window = { x0: number; y0: number; side: number; zoom?: number };
 export type Region = { center: [number, number]; why: string; window: Window };
 
 // the window of z12 tiles centred on a point
@@ -59,6 +60,17 @@ export const REGIONS: Record<string, Region> = {
 	alps: region(8.0, 46.65, 'mountains, glacier, valley villages'),
 	'hudson-bay': region(-88, 55, 'no OSM land use: a control, and the largest tiles'),
 };
+
+// For measuring zoom z of an area's build, at any zoom: the whole tiles of z that cover windowIn(box), which exist as
+// they touch the box, and so do their parents. As a window of z + 2 tiles, whose grid has 4 pixels per rendered pixel:
+// the z12 grid's at z10. Not square-rendered-size alike across zooms: 1 tile a side at z6 and below, up to 5 at z10.
+export function tilesWindow(box: LonLat, z: number): Window {
+	const w = windowIn(box);
+	const f = 2 ** (z - WINDOW_ZOOM);
+	const [x0, y0] = [Math.floor(w.x0 * f), Math.floor(w.y0 * f)];
+	const [x1, y1] = [Math.ceil((w.x0 + w.side) * f), Math.ceil((w.y0 + w.side) * f)];
+	return { x0: x0 * 4, y0: y0 * 4, side: Math.max(x1 - x0, y1 - y0) * 4, zoom: z + 2 };
+}
 
 // the z10 tiles a region's source covers: its window's, padded (x1/y1 exclusive)
 export function extentTiles(w: Window): { x0: number; y0: number; x1: number; y1: number } {

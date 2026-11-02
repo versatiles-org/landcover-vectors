@@ -7,8 +7,8 @@
 // part of the config fingerprint — measured with the same code `npm run stats` uses and recorded in
 // doc/size-baseline.json as "<area>@<knob><value>". Then one reference tile (--tile, or the largest tile
 // of the first variant) is compared against its target with `npm run inspect`, for every variant side by
-// side, so size and quality come out of one run. Each variant's zoom step (lib/measure.ts) is measured and recorded
-// with its size, on a window in the middle of the area, for each zoom the sweep builds together with the one below.
+// side, so size and quality come out of one run. Each variant's agreement and zoom step (lib/measure.ts) are measured
+// and recorded with its size, per zoom, on whole tiles of that zoom in the middle of the area.
 //
 // Guessing is not a substitute: bytes against tolerance are far from 1/x (the Hudson Bay worst tile grew
 // 1.56×, not 4×, at DETAIL_PX 4), and the sieve trades texture against speckle in ways only the numbers show.
@@ -23,9 +23,9 @@ import { TileSource } from '@versatiles/versatiles-rs';
 
 import { resolveArea, parseZoomRange, areaSlug } from '../lib/areas.ts';
 import { readTiles, summarise, largest, budgetFlag, MVT_LIMIT, WARN_LIMIT, type ZoomStats } from '../lib/stats.ts';
-import { PX, zoomSteps } from '../lib/measure.ts';
-import { windowIn, WINDOW_ZOOM } from '../lib/regions.ts';
-import { datadir } from '../config.ts';
+import { agreement, kindGrid, PX, rasterise, readWindow, truthGrid, zoomSteps } from '../lib/measure.ts';
+import { tilesWindow } from '../lib/regions.ts';
+import { datadir, file } from '../config.ts';
 
 // the knobs a sweep can turn, and the environment variable config.ts reads each one from
 const KNOBS = {
@@ -90,15 +90,33 @@ type Variant = {
 	fingerprint: string;
 	tileset: string;
 	zooms: ZoomStats[];
+	agreement: Record<string, number | null>;
 	zoomStep: Record<string, number | null>;
 };
-const win = windowIn(resolveArea(opt.area));
-// a zoom's step needs the zoom below in the build, and enough rendered pixels in the window to mean something
-const MIN_WINDOW_PX = 64;
-const stepZooms: number[] = [];
-for (let z = minZoom + 1; z <= maxZoom; z++)
-	if (win.side * PX * 2 ** (z - WINDOW_ZOOM) >= MIN_WINDOW_PX) stepZooms.push(z);
+// Agreement with the source and the zoom step, per zoom, on the whole tiles of that zoom in the middle of the area
+const measured: number[] = [];
+for (let z = minZoom; z <= maxZoom; z++) measured.push(z);
 const results: Variant[] = [];
+
+async function quality(tileset: string): Promise<Pick<Variant, 'agreement' | 'zoomStep'>> {
+	const source = await TileSource.fromPath(tileset);
+	const [agree, step]: Record<string, number | null>[] = [{}, {}];
+	const box = resolveArea(opt.area!);
+	const scratch = path.join(datadir, 'inspect', 'sweep-tmp');
+	for (const z of measured) {
+		const win = tilesWindow(box, z);
+		const n = win.side * PX;
+		const truth = truthGrid(
+			await readWindow(file.classes, win, scratch),
+			await readWindow(file.seaShare, win, scratch),
+			z,
+		);
+		const shown = await rasterise(source, z, win);
+		agree[`z${z}`] = shown.bytes ? agreement(truth, kindGrid(shown.masks, n), n, z, win.zoom) : null;
+		if (z > minZoom) Object.assign(step, await zoomSteps(source, [z], win));
+	}
+	return { agreement: agree, zoomStep: step };
+}
 
 for (const value of values) {
 	console.error('\n═══ %s = %s ═══', KNOBS[knob].env, value);
@@ -119,7 +137,7 @@ for (const value of values) {
 		fingerprint: built.fingerprint,
 		tileset: built.tileset,
 		zooms: summarise(readTiles(built.tileset)),
-		zoomStep: await zoomSteps(await TileSource.fromPath(built.tileset), stepZooms, win),
+		...(await quality(built.tileset)),
 	});
 }
 
@@ -162,29 +180,23 @@ for (const r of results) {
 	);
 }
 
-// what crossing into each zoom changes, on the window
-if (stepZooms.length) {
-	console.error(
-		'\nzoom step, %d×%d z12 tiles in the middle of %s — %% of the rendered pixels where this zoom and the one below show a different kind',
-		win.side,
-		win.side,
-		opt.area,
-	);
+// what each zoom's tiles get right, and what crossing into each zoom changes
+const table = (title: string, cell: (r: Variant, z: number) => string) => {
+	console.error('\n%s', title);
 	console.error(
 		['  z', ...results.map((r) => `${knob} ${r.value}`)]
 			.map((s, i) => (i ? s.padStart(12) : s.padStart(3)))
 			.join(' '),
 	);
-	for (const z of stepZooms)
-		console.error(
-			[String(z).padStart(3), ...results.map((r) => String(r.zoomStep[`z${z}`] ?? '—').padStart(12))].join(' '),
-		);
-} else {
-	console.error(
-		'\nno zoom step: it needs two neighbouring zooms in --zoom, and a window of %d rendered px',
-		MIN_WINDOW_PX,
-	);
-}
+	for (const z of measured)
+		console.error([String(z).padStart(3), ...results.map((r) => cell(r, z).padStart(12))].join(' '));
+};
+const zoomOf = (r: Variant, z: number) => r.zooms.find((x) => x.z === z);
+table('total KB per zoom, whole tiles planned for the area', (r, z) => kb(zoomOf(r, z)?.bytes ?? 0));
+table('agreement with the source, % of rendered pixels', (r, z) => String(r.agreement[`z${z}`] ?? '—'));
+table('zoom step, % of rendered pixels where this zoom and the one below show a different kind', (r, z) =>
+	String(r.zoomStep[`z${z}`] ?? '—'),
+);
 
 // record every variant so a later session can compare without rebuilding
 type Baseline = { entries: Record<string, unknown> };
@@ -204,6 +216,7 @@ for (const r of results) {
 		written: new Date().toISOString(),
 		note: `sweep: ${[`${KNOBS[knob].env}=${r.value}`, ...others.map((o) => `${o.env}=${o.value}`)].join(', ')}, area ${opt.area}, z${minZoom}-${maxZoom}`,
 		zooms: r.zooms,
+		agreement: r.agreement,
 		zoomStep: r.zoomStep,
 	};
 }
