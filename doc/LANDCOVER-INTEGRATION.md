@@ -3,9 +3,9 @@
 Version 4 of `landcover-vectors` is drawn as a **source of its own under OSM**, instead of being merged into OSM's
 tiles. This document describes the data, how a style uses it, and what other repositories have to change.
 
-Status on 2026-11-01: the code writes a single `landcover` layer, and the merged `osm-landcover` is retired. The
-container built from commit `ac26416` still has Shortbread's `land` and `water_polygons` layers, so version 4 needs a
-full rebuild before it is uploaded. No other repository has changed yet; the issues below track what they need.
+Status on 2026-11-02: version 4 is published on download.versatiles.org and served on tiles.versatiles.org, and the
+merged `osm-landcover` is retired. versatiles-style's stacked style (versatiles-style#145) is next; the issues below
+track what the other repositories still need.
 
 ## Decisions
 
@@ -13,8 +13,8 @@ full rebuild before it is uploaded. No other repository has changed yet; the iss
   `water_polygons`, so a Shortbread style can't mistake it for OSM, and a style copies its fills from one source
   layer. The `kind` values stay Shortbread's, so versatiles-style's colours apply as they are.
 - **The merged `osm-landcover` is retired.** It is deleted from the Storage Box. The download updater never deletes
-  from R2, so `/tiles/osm/` keeps serving it from the CDN until it is switched to plain OSM. Delete it from R2 only
-  after that switch (`docs/runbook.md` in download.versatiles.org). This repository no longer has merge tooling.
+  from R2, so `/tiles/osm/` serves it until its switch to plain OSM is in place. Delete it from R2 only after that
+  switch (`docs/runbook.md` in download.versatiles.org). This repository no longer has merge tooling.
 - **Attribution and licence.** The container is licensed under the ODbL and contains ESA WorldCover data under
   CC BY 4.0. Its `attribution` starts with OSM's attribution exactly as OSM's Shortbread tiles carry it, so that
   MapLibre, which drops an attribution contained in another one, shows OSM's credit once on a map that draws both.
@@ -122,34 +122,24 @@ and to ESA, and described as a separate source. The `osm-landcover` entry is gon
 Left for step 6: delete `osm-landcover.versatiles` from R2, but only after `/tiles/osm/` is switched
 (tiles.versatiles.org#39). Until then that server mirrors it, and the download updater never deletes from R2.
 
-### tiles.versatiles.org (open)
+### tiles.versatiles.org (done)
 
-[tiles.versatiles.org#39](https://github.com/versatiles-org/tiles.versatiles.org/issues/39): `/tiles/osm/` is
-served from the merged `osm-landcover.versatiles`, and `landcover-vectors` isn't served at all: its `tiles.json`
-returns 404. In `download/sources.json`:
+[tiles.versatiles.org#39](https://github.com/versatiles-org/tiles.versatiles.org/issues/39), closed by 7b29204 on
+2026-11-02. `landcover-vectors` is served at `/tiles/landcover-vectors/`, version 4 from 1d360db. In the same update,
+`osm` was switched to plain `osm.versatiles`. The merged file is served until the plain one has downloaded, and the
+update clears nginx's cache once it is in place. Until then, `tiles.json` requested without compression returns a
+404 cached from before.
 
-- Add `landcover-vectors` as a served dataset.
-- Later, serve `osm` from plain `osm.versatiles` by removing `"source": "osm-landcover"`.
-- Update `tests/expected` and the README.
-
-**Order matters.** Switching `osm` to plain tiles removes the land cover at z0–10 for every client whose style still
-expects the merge. So first serve `landcover-vectors`, then release and roll out the new style, and only then switch
-`osm`.
-
-The new style works over today's merged `osm` nearly unchanged. Its stock layers draw the merged copy of a kind on
-top of the land cover in the same colour, so it only shows where that copy, from the land cover of July 2026,
-differs from version 4. Painted like the experiment paints a map (`lib/measure.ts`), the top fill at z7–10 changes
-on 0–0.3 % of the pixels in 8 of the 10 test regions, 0.6 % in Atlanta at z10, and up to 1.3 % in Hudson Bay,
-mostly old wetland over new water. That count leaves out fills below half their opacity, and it was not looked at in
-a browser.
+**The switch comes before the style.** The plan was to switch `osm` only after the stacked style is rolled out. Once
+plain OSM is served, the hosted styles (v7.1.0) show no land cover at z0–10 until versatiles-style#145 is released
+and rolled out. That gap is accepted.
 
 ### tools (open)
 
 [tools#67](https://github.com/versatiles-org/tools/issues/67): the server setup offers OSM, satellite and
 elevation, and should offer `landcover-vectors` too. That means a map option, a size index built from the download,
-and its checksum in CI's cache key. With four maps, two generated lines get too long for the layout test. Work on it
-only after version 4 is on download.versatiles.org: until then that URL has version 3, whose layers no style draws
-on its own.
+and its checksum in CI's cache key. With four maps, two generated lines get too long for the layout test. Version 4 is
+on download.versatiles.org and tiles.versatiles.org, so it can start.
 
 ### versatiles-style (open)
 
@@ -162,9 +152,9 @@ on its own.
   stock OSM layers stay unchanged.
 
 Today `features.landcover` means "the tiles are a merge": it removes the fade-ins of the stock layers, and adds no
-source. Changing its meaning makes this a major release; the merged mode isn't kept. The stacked style also works over
-today's merged `/tiles/osm/` (see [tiles.versatiles.org](#tilesversatilesorg-open)), so the release can come before
-that switch. Also:
+source. Changing its meaning makes this a major release; the merged mode isn't kept. `/tiles/osm/` is plain OSM by now (see
+[tiles.versatiles.org](#tilesversatilesorg-done)), so until the release the hosted styles have no land cover at
+z0–10. Also:
 
 - `osm.supportsLandcover(tileJSON)` tells whether an OSM tileset is merged. It can go, or tell whether a TileJSON is a
   land cover tileset instead.
@@ -202,7 +192,8 @@ versatiles-svg-renderer, versatiles-studio, playground and versatiles-org.github
 2. ~~Remove the land cover merge from versatiles-planetiler (versatiles-docker#60).~~
 3. ~~Rebuild version 4 with the `landcover` layer and the schema, then upload and publish it with the corrected
    attribution (download.versatiles.org#43).~~
-4. Serve `landcover-vectors` on tiles.versatiles.org, and offer it in tools' server setup (tools#67).
-5. Release versatiles-style with stacking (versatiles-style#145), and update the documentation
-   (versatiles-documentation#96).
-6. Roll out the new styles, switch `/tiles/osm/` to plain OSM, and delete `osm-landcover` from R2.
+4. ~~Serve `landcover-vectors` and plain OSM on tiles.versatiles.org (tiles.versatiles.org#39).~~ The switch came
+   before the style, see [tiles.versatiles.org](#tilesversatilesorg-done).
+5. Release versatiles-style with stacking (versatiles-style#145), and roll the new styles out on
+   tiles.versatiles.org. Offer the land cover in tools' server setup (tools#67).
+6. Update the documentation (versatiles-documentation#96), and delete `osm-landcover` from R2.
