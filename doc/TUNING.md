@@ -320,10 +320,32 @@ The Ruhr, `6,51,8,52`:
   two settings do.
 - At z10 a lower sieve beats a higher detail: at equal z10 bytes, sieve 3 and detail 2 reach the same step within 0.3 points,
   and sieve 3 agrees better by 0.4–1.9 points.
-- The sieve's rise between zooms seems to matter. At z9, the current ramp (3 px² at z8, 5 at z9) has a lower step in all
-  three areas than sieve 3 or sieve 5 at both zooms: 18.9 against 20.7 and 21.4 in Hudson Bay. z10, with 5 px² at z9 and at z10, has no such rise.
-  One comparison, not yet tested on its own.
+- The sieve's rise between zooms matters: at z9, the current ramp (3 px² at z8, 5 at z9) has a lower step in all three
+  areas than sieve 3 or sieve 5 at both zooms: 18.9 against 20.7 and 21.4 in Hudson Bay. See below.
 - Compare rows, not zooms: the window is one tile up to z6, and which land and sea it holds changes with the zoom.
+
+### The sieve's rise between z9 and z10
+
+A sieve in rendered px keeps smaller patches on the ground at the higher zoom, so a rise from one zoom to the next should
+bring their patches closer. Tiles of a zoom depend only on that zoom's sieve, so a flat sweep over z8–10 gives every
+combination. Means over four boxes of 1.5° × 1.5° (Hudson Bay, the Ruhr, the Nile delta, the Alps), with z8 at 3 px².
+Bytes are each zoom's change in the boxes, weighted by its share of the planet (`SIZE_SHARE`), so an estimate:
+
+| z9 → z10 sieve | step z9 | step z10 | sum  | agreement z9 | agreement z10 | bytes % |
+| -------------- | ------- | -------- | ---- | ------------ | ------------- | ------- |
+| **5 → 5**      | 11.65   | 11.83    | 23.5 | 85.05        | 88.33         | 0       |
+| 4 → 5          | 12.28   | 11.10    | 23.4 | 85.83        | 88.33         | +1.6    |
+| 3 → 5          | 12.95   | 10.30    | 23.3 | 86.68        | 88.33         | +3.5    |
+| 2 → 5          | 13.78   | 9.30     | 23.1 | 87.67        | 88.33         | +6.4    |
+| 3 → 3          | 12.95   | 11.45    | 24.4 | 86.68        | 89.73         | +14.7   |
+| 5 → 8          | 11.65   | 10.48    | 22.1 | 85.05        | 86.72         | −8.3    |
+| 4 → 8          | 12.28   | 9.75     | 22.0 | 85.83        | 86.72         | −6.7    |
+| 3 → 8          | 12.95   | 8.93     | 21.9 | 86.68        | 86.72         | −4.8    |
+
+The rise lowers z10's step in all four boxes. A lower z9 sieve only moves the change, though: z9's own step rises by nearly
+what z10's falls, since z8 stays. Only a higher sieve at z10 lowers the sum, and that costs 1.6 points of agreement at z10.
+The pipeline keeps 5 → 5: a lower step here is partly less detail at z10, where the map hands over to OSM. A candidate
+would still need the regions and `--planet`.
 
 ## Sweeps and `inspect`
 
