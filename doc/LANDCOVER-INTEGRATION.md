@@ -112,21 +112,15 @@ Released in 5.6.0, which this repository's pack uses through `@versatiles/versat
 `--landcover` now fails with a pointer to the separate source. All images were rebuilt with versatiles 5.6.0 on
 2026-11-01.
 
-### download.versatiles.org (open)
+### download.versatiles.org (done)
 
-[download.versatiles.org#43](https://github.com/versatiles-org/download.versatiles.org/issues/43). The page has
-listed neither `landcover-vectors` nor `osm-landcover` since the update of 2026-10-27: both are gone from the Storage
-Box, and stay downloadable from R2.
+[download.versatiles.org#43](https://github.com/versatiles-org/download.versatiles.org/issues/43). Version 4 is
+published as `landcover-vectors.versatiles` since 2026-11-02, in place of version 3, credited to OSM under the ODbL
+and to ESA, and described as a separate source. The `osm-landcover` entry is gone. The container was built from
+1d360db, and its metadata is as written: `versatiles/landcover@1.0`, one layer `landcover` at z0–10.
 
-- **Publishing** follows `docs/runbook.md`. Put the file on the Storage Box as
-  `download/landcover-vectors/landcover-vectors.versatiles`, with its `.md5` and `.sha256`, and start the Update
-  workflow or wait for the 20th.
-- **`src/lib/file/datasets.ts`:** the `landcover-vectors` entry credits only ESA, describes Shortbread's `land` and
-  `water_polygons` layers, and points users to the merge. It needs OSM and the ODbL, and the separate source. The
-  `osm-landcover` entry ("OpenStreetMap + Landcover (Beta)") goes. Both link into the land cover page of the docs
-  (`#using-it`, `#2-render-at-low-zoom`), so their links follow versatiles-documentation#96.
-- **R2:** delete `osm-landcover.versatiles` only after `/tiles/osm/` is switched (tiles.versatiles.org#39). Until then
-  that server mirrors it, and the download updater never deletes from R2.
+Left for step 6: delete `osm-landcover.versatiles` from R2, but only after `/tiles/osm/` is switched
+(tiles.versatiles.org#39). Until then that server mirrors it, and the download updater never deletes from R2.
 
 ### tiles.versatiles.org (open)
 
@@ -206,8 +200,8 @@ versatiles-svg-renderer, versatiles-studio, playground and versatiles-org.github
 1. ~~Settle the schema's name, release versatiles-rs#300 and #301, and add the value to the TileJSON spec~~ (5.6.0,
    versatiles-documentation#97).
 2. ~~Remove the land cover merge from versatiles-planetiler (versatiles-docker#60).~~
-3. Rebuild version 4 with the `landcover` layer and the schema, then upload and publish it with the corrected
-   attribution (download.versatiles.org#43).
+3. ~~Rebuild version 4 with the `landcover` layer and the schema, then upload and publish it with the corrected
+   attribution (download.versatiles.org#43).~~
 4. Serve `landcover-vectors` on tiles.versatiles.org, and offer it in tools' server setup (tools#67).
 5. Release versatiles-style with stacking (versatiles-style#145), and update the documentation
    (versatiles-documentation#96).
