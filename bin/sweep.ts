@@ -7,7 +7,8 @@
 // part of the config fingerprint — measured with the same code `npm run stats` uses and recorded in
 // doc/size-baseline.json as "<area>@<knob><value>". Then one reference tile (--tile, or the largest tile
 // of the first variant) is compared against its target with `npm run inspect`, for every variant side by
-// side, so size and quality come out of one run.
+// side, so size and quality come out of one run. Each variant's zoom step (lib/measure.ts) is measured and recorded
+// with its size, on a window in the middle of the area, for each zoom the sweep builds together with the one below.
 //
 // Guessing is not a substitute: bytes against tolerance are far from 1/x (the Hudson Bay worst tile grew
 // 1.56×, not 4×, at DETAIL_PX 4), and the sieve trades texture against speckle in ways only the numbers show.
@@ -18,8 +19,12 @@ import { spawnSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
+import { TileSource } from '@versatiles/versatiles-rs';
+
 import { resolveArea, parseZoomRange, areaSlug } from '../lib/areas.ts';
 import { readTiles, summarise, largest, budgetFlag, MVT_LIMIT, WARN_LIMIT, type ZoomStats } from '../lib/stats.ts';
+import { PX, zoomSteps } from '../lib/measure.ts';
+import { windowIn, WINDOW_ZOOM } from '../lib/regions.ts';
 import { datadir } from '../config.ts';
 
 // the knobs a sweep can turn, and the environment variable config.ts reads each one from
@@ -55,7 +60,7 @@ if (opt.help || !opt.area) {
 			'',
 			...Object.entries(KNOBS).map(([k, v]) => `  --${k.padEnd(7)} ${v.what}`),
 			'  --tile z/x/y     the tile to judge quality on (default: the largest tile of the first variant)',
-			'  --no-inspect     sizes only',
+			'  --no-inspect     skip the comparison on the reference tile',
 			'',
 			'One knob per sweep; the others come from config.ts or the environment.',
 			'Without a knob, it sweeps --detail 1,2,4. Each variant keeps its own cache, so repeats are cheap.',
@@ -80,7 +85,19 @@ const values = spec.split(',').map((s) => {
 });
 if (opt.tile && !/^\d+\/\d+\/\d+$/.test(opt.tile)) throw new Error(`bad --tile "${opt.tile}" — expected z/x/y`);
 
-type Variant = { value: number; fingerprint: string; tileset: string; zooms: ZoomStats[] };
+type Variant = {
+	value: number;
+	fingerprint: string;
+	tileset: string;
+	zooms: ZoomStats[];
+	zoomStep: Record<string, number | null>;
+};
+const win = windowIn(resolveArea(opt.area));
+// a zoom's step needs the zoom below in the build, and enough rendered pixels in the window to mean something
+const MIN_WINDOW_PX = 64;
+const stepZooms: number[] = [];
+for (let z = minZoom + 1; z <= maxZoom; z++)
+	if (win.side * PX * 2 ** (z - WINDOW_ZOOM) >= MIN_WINDOW_PX) stepZooms.push(z);
 const results: Variant[] = [];
 
 for (const value of values) {
@@ -102,6 +119,7 @@ for (const value of values) {
 		fingerprint: built.fingerprint,
 		tileset: built.tileset,
 		zooms: summarise(readTiles(built.tileset)),
+		zoomStep: await zoomSteps(await TileSource.fromPath(built.tileset), stepZooms, win),
 	});
 }
 
@@ -144,6 +162,30 @@ for (const r of results) {
 	);
 }
 
+// what crossing into each zoom changes, on the window
+if (stepZooms.length) {
+	console.error(
+		'\nzoom step, %d×%d z12 tiles in the middle of %s — %% of the rendered pixels where this zoom and the one below show a different kind',
+		win.side,
+		win.side,
+		opt.area,
+	);
+	console.error(
+		['  z', ...results.map((r) => `${knob} ${r.value}`)]
+			.map((s, i) => (i ? s.padStart(12) : s.padStart(3)))
+			.join(' '),
+	);
+	for (const z of stepZooms)
+		console.error(
+			[String(z).padStart(3), ...results.map((r) => String(r.zoomStep[`z${z}`] ?? '—').padStart(12))].join(' '),
+		);
+} else {
+	console.error(
+		'\nno zoom step: it needs two neighbouring zooms in --zoom, and a window of %d rendered px',
+		MIN_WINDOW_PX,
+	);
+}
+
 // record every variant so a later session can compare without rebuilding
 type Baseline = { entries: Record<string, unknown> };
 const baseline: Baseline = await fs
@@ -162,6 +204,7 @@ for (const r of results) {
 		written: new Date().toISOString(),
 		note: `sweep: ${[`${KNOBS[knob].env}=${r.value}`, ...others.map((o) => `${o.env}=${o.value}`)].join(', ')}, area ${opt.area}, z${minZoom}-${maxZoom}`,
 		zooms: r.zooms,
+		zoomStep: r.zoomStep,
 	};
 }
 await fs.writeFile(BASELINE, JSON.stringify(baseline, null, '\t') + '\n');

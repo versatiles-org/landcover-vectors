@@ -225,6 +225,47 @@ Most of it is generalization, not the pyramid: what is removed goes to its large
 below the sieve's size cannot stay. Weaker settings buy little: a sieve of 0.1 px² without the filter is 36.1 % and 0.7 %
 at 62.9 KB, and a filter of 0.125 px without the sieve 35.5 % and 0.8 % at 109.5 KB.
 
+## Consistency between zooms
+
+Bytes and agreement do not say how well neighbouring zooms fit together, and a map shows that directly: crossing an
+integer zoom swaps one zoom's tiles for the next. The **zoom step** of zoom z is the share of z's rendered pixels where
+the tiles of z − 1 and of z show a different kind (`zoomSteps` in `lib/measure.ts`). It needs no renderer and no style.
+Lower is better, but only if agreement and bytes hold: a blank tileset scores 0, and each zoom is meant to show more than
+the last, so it does not reach 0. No target is set yet.
+
+`npm run experiment` reports it per region and in its summary, and `npm run sweep` for the zooms it builds together with
+the one below. Means over the regions, with `published` being the container and `baseline` the regional build:
+
+| variant     | step z10 % | step z9 % | step z8 % | agreement z10 % | agreement z8 % |
+| ----------- | ---------- | --------- | --------- | --------------- | -------------- |
+| `published` | 8.6        | 8.4       | 9.7       | –               | –              |
+| `baseline`  | 8.5        | 8.4       | 9.5       | 91.3            | 88.5           |
+
+The published container, per region:
+
+| region            | z8     | z9     | z10    |
+| ----------------- | ------ | ------ | ------ |
+| berlin-zehlendorf | 11.4 % | 8.3 %  | 8.8 %  |
+| berlin-britz      | 10.4 % | 8.1 %  | 8.4 %  |
+| uckermark         | 4.6 %  | 5.4 %  | 5.8 %  |
+| ruhr              | 13.5 % | 11.7 % | 13.7 % |
+| atlanta           | 6.0 %  | 5.2 %  | 6.4 %  |
+| nile-delta        | 5.4 %  | 4.8 %  | 4.0 %  |
+| lagos             | 8.0 %  | 6.9 %  | 6.4 %  |
+| tokyo             | 2.5 %  | 4.2 %  | 5.2 %  |
+| alps              | 12.5 % | 9.6 %  | 8.7 %  |
+| hudson-bay        | 22.7 % | 19.4 % | 18.3 % |
+
+Reading these numbers:
+
+- A zoom needs the one below it. An experiment therefore also builds z7, so a build from before that has no z8 step.
+- The regions are 64 rendered px across at z8, too few to go lower. A sweep measures up to 16 × 16 z12 tiles in the middle
+  of its area, not all of it, and only zooms where that window is at least 64 rendered px across, so z6 and up.
+- Every pixel in the window counts, sea included, so values compare better between variants of one region than between
+  regions.
+- All kinds count equally: forest to water weighs the same as grassland to scrub, although the second looks much
+  milder on a map.
+
 ## Sweeps and `inspect`
 
 ```sh
@@ -233,8 +274,8 @@ npm run sweep -- --area hudson-bay --zoom 8-10 --detail 1,2,4        # the vecto
 npm run inspect -- 9/129/159 --preview hudson-bay                    # one tile, every variant built for the area
 ```
 
-A sweep builds the area once per value, prints the worst tile per zoom per variant, records each in
-`doc/size-baseline.json` as `<area>@<knob><value>`, and ends with `npm run inspect` on a reference tile
+A sweep builds the area once per value, prints the worst tile and the [zoom step](#consistency-between-zooms) per zoom
+per variant, records each in `doc/size-baseline.json` as `<area>@<knob><value>`, and ends with `npm run inspect` on a reference tile
 (`--tile`, or the largest tile of the first variant).
 
 `inspect` rasterises the tile onto the pipeline's own grid and compares it pixel by pixel with its **target**:

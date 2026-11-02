@@ -11,9 +11,9 @@
 // Each region gets its own small source (lib/regionsource.ts), cached in data/experiment/regions/: ESA from the
 // bucket, OSM's sea from the download's water polygons (fetched here if missing), and OSM's land use imported from
 // the planet, which `npm run download -- --landuse` fetches once (lib/osmland.ts). A variant builds
-// z8–10 — the zooms around the handover — with the build's own pipeline (lib/pipeline.ts) into
-// data/experiment/variants/<fingerprint>/, so variants with the same source share one build. The measurement
-// (lib/measure.ts) goes to data/experiment/results/<variant>.json, and the tables to results/report.md.
+// z8–10 — the zooms around the handover — and z7, which z8's zoom step compares with, with the build's own pipeline
+// (lib/pipeline.ts) into data/experiment/variants/<fingerprint>/, so variants with the same source share one build.
+// The measurement (lib/measure.ts) goes to data/experiment/results/<variant>.json, and the tables to results/report.md.
 
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -157,19 +157,20 @@ async function runVariant(name: string, v: Variant): Promise<Result> {
 		regions[r] = await measureRegion(region.window, { osm, landcover: lc }, cache, truth);
 		const m = regions[r];
 		console.error(
-			'  %s handover %s %%, holes %s %%, towns z10 %s %%, sharp turns z10 %s %%, agreement z10 %s %%',
+			'  %s handover %s %%, holes %s %%, towns z10 %s %%, sharp turns z10 %s %%, agreement z10 %s %%, zoom step z10 %s %%',
 			r.padEnd(18),
 			m.handover,
 			m.holes,
 			m.towns.z10,
 			m.shape.z10?.sharpTurns ?? '–',
 			m.agreement.z10 ?? '–',
+			m.zoomStep.z10 ?? '–',
 		);
 	}
 	return { variant: name, why: v.why, fingerprint: fp, measured: new Date().toISOString(), regions };
 }
 
-// build the variant's z8–10 over every region, or reuse a build with the same fingerprint
+// build the variant's z7–10 over every region, or reuse a build with the same fingerprint
 async function build(v: Variant): Promise<{ landcover: string; fp: string }> {
 	const keys = await sourceKeys(root);
 	const regions = Object.entries(REGIONS).map(([name, region]) => ({
@@ -221,12 +222,12 @@ async function build(v: Variant): Promise<{ landcover: string; fp: string }> {
 	await pyramidVrt(src, classes, 0);
 	await pyramidVrt(seaShare, sea);
 
-	// the blocks of z8–10 that touch a region, row-major per zoom like planBlocks
+	// the blocks of z7–10 that touch a region, row-major per zoom like planBlocks
 	const coverage = coverageFromKeys(regions.flatMap((r) => r.keys));
 	const plan: ZoomBlocks[] = [];
 	for (const r of regions)
 		for (const { z, blocks } of planBlocks(coverage, {
-			minZoom: 8,
+			minZoom: 7,
 			maxZoom: 10,
 			bbox: extentLonLat(r.region.window),
 		})) {
@@ -359,6 +360,13 @@ async function report(): Promise<void> {
 		],
 		['agreement z8', '… and its z8 tiles (%)', (m) => m.agreement?.z8 ?? null],
 		[
+			'zoom step z10',
+			"of z10's rendered pixels, where the landcover's z9 and z10 tiles show a different kind (%) — lower is better, if agreement and size hold",
+			(m) => m.zoomStep?.z10 ?? null,
+		],
+		['zoom step z9', '… between z8 and z9 (%)', (m) => m.zoomStep?.z9 ?? null],
+		['zoom step z8', '… between z7 and z8 (%)', (m) => m.zoomStep?.z8 ?? null],
+		[
 			'sharp turns z10',
 			`vertices of the landcover's z10 outlines that turn by more than ${SHARP_TURN}° (%) — lower is smoother`,
 			(m) => m.shape?.z10?.sharpTurns ?? null,
@@ -424,6 +432,9 @@ function summaryTable(results: Result[]): string[] {
 			mean((m) => m.shape?.z8?.turning),
 			mean((m) => m.agreement?.z10),
 			mean((m) => m.agreement?.z8),
+			mean((m) => m.zoomStep?.z10),
+			mean((m) => m.zoomStep?.z9),
+			mean((m) => m.zoomStep?.z8),
 			mean((m) => m.forestKept),
 			mean((m) => m.holes),
 		];
@@ -433,8 +444,8 @@ function summaryTable(results: Result[]): string[] {
 		'',
 		"Means over the regions. Size: the change in gzipped bytes against baseline, each zoom's change weighted by its share of the planet.",
 		'',
-		'| variant | size % | turning z10 | sharp z10 % | axis z10 % | turning z8 | agreement z10 % | agreement z8 % | forest % | holes % |',
-		'|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|',
+		'| variant | size % | turning z10 | sharp z10 % | axis z10 % | turning z8 | agreement z10 % | agreement z8 % | step z10 % | step z9 % | step z8 % | forest % | holes % |',
+		'|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|',
 		...rows.map((r) => `| ${r.join(' | ')} |`),
 		'',
 	];

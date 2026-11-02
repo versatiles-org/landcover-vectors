@@ -8,6 +8,8 @@ import type { LonLat } from './coverage.ts';
 
 export const WINDOW_ZOOM = 12;
 const WINDOW_TILES = 4; // z12 tiles per window side: ~24 km at 52°N, ~39 km at the equator
+const AREA_WINDOW_TILES = 16; // the same for an area's build (windowIn): 256 rendered px a side at z8, 64 at z6
+const LAT_LIMIT = 85.0511287798066; // the Mercator limit: no tiles beyond it
 // z10 tiles of source around the window on each side, so the sieve at the window's edge sees what it would in the
 // full build: its margin is 27 raw pixels, 4 km at z8, and a z10 tile is 39 km (in Mercator metres)
 const EXTENT_PAD = 1;
@@ -17,11 +19,24 @@ export type Region = { center: [number, number]; why: string; window: Window };
 
 // the window of z12 tiles centred on a point
 export function windowAt(lon: number, lat: number, side = WINDOW_TILES): Window {
+	const [x, y] = tileAt(lon, lat);
+	return { x0: Math.round(x - side / 2), y0: Math.round(y - side / 2), side };
+}
+
+// where a point lies, in z12 tiles
+function tileAt(lon: number, lat: number): [number, number] {
 	const n = 2 ** WINDOW_ZOOM;
 	const r = (lat * Math.PI) / 180;
-	const x = ((lon + 180) / 360) * n;
-	const y = ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n;
-	return { x0: Math.round(x - side / 2), y0: Math.round(y - side / 2), side };
+	return [((lon + 180) / 360) * n, ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n];
+}
+
+// A square window in the middle of a box, for measuring an area's build: as large as `side` z12 tiles, or as fits. A
+// whole area of lib/areas.ts is too large to rasterise: Hudson Bay would be 23296 × 29696 grid pixels per kind.
+export function windowIn(box: LonLat, side = AREA_WINDOW_TILES): Window {
+	const [x0, y0] = tileAt(box.west, Math.min(box.north, LAT_LIMIT));
+	const [x1, y1] = tileAt(box.east, Math.max(box.south, -LAT_LIMIT));
+	const fits = Math.max(1, Math.min(side, Math.floor(x1 - x0), Math.floor(y1 - y0)));
+	return { x0: Math.round((x0 + x1 - fits) / 2), y0: Math.round((y0 + y1 - fits) / 2), side: fits };
 }
 
 const region = (lon: number, lat: number, why: string): Region => ({

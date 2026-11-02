@@ -214,6 +214,7 @@ export type RegionMetrics = {
 	tiles: Record<string, { kb: number; features: number }>; // the landcover's own tiles over the window, uncompressed: getTile gunzips
 	shape: Record<string, Shape | null>; // how smooth the landcover's outlines are, per zoom
 	agreement: Record<string, number | null>; // the landcover against its source, per zoom (%); null: no source
+	zoomStep: Record<string, number | null>; // what crossing into the zoom changes (%), see zoomSteps; null: no tiles to compare
 	kinds: Record<string, KindCounts>; // per OSM kind, see kindBreakdown
 };
 
@@ -222,7 +223,7 @@ const pct = (num: number, den: number): number | null => (den ? Math.round((1000
 // the comparison, from painted grids: z11 is OSM's alone, the others the land cover's under OSM
 export function compare(
 	painted: Record<number, Uint8Array>,
-): Omit<RegionMetrics, 'tiles' | 'shape' | 'agreement' | 'kinds'> {
+): Omit<RegionMetrics, 'tiles' | 'shape' | 'agreement' | 'zoomStep' | 'kinds'> {
 	const osm = painted[11];
 	const n = osm.length;
 	const [URBAN, FOREST] = [code('urban'), code('forest')];
@@ -401,6 +402,31 @@ export function agreement(truth: Uint8Array, shown: Uint8Array, n: number, z: nu
 	let same = 0;
 	for (let i = 0; i < a.length; i++) if (a[i] === b[i]) same++;
 	return pct(same, a.length)!;
+}
+
+// ---------------------------------------------------------------- consistency between zooms
+
+// The share of zoom z's rendered pixels where the tiles of z − 1 and of z show a different kind: what changes when a
+// map crosses into z and swaps its tiles. rasterise puts both zooms on one grid, as overzooming the coarser tile does.
+// Lower is better, but only while agreement and bytes hold: a blank tileset scores 0. Null if either zoom has no tiles
+// in the window, which would otherwise count as a change to or from nothing.
+export function stepChange(coarse: Raster, fine: Raster, n: number, z: number): number | null {
+	if (!coarse.bytes || !fine.bytes) return null;
+	return Math.round(10 * (100 - agreement(kindGrid(coarse.masks, n), kindGrid(fine.masks, n), n, z))) / 10;
+}
+
+// stepChange for each of these zooms over a window
+export async function zoomSteps(
+	source: TileReader,
+	zooms: number[],
+	win: Window,
+): Promise<Record<string, number | null>> {
+	const out: Record<string, number | null> = {};
+	for (const z of zooms) {
+		const [coarse, fine] = await Promise.all([rasterise(source, z - 1, win), rasterise(source, z, win)]);
+		out[`z${z}`] = stepChange(coarse, fine, win.side * PX, z);
+	}
+	return out;
 }
 
 // a window's pixels of a raster on the build's grid (lib/regionsource.ts), which is the measurement's
@@ -595,5 +621,12 @@ export async function measureRegion(
 			: null;
 	}
 	const painted = Object.fromEntries(Object.entries(fills).map(([z, f]) => [z, f.map((v) => FILL_CATEGORY[v])]));
-	return { ...compare(painted), tiles, shape, agreement: agree, kinds: kindBreakdown(reference.kinds, fills) };
+	return {
+		...compare(painted),
+		tiles,
+		shape,
+		agreement: agree,
+		zoomStep: await zoomSteps(src.landcover, [8, 9, 10], win),
+		kinds: kindBreakdown(reference.kinds, fills),
+	};
 }

@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { REGIONS, windowAt, extentTiles, extentLonLat, WINDOW_ZOOM } from '../lib/regions.ts';
+import { REGIONS, windowAt, windowIn, extentTiles, extentLonLat, WINDOW_ZOOM } from '../lib/regions.ts';
 import { regionGrid, regionKeys, pyramidVrt } from '../lib/regionsource.ts';
 import { VARIANTS, paramsFor, burnsOf } from '../lib/variants.ts';
 import {
@@ -25,6 +25,8 @@ import {
 	truthGrid,
 	kindGrid,
 	agreement,
+	stepChange,
+	zoomSteps,
 	KINDS,
 	CATEGORIES,
 } from '../lib/measure.ts';
@@ -48,6 +50,15 @@ describe('the test regions', () => {
 	test('windowAt centres the window on the point', () => {
 		// Berlin, z12 tile 2200/1343
 		assert.deepEqual(windowAt(13.4, 52.52, 4), { x0: 2198, y0: 1341, side: 4 });
+	});
+
+	test('windowIn takes the middle of a box, at most `side` tiles and only as many as fit', () => {
+		assert.deepEqual(windowIn({ west: -1, south: -1, east: 1, north: 1 }), { x0: 2040, y0: 2040, side: 16 });
+		assert.deepEqual(windowIn({ west: -1, south: -1, east: 1, north: 1 }, 4), { x0: 2046, y0: 2046, side: 4 });
+		const narrow = windowIn({ west: 0, south: -1, east: 0.2, north: 1 });
+		assert.equal(narrow.side, 2, '0.2° is 2.3 z12 tiles');
+		assert.equal(windowIn({ west: 0, south: 0, east: 0.01, north: 0.01 }).side, 1, 'a tiny box still gets a tile');
+		assert.equal(windowIn({ west: -180, south: 80, east: 180, north: 90 }).y0 >= 0, true, 'nothing past the pole');
 	});
 
 	test("a region's grid is whole z10 tiles, so every overview level's pixels are the world's", () => {
@@ -267,6 +278,55 @@ describe('agreement with the source', () => {
 		const truth = new Uint8Array(n * n).fill(code('forest'));
 		for (let i = 0; i < n * n; i++) if (i % n >= 4 && i < 4 * n) truth[i] = 0; // top-right pixel: none
 		assert.equal(agreement(truth, shown, n, 11), 75);
+	});
+});
+
+describe('the zoom step', () => {
+	const n = 8; // two z11 pixels a side at 4 grid px each
+	const raster = (masks: [string, Uint8Array][], bytes = 1) => ({
+		masks: new Map(masks),
+		bytes,
+		features: masks.length,
+		tiles: 1,
+	});
+	const forest = new Uint8Array(n * n).fill(1);
+	// the top-right z11 pixel is water
+	const water = new Uint8Array(n * n);
+	for (let y = 0; y < 4; y++) water.fill(1, y * n + 4, y * n + 8);
+	const landForest = forest.map((_, i) => (water[i] ? 0 : 1));
+
+	test('counts the rendered pixels whose kind differs, and nothing for equal zooms', () => {
+		const whole = raster([['landcover/forest', forest]]);
+		const split = raster([
+			['landcover/forest', landForest],
+			['landcover/water', water],
+		]);
+		assert.equal(stepChange(whole, split, n, 11), 25);
+		assert.equal(stepChange(whole, whole, n, 11), 0);
+	});
+
+	test('a change to nothing counts, as long as the zoom has tiles', () => {
+		const whole = raster([['landcover/forest', forest]]);
+		assert.equal(stepChange(whole, raster([]), n, 11), 100);
+	});
+
+	test('detail smaller than a rendered pixel does not count', () => {
+		const speck = new Uint8Array(n * n);
+		speck[0] = 1;
+		const specked = raster([
+			['landcover/forest', forest.map((_, i) => (speck[i] ? 0 : 1))],
+			['landcover/water', speck],
+		]);
+		assert.equal(stepChange(raster([['landcover/forest', forest]]), specked, n, 11), 0);
+	});
+
+	test('a zoom without tiles has no value, rather than a change from nothing', async () => {
+		const whole = raster([['landcover/forest', forest]]);
+		assert.equal(stepChange(raster([], 0), whole, n, 11), null);
+		assert.equal(stepChange(whole, raster([], 0), n, 11), null);
+		// a build of z8–10 alone: z8 has nothing to compare with
+		const noTiles = { getTile: async () => null };
+		assert.deepEqual(await zoomSteps(noTiles, [8], { x0: 0, y0: 0, side: 1 }), { z8: null });
 	});
 });
 
