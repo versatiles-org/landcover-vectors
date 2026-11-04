@@ -90,15 +90,16 @@ versatiles-style's colorful style, the copy of `land-forest` reads:
 {
 	"id": "landcover-land-forest",
 	"type": "fill",
-	"source": "landcover",
+	"source": "versatiles-landcover",
 	"source-layer": "landcover",
 	"filter": ["in", ["get", "kind"], ["literal", ["forest"]]],
 	"paint": { "fill-color": "rgb(203,229,184)", "fill-opacity": ["interpolate", ["linear"], ["zoom"], 12, 1, 14, 0.25] }
 }
 ```
 
-`stackedStyle` in [`lib/style-versatiles.ts`](lib/style-versatiles.ts) builds that style from versatiles-style;
-`npm run dev` shows it.
+versatiles-style draws it from v8 on: `osm({ features: { landcover: true } })` adds the source and these fills,
+reading the land cover from `urls.landcover`, by default tiles.versatiles.org's `landcover-vectors`. `npm run dev`
+shows that style over this repo's tiles.
 
 **Why a source of its own.** OSM maps only part of the land. Measured on one inland z8 tile per region (OSM
 container of October 2026), the share of land that OSM's `land` and `water_polygons` cover at z11:
