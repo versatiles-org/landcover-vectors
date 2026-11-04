@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { TileServer, TileSource } from '@versatiles/versatiles-rs';
 
 import { commandExists } from '../lib/worldcover.ts';
-import { stackedStyle, versatilesStyle } from '../lib/style-versatiles.ts';
+import { isLandcover, stackedStyle, versatilesStyle } from '../lib/style-versatiles.ts';
 import { datadir, file, OSM_URL, LANDCOVER_URL } from '../config.ts';
 
 const { values: opt } = parseArgs({
@@ -71,7 +71,7 @@ const stacked = stackedStyle('/tiles/osm/tiles.json', '/tiles/landcover/tiles.js
 const styles = {
 	osm: versatilesStyle('/tiles/osm/tiles.json'),
 	// the stacked style without OSM's layers: the background and the land cover
-	landcover: { ...stacked, layers: stacked.layers.filter((l) => !('source' in l) || l.source === 'landcover') },
+	landcover: { ...stacked, layers: stacked.layers.filter((l) => !('source' in l) || isLandcover(l)) },
 	stacked,
 };
 for (const [name, style] of Object.entries(styles))

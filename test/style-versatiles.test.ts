@@ -1,13 +1,16 @@
-// The real-map view must load the tiles this repo serves, not tiles.versatiles.org's, and must draw the land cover
-// as versatiles-style will: from z0, under OSM, in the stock colours — otherwise it shows some other map.
+// The real-map view must load the tiles this repo serves, not tiles.versatiles.org's, and versatiles-style must draw
+// the land cover as the README says: from z0, under OSM, in the stock colours, faded.
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { osm } from '@versatiles/style';
 
-import { FADE, landcoverLayers, stackedStyle, versatilesStyle } from '../lib/style-versatiles.ts';
+import { isLandcover, landcoverLayers, stackedStyle, versatilesStyle } from '../lib/style-versatiles.ts';
 import { channels, LAYER } from '../config.ts';
+
+// the fade the README documents
+const FADE = ['interpolate', ['linear'], ['zoom'], 12, 1, 14, 0.25];
 
 describe('versatilesStyle', () => {
 	const style = versatilesStyle('/tiles/osm/tiles.json?v=abc');
@@ -40,7 +43,7 @@ describe('landcoverLayers', () => {
 			assert.ok(original && original.type === 'fill', l.id);
 			assert.equal(l.type, 'fill');
 			if (l.type !== 'fill') continue;
-			assert.equal(l.source, 'landcover');
+			assert.equal(l.source, 'versatiles-landcover');
 			assert.equal(l['source-layer'], LAYER);
 			assert.equal(l.minzoom, undefined, l.id);
 			assert.equal(l.paint?.['fill-color'], original.paint?.['fill-color'], l.id);
@@ -54,15 +57,18 @@ describe('landcoverLayers', () => {
 describe('stackedStyle', () => {
 	const style = stackedStyle('/osm.json', '/landcover.json');
 	const ids = style.layers.map((l) => l.id);
-	const under = style.layers.filter((l) => 'source' in l && l.source === 'landcover');
+	const under = style.layers.filter(isLandcover);
 
 	test('reads the land cover from its own source, and the rest from OSM', () => {
-		assert.deepEqual(style.sources.landcover, { type: 'vector', url: '/landcover.json' });
+		assert.deepEqual(style.sources['versatiles-landcover'], { type: 'vector', url: '/landcover.json' });
 		assert.deepEqual(
 			under.map((l) => l.id),
 			landcoverLayers().map((l) => l.id),
 		);
-		assert.ok(style.layers.some((l) => 'source' in l && l.source !== 'landcover'));
+		const others = style.layers.filter((l) => 'source' in l && !isLandcover(l));
+		assert.ok(others.length > 0);
+		for (const l of others)
+			assert.deepEqual(style.sources[(l as { source: string }).source], { type: 'vector', url: '/osm.json' }, l.id);
 	});
 
 	test("draws it right above the background, in versatiles-style's slot below every fill", () => {

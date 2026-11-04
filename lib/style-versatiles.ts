@@ -4,60 +4,39 @@
 // kinds apart.
 //
 // OSM paints over the land cover wherever it has data, and the land cover shows wherever OSM has none. Its tiles
-// end at z10, and MapLibre overzooms a source past its maxzoom, so it stays under OSM at any zoom. This is the
-// reference for versatiles-style (doc/LANDCOVER-INTEGRATION.md).
+// end at z10, and MapLibre overzooms a source past its maxzoom, so it stays under OSM at any zoom. versatiles-style
+// draws it with `features.landcover` from v8 on; this only points the style at the tiles this repo serves.
 
 import { osm, type StyleSpecification } from '@versatiles/style';
 
-import { filterKinds } from './style-qgis.ts';
-import { channels, LAYER } from '../config.ts';
+import { LAYER } from '../config.ts';
 
 type LayerSpecification = StyleSpecification['layers'][number];
-type FillOpacity = NonNullable<Extract<LayerSpecification, { type: 'fill' }>['paint']>['fill-opacity'];
 
-// the stock style, i.e. OSM as it is drawn without this container, reading its vector tiles from `tiles`
-export function versatilesStyle(tiles: string): StyleSpecification {
-	const style = osm();
-	// osm() points its vector source at tiles.versatiles.org, where the glyphs and sprites stay; the tiles are ours
-	for (const source of Object.values(style.sources)) if (source.type === 'vector') source.url = tiles;
+// whether a layer draws the land cover: OSM's tiles have no layer of that name
+export const isLandcover = (l: LayerSpecification): boolean => 'source-layer' in l && l['source-layer'] === LAYER;
+
+// osm() points its vector sources at tiles.versatiles.org, where the glyphs and sprites stay; the tiles are ours
+function serve(style: StyleSpecification, osmTiles: string, landcoverTiles = osmTiles): StyleSpecification {
+	const landcover = new Set(style.layers.flatMap((l) => (isLandcover(l) && 'source' in l ? [l.source] : [])));
+	for (const [id, source] of Object.entries(style.sources))
+		if (source.type === 'vector') source.url = landcover.has(id) ? landcoverTiles : osmTiles;
 	return style;
 }
 
-// the land cover's opacity: opaque up to z12, where its overzoomed outlines grow coarse, then thinner up to z14,
-// and 25 % above that, so land that OSM does not map keeps a hint of colour
-export const FADE: FillOpacity = ['interpolate', ['linear'], ['zoom'], 12, 1, 14, 0.25];
-
-// The land cover's fills: a copy of each stock fill that draws one of its kinds in OSM's tiles, with that fill's
-// colour, reading those kinds from the `landcover` source from z0, and faded.
-export function landcoverLayers(source = 'landcover'): LayerSpecification[] {
-	return osm().layers.flatMap((l) => {
-		if (l.type !== 'fill' || !l['source-layer']) return [];
-		const fills = filterKinds(l.filter);
-		const kinds = channels.flatMap((c) =>
-			c.kind && c.osmLayer === l['source-layer'] && fills.includes(c.kind) ? [c.kind] : [],
-		);
-		if (kinds.length === 0) return [];
-		const { minzoom: _, ...rest } = l;
-		return [
-			{
-				...rest,
-				id: `landcover-${l.id}`,
-				source,
-				'source-layer': LAYER,
-				filter: ['in', ['get', 'kind'], ['literal', kinds]],
-				paint: { ...l.paint, 'fill-opacity': FADE },
-			} as typeof l,
-		];
-	});
+// the stock style, i.e. OSM as it is drawn without this container, reading its vector tiles from `tiles`
+export function versatilesStyle(tiles: string): StyleSpecification {
+	return serve(osm(), tiles);
 }
 
 // the stock style with the land cover under OSM: its fills go into versatiles-style's slot below all fills, right
 // above the background and below `water-ocean` (the sea is a hole in the land cover) and everything else
 export function stackedStyle(osmTiles: string, landcoverTiles: string): StyleSpecification {
-	const style = versatilesStyle(osmTiles);
-	style.sources.landcover = { type: 'vector', url: landcoverTiles };
-	const at = style.layers.findIndex((l) => l.id === osm.slots.belowFills);
-	if (at < 0) throw new Error(`versatiles-style has no ${osm.slots.belowFills} layer to put the land cover under`);
-	style.layers.splice(at, 0, ...landcoverLayers());
-	return style;
+	return serve(osm({ features: { landcover: true } }), osmTiles, landcoverTiles);
+}
+
+// The land cover's fills: a copy of each stock fill that draws one of its kinds in OSM's tiles, with that fill's
+// colour, reading those kinds from the land cover's source from z0, and faded.
+export function landcoverLayers(): LayerSpecification[] {
+	return stackedStyle('', '').layers.filter(isLandcover);
 }
