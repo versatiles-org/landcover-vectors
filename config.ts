@@ -48,13 +48,13 @@ export const file = {
 	log: path.join(datadir, 'blocks.log'), // per-block processing log (TSV), one row per block (build)
 	timings: path.join(datadir, 'timings.jsonl'), // how long every step and command took (download, build)
 	tiles: path.join(datadir, 'landcover.mbtiles'), // every block's tiles in one tileset (pack)
-	container: path.join(datadir, 'landcover-vectors.versatiles'), // brotli versatiles, named as published (pack)
+	container: path.join(datadir, 'landcover-vector.versatiles'), // brotli versatiles, named as published (pack)
 };
 
 // OSM's Shortbread container, which a style draws over the land cover (bin/dev.ts, bin/preview.ts, bin/experiment.ts)
-export const OSM_URL = 'https://download.versatiles.org/osm.versatiles';
+export const OSM_URL = 'https://download.versatiles.org/osm-vector/osm-vector.versatiles';
 // this container as published
-export const LANDCOVER_URL = 'https://download.versatiles.org/landcover-vectors.versatiles';
+export const LANDCOVER_URL = 'https://download.versatiles.org/landcover-vector/landcover-vector.versatiles';
 
 // OSM's sea, computed from its coastline: the polygons Shortbread's `ocean` layer is built from (planetiler-shortbread
 // reads this very file). Every block blanks them out of the ESA window as it classifies it (lib/ocean.ts), so the

@@ -200,7 +200,7 @@ export function readJoined(mbtiles: string): Joined {
 
 // The container's complete TileJSON, which pack hands to `meta_update` as the only source of its metadata:
 // `meta` from config.ts, the schema, the extent and layers of the joined tileset, and the provenance, as
-// `landcover:*` keys next to the `planetiler:*` ones of osm.versatiles. A whole document, because a partial
+// `landcover:*` keys next to the `planetiler:*` ones of osm-vector.versatiles. A whole document, because a partial
 // update cannot set `tile_schema`; versatiles still fills in `tile_format` and `tile_type` from the tiles.
 export function containerMeta(joined: Joined, p: Provenance): Record<string, unknown> {
 	return {

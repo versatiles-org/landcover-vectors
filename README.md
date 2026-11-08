@@ -10,7 +10,7 @@ values. A map draws it as a source of its own under OSM: OSM paints over it wher
 shows wherever OSM has none, at every zoom. Where OSM maps land use — a town, a park, allotments, a forest — that
 goes into the classification first, so the two agree where both exist (see [OSM land use](#osm-land-use)).
 
-**Download** [`landcover-vectors.versatiles`](https://download.versatiles.org/landcover-vectors.versatiles)
+**Download** [`landcover-vector.versatiles`](https://download.versatiles.org/landcover-vector/landcover-vector.versatiles)
 (~4.5 GB) from [download.versatiles.org](https://download.versatiles.org/).
 
 ![Versatiles Landcover Vectors Example](doc/example.png)
@@ -98,8 +98,9 @@ versatiles-style's colorful style, the copy of `land-forest` reads:
 ```
 
 versatiles-style draws it from v8 on: `osm({ features: { landcover: true } })` adds the source and these fills,
-reading the land cover from `urls.landcover`, by default tiles.versatiles.org's `landcover-vectors`. `npm run dev`
-shows that style over this repo's tiles.
+reading the land cover from `urls.landcover`, by default tiles.versatiles.org's `landcover-vector` under its old
+name, `landcover-vectors`, which tiles.versatiles.org keeps as an alias. `npm run dev` shows that style over this
+repo's tiles.
 
 **Why a source of its own.** OSM maps only part of the land. Measured on one inland z8 tile per region (OSM
 container of October 2026), the share of land that OSM's `land` and `water_polygons` cover at z11:
@@ -153,7 +154,7 @@ it starts:
 
 ```sh
 npm run download   # once: the EPSG:3857 source raster from ESA's remote tiles, the ocean mask, OSM's land use
-npm run build      # everything else → data/landcover-vectors.versatiles
+npm run build      # everything else → data/landcover-vector.versatiles
 ```
 
 > [!IMPORTANT]
@@ -184,15 +185,15 @@ names what changed and refuses to mix old and new. `npm run clean` clears them (
 
 Each step reads what an earlier one wrote; all files are under `data/`:
 
-| command            | step                                                                     | reads                            | writes                                                   |
-| ------------------ | ------------------------------------------------------------------------ | -------------------------------- | -------------------------------------------------------- |
-| `npm run download` | [reproject ESA WorldCover](#source-raster)                               | ESA's 3° tiles on S3             | `0_download/worldcover-3857.tif`, with overviews         |
-|                    | [rasterize the sea](#ocean-mask)                                         | OSM's water polygons             | `0_download/seashare-3857.tif`, with overviews           |
-|                    | [cut the planet to its land use, import it](#osm-land-use)               | OSM's planet                     | `0_download/osm-landuse-<date>.osm.pbf`, `….vrt`         |
-|                    | [burn it into the source](#osm-land-use)                                 | the source raster, the land use  | `0_download/worldcover-osm-3857.tif`, with overviews     |
-| `npm run build`    | [process and tile each block](#per-block-processing), for each zoom 0–10 | the burned source, the sea share | `1_results/z{z}_{x}_{y}.mbtiles`, one per block          |
-|                    | join each zoom                                                           | its blocks' tilesets             | `2_tiles/z{z}.mbtiles`                                   |
-|                    | [pack](#pack)                                                            | `2_tiles/z{z}.mbtiles`           | `landcover.mbtiles`, then `landcover-vectors.versatiles` |
+| command            | step                                                                     | reads                            | writes                                                  |
+| ------------------ | ------------------------------------------------------------------------ | -------------------------------- | ------------------------------------------------------- |
+| `npm run download` | [reproject ESA WorldCover](#source-raster)                               | ESA's 3° tiles on S3             | `0_download/worldcover-3857.tif`, with overviews        |
+|                    | [rasterize the sea](#ocean-mask)                                         | OSM's water polygons             | `0_download/seashare-3857.tif`, with overviews          |
+|                    | [cut the planet to its land use, import it](#osm-land-use)               | OSM's planet                     | `0_download/osm-landuse-<date>.osm.pbf`, `….vrt`        |
+|                    | [burn it into the source](#osm-land-use)                                 | the source raster, the land use  | `0_download/worldcover-osm-3857.tif`, with overviews    |
+| `npm run build`    | [process and tile each block](#per-block-processing), for each zoom 0–10 | the burned source, the sea share | `1_results/z{z}_{x}_{y}.mbtiles`, one per block         |
+|                    | join each zoom                                                           | its blocks' tilesets             | `2_tiles/z{z}.mbtiles`                                  |
+|                    | [pack](#pack)                                                            | `2_tiles/z{z}.mbtiles`           | `landcover.mbtiles`, then `landcover-vector.versatiles` |
 
 Before the blocks, `build` reads which 3° cells ESA has tiles for (the [coverage index](#coverage-index)) and
 skips every block that touches none of them.
@@ -375,11 +376,11 @@ requires the histogram to count every pixel of the window as well.
 
 `lib/assemble.ts` copies the per-zoom tiles into `data/landcover.mbtiles` (zooms, like blocks, never share a
 tile, so this is a plain copy, nothing is decoded), and versatiles (`@versatiles/versatiles-rs`, in the build's own
-process) packs it with brotli into `data/landcover-vectors.versatiles`, the name it is published under. Its whole metadata is one TileJSON,
+process) packs it with brotli into `data/landcover-vector.versatiles`, the name it is published under. Its whole metadata is one TileJSON,
 `data/tmp/container-meta.json`, which `meta_update tilejson_file=…` puts in place of the mbtiles' own:
 `tile_schema: versatiles/landcover@1.0` (see [what's in the tiles](#whats-in-the-tiles)); name, description, attribution,
 revision (`version`), center and the layer descriptions from `meta` in `config.ts`; bounds, zooms and layers of
-the joined tileset; and, like the `planetiler:*` keys of `osm.versatiles`, the build it came from:
+the joined tileset; and, like the `planetiler:*` keys of `osm-vector.versatiles`, the build it came from:
 `landcover:fingerprint` (the config), `landcover:githash` (the commit, `-dirty` with uncommitted changes) and
 `landcover:buildtime`. Before the container takes its final name, pack reads its metadata back and stops if
 any of it differs from what was written, if its tile type is not vector tiles, or if its one layer lacks a
@@ -414,7 +415,7 @@ against) and the slowest single commands with their block or sea-share tile. `--
 
 ```sh
 npm run dev                                # the published landcover container
-npm run dev -- --local                     # the local build, data/landcover-vectors.versatiles
+npm run dev -- --local                     # the local build, data/landcover-vector.versatiles
 npm run dev -- --landcover <path|url>      # any other, e.g. an experiment's build
 npm run dev -- --ip 0.0.0.0                # on a server: reachable from other machines (default: this one only)
 ```

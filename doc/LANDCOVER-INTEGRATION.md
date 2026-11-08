@@ -28,7 +28,7 @@ tools' server setup (tools#67), and a look at the repositories under [Not checke
 
 | property      | value                                        |
 | ------------- | -------------------------------------------- |
-| file          | `landcover-vectors.versatiles`               |
+| file          | `landcover-vector.versatiles`                |
 | size          | 4.45 GB (brotli)                             |
 | format        | VersaTiles container with MVT tiles          |
 | zooms         | z0–10; a style overzooms z10 above that      |

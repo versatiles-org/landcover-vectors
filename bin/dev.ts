@@ -1,7 +1,7 @@
 // Dev mode: look at the result — OSM, the land cover, and the land cover under OSM — in versatiles-style.
 //
 //   npm run dev                # the published landcover container
-//   npm run dev -- --local     # the local build, data/landcover-vectors.versatiles
+//   npm run dev -- --local     # the local build, data/landcover-vector.versatiles
 //   npm run dev -- --landcover <path|url>   # any other landcover container, e.g. an experiment's
 //   npm run dev -- --ip 0.0.0.0             # reachable from other machines, e.g. on a server
 //
